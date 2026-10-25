@@ -154,7 +154,7 @@ def verify(workdir):
 
 def record_handoff(workdir,round_num,cmd,cp,changes):
     folder=pathlib.Path(workdir).parent/'.nova-private'/pathlib.Path(workdir).name
-    folder.mkdir(exist_ok=True)
+    folder.mkdir(parents=True, exist_ok=True)
     log=folder/f'round-{round_num}.log'
     log.write_text((cp.stdout or '')[-12000:]+'\nSTDERR:\n'+(cp.stderr or '')[-3000:],encoding='utf-8')
     snippet=(cp.stdout or '')[-3500:]
