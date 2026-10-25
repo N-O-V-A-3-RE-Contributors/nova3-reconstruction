@@ -1,4 +1,12 @@
 
+<!-- NOVA3-EASY-LAUNCHER -->
+## Join or start the reconstruction worker
+
+[Contributor one-click guide](docs/ONE_CLICK_CONTRIBUTORS.md) · [Maintainer GitHub setup](docs/MAINTAINER_GITHUB_SETUP.md)
+
+On the maintainer's Linux checkout, run `bash START-LINUX.sh` to start or resume. Windows, macOS and Linux downloadable launchers are generated through the GitHub Actions **Build contributor launchers** workflow and appear under **Releases** after the maintainer creates a launcher tag. Private repository contributors must accept an invitation before downloading.
+
+
 <!-- NOVA-CONTRIBUTOR-QUICKSTART -->
 ## Contribute with your own AI
 

@@ -4,6 +4,7 @@ import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys, time, uuid
 from datetime import datetime, timezone
 from .common import GitHub, lease_active, lease_get, label_names
 from .guard import check as guard_check
+from . import recovery  # NOVA3-DURABLE-RESUME-v1
 
 
 def run(cmd, cwd=None, timeout=90, capture=True, check=True):
@@ -27,8 +28,15 @@ def get_repo(default=None):
     return cp.stdout.strip()
 
 
-def claim(gh, issue, user, maxwait=100):
-    token=str(uuid.uuid4())
+def claim(gh, issue, user, maxwait=100, saved=None):
+    token = (saved or {}).get('token')
+    lease = lease_get(issue.get('body'))
+    if (token and lease and lease_active(lease)
+            and lease.get('owner') == user and lease.get('token') == token):
+        note(f'Resuming existing claim for #{issue["number"]}')
+        gh.comment(issue['number'], f'/nova heartbeat {token}')
+        return token
+    token = str(uuid.uuid4())
     n=issue['number']
     gh.comment(n, f'/nova claim {token}')
     note(f'Requested task #{n}; waiting for coordinator claim')
@@ -39,7 +47,7 @@ def claim(gh, issue, user, maxwait=100):
         if lease and lease.get('owner')==user and lease.get('token')==token and lease_active(lease):
             return token
         if 'nova:review' in label_names(current):break
-        if lease and lease_active(lease) and lease.get('owner')!=user:break
+        if lease and lease_active(lease):break
         time.sleep(5)
     note(f'No claim for #{n}; skip (coordinator disabled or another worker claimed it)')
     return None
@@ -88,17 +96,23 @@ def validate_scope(work,allowed):
 
 
 def prepare_checkout(upstream,user,root,issue):
+    state=recovery.resume_info(root, issue['number'], upstream, user)
+    if state is not None:
+        work=pathlib.Path(state['work'])
+        branch=state['branch']
+        current=git(work,'branch','--show-current',check=False)
+        if current.returncode==0 and current.stdout.strip()==branch:
+            note(f'Reusing saved checkout {work} (no files reset)')
+            return work,branch,state['account']
+        raise RuntimeError(f'Saved checkout {work} is on an unexpected branch; refusing to overwrite')
     name=upstream.split('/')[-1];owner=upstream.split('/')[0]
     account=upstream if user==owner else f'{user}/{name}'
     if user!=owner:
         cp=run(['gh','repo','view',account,'--json','name'],check=False)
         if cp.returncode:
             note(f'Creating fork {account}')
-            run(['gh','repo','fork',upstream,'--clone=false'])
-    work=root/str(issue['number'])
-    if work.exists():
-        # Never reuse potentially dirty work; each job directory gets a new ID.
-        work=root/(str(issue['number'])+'-'+uuid.uuid4().hex[:6])
+            run(['gh','repo','fork',upstream,'--clone=false'],timeout=180)
+    work=root/(str(issue['number'])+'-'+uuid.uuid4().hex[:6])
     work.parent.mkdir(parents=True,exist_ok=True)
     run(['gh','repo','clone',account,str(work),'--','--quiet'], timeout=180)
     git(work,'remote','remove','upstream',check=False)
@@ -106,6 +120,8 @@ def prepare_checkout(upstream,user,root,issue):
     run(['git','fetch','upstream','main'],cwd=work,timeout=120)
     branch=f'nova/issue-{issue["number"]}-{uuid.uuid4().hex[:6]}'
     git(work,'checkout','-b',branch,'upstream/main')
+    recovery.update(root,issue['number'],repo=upstream,user=user,work=str(work.resolve()),
+                    branch=branch,account=account,phase='checkout')
     return work,branch,account
 
 
@@ -164,9 +180,12 @@ def record_handoff(workdir,round_num,cmd,cp,changes):
 
 
 def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
-    token=claim(gh,issue,user)
+    n=issue['number']
+    prior=recovery.load(root,n)
+    token=claim(gh,issue,user,saved=prior)
     if token is None:return None
-    n=issue['number']; allowed=allowed_from_issue(issue.get('body',''))
+    recovery.update(root,n,repo=upstream,user=user,token=token)
+    allowed=allowed_from_issue(issue.get('body',''))
     if not allowed:
         note(f'Skipping #{n}: missing Allowed paths')
         gh.comment(n,f'/nova release {token}')
@@ -174,55 +193,81 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
     try:
         work,branch,account=prepare_checkout(upstream,user,root,issue)
         note(f'#{n} working in {work}')
-        handoff='No previous attempts.'
-        had_change=False
+        # Previously completed provider sessions are intentionally disposable.
+        handofffile=work.parent/'.nova-private'/work.name/'handoff.md'
+        handoff=handofffile.read_text(encoding='utf-8') if handofffile.exists() else 'No previous attempts.'
+        existing=git(work,'status','--short',check=False).stdout.strip()
+        if existing:
+            handoff+='\nINTERRUPTED SESSION: existing uncommitted changes (preserve and inspect):\n'+existing[-2200:]
         verified=False
         checklog='No verification run'
-        for k in range(1,rounds+1):
-            gh.comment(n,f'/nova heartbeat {token}')
-            prompt=session_prompt(issue,k,handoff,allowed,binary_root)
-            cmd=command_for(provider,prompt)
-            # prevent nested workers; no broad elevated permissions
-            note(f'#{n} AI session {k}/{rounds} ({provider})')
-            try:
-                cp=run(cmd,cwd=work,timeout=1800,check=False)
-            except subprocess.TimeoutExpired as e:
-                cp=subprocess.CompletedProcess(cmd,124,stdout=e.stdout.decode(errors='replace') if isinstance(e.stdout,bytes) else (e.stdout or ''),stderr='Session timed out')
+        phase=recovery.load(root,n).get('phase','checkout')
+        if phase not in ('committed','pushed','pr_created'):
+            for k in range(1,rounds+1):
+                gh.comment(n,f'/nova heartbeat {token}')
+                recovery.update(root,n,phase='running',round=k)
+                prompt=session_prompt(issue,k,handoff,allowed,binary_root)
+                cmd=command_for(provider,prompt)
+                note(f'#{n} AI session {k}/{rounds} ({provider})')
+                try:
+                    cp=run(cmd,cwd=work,timeout=1800,check=False)
+                except subprocess.TimeoutExpired as e:
+                    cp=subprocess.CompletedProcess(cmd,124,stdout=e.stdout.decode(errors='replace') if isinstance(e.stdout,bytes) else (e.stdout or ''),stderr='Session timed out')
+                paths=validate_scope(work,allowed)
+                handoff=record_handoff(work,k,cmd,cp,paths)
+                recovery.update(root,n,phase='checkpoint',round=k)
+                if paths:
+                    verified,checklog=verify(work)
+                    handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
+                if cp.returncode==0 and paths and verified:break
+                if cp.returncode!=0:note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
             paths=validate_scope(work,allowed)
-            handoff=record_handoff(work,k,cmd,cp,paths)
-            had_change=bool(paths)
-            if had_change:
-                verified,checklog=verify(work)
-                handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
-            if cp.returncode==0 and had_change and verified:
-                break
-            if cp.returncode!=0:
-                note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
-        if not had_change:
-            gh.comment(n,f'No verified source changes after {rounds} bounded sessions; task released for reassignment. Worker={user}, provider={provider}.')
-            gh.comment(n,f'/nova release {token}')
-            return False
-        paths=validate_scope(work,allowed)
-        git(work,'add','--',*paths)
-        staged=git(work,'diff','--cached','--name-only','-z').stdout.split('\0')
-        bad=guard_check(pathlib.Path(work),[x for x in staged if x])
-        if bad:raise RuntimeError(f'Guard rejected staged files: {bad}')
-        if run(['git','diff','--cached','--quiet'],cwd=work,check=False).returncode==0:
-            gh.comment(n,f'/nova release {token}')
-            return False
-        git(work,'commit','-m',f'Reconstruction task #{n}: {issue["title"][:55]}')
-        git(work,'push','-u','origin',branch)
-        desc=f'Refs #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without attached reproducible evidence.\n\nLast local verification (truncated):\n```\n{checklog[-1500:]}\n```'
-        args=['gh','pr','create','--repo',upstream,'--head',f'{user}:{branch}','--base','main','--title',f'#{n}: {issue["title"]}','--body',desc]
-        if not verified:args.append('--draft')
-        pr=run(args,cwd=work,timeout=120).stdout.strip()
-        gh.comment(n,f'/nova submitted {token} {pr}')
-        note(f'PR created: {pr}')
-        return True
+            if not paths:
+                gh.comment(n,f'No source changes after bounded sessions; released for reassignment. Worker={user}, provider={provider}.')
+                gh.comment(n,f'/nova release {token}')
+                recovery.update(root,n,phase='released')
+                return False
+            git(work,'add','--',*paths)
+            staged=git(work,'diff','--cached','--name-only','-z').stdout.split('\0')
+            bad=guard_check(pathlib.Path(work),[x for x in staged if x])
+            if bad:raise RuntimeError(f'Guard rejected staged files: {bad}')
+            if run(['git','diff','--cached','--quiet'],cwd=work,check=False).returncode==0:
+                gh.comment(n,f'/nova release {token}')
+                return False
+            git(work,'commit','-m',f'Reconstruction task #{n}: {issue["title"][:55]}')
+            recovery.update(root,n,phase='committed',verified=verified,checklog=checklog[-1600:])
+        current=recovery.load(root,n)
+        verified=current.get('verified',False)
+        checklog=current.get('checklog','No verification run')
+        if current.get('phase')=='committed':
+            git(work,'push','-u','origin',branch)
+            recovery.update(root,n,phase='pushed')
+        current=recovery.load(root,n)
+        if current.get('phase')=='pushed':
+            # Look for a PR if the previous process died after creating one.
+            existing=run(['gh','pr','list','--repo',upstream,'--head',f'{user}:{branch}',
+                          '--state','all','--json','url'],cwd=work,timeout=90).stdout
+            prs=json.loads(existing or '[]')
+            if prs:
+                pr=prs[0]['url']
+            else:
+                desc=f'Refs #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
+                args=['gh','pr','create','--repo',upstream,'--head',f'{user}:{branch}',
+                      '--base','main','--title',f'#{n}: {issue["title"]}','--body',desc]
+                if not verified:args.append('--draft')
+                pr=run(args,cwd=work,timeout=120).stdout.strip()
+            recovery.update(root,n,phase='pr_created',pr=pr)
+        current=recovery.load(root,n)
+        if current.get('phase')=='pr_created':
+            gh.comment(n,f'/nova submitted {token} {current["pr"]}')
+            recovery.update(root,n,phase='review')
+            note(f'PR submitted: {current["pr"]}')
+            return True
+        return False
     except Exception as e:
         note(f'FAILED #{n}: {e}')
         try:
-            gh.comment(n, f'Worker failure ({provider}, {user}): {str(e)[:500]}\nCheck local worker logs; task released if still held.')
+            gh.comment(n, f'Worker failure ({provider}, {user}): {str(e)[:400]}; preserving local checkout for resumption.')
             gh.comment(n,f'/nova release {token}')
         except Exception:pass
         return False
@@ -252,8 +297,18 @@ def main():
     attempt=0
     while True:
         try:
-            issues=[i for i in gh.issues() if 'nova:queued' in label_names(i)]
-            issues.sort(key=lambda i:(-int(next((line.split(':',1)[1].strip() for line in i.get('body','').splitlines() if line.startswith('Priority:')),'50')),i['number']))
+            issues=[]
+            for i in gh.issues():
+                labels=label_names(i)
+                if 'nova:queued' in labels: issues.append(i)
+                elif 'nova:claimed' in labels:
+                    previous=recovery.load(root,i['number'])
+                    lease=lease_get(i.get('body'))
+                    if (previous.get('user')==user and previous.get('token')
+                            and lease and lease_active(lease) and lease.get('owner')==user
+                            and lease.get('token')==previous.get('token')):
+                        issues.append(i)
+            issues.sort(key=lambda i:(0 if 'nova:claimed' in label_names(i) else 1,-int(next((line.split(':',1)[1].strip() for line in i.get('body','').splitlines() if line.startswith('Priority:')),'50')),i['number']))
             if not issues:note('No queued tasks. Polling again.')
             else:
                 for issue in issues[:8]:

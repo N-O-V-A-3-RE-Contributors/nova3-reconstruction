@@ -1,0 +1,124 @@
+name: Build contributor launchers
+on:
+  push:
+    tags:
+      - 'launcher-v*'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            bundle: Nova3-Windows
+            os: windows
+          - runner: ubuntu-24.04
+            bundle: Nova3-Linux-x64
+            os: linux
+          - runner: macos-15
+            bundle: Nova3-Mac-AppleSilicon
+            os: mac
+          - runner: macos-15-intel
+            bundle: Nova3-Mac-Intel
+            os: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install packager
+        run: python -m pip install --disable-pip-version-check 'pyinstaller>=6,<8'
+      - name: Check launcher source
+        run: python nova3_easy.py --self-test
+      - name: Package native launcher
+        run: python -m PyInstaller --noconfirm --clean --onefile --console --name "${{ matrix.bundle }}" nova3_easy.py
+      - name: Smoke-test packaged launcher (Unix)
+        if: matrix.os != 'windows'
+        run: ./dist/${{ matrix.bundle }} --self-test
+      - name: Smoke-test packaged launcher (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: '& "dist/${{ matrix.bundle }}.exe" --self-test'
+      - name: Assemble release archive (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          New-Item -Type Directory -Force release | Out-Null
+          Copy-Item "dist/${{ matrix.bundle }}.exe" release/
+          Copy-Item docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
+          "$env:GITHUB_REPOSITORY" | Set-Content release/NOVA3-REPO.txt
+          Compress-Archive -Path release/* -DestinationPath "${{ matrix.bundle }}.zip"
+      - name: Assemble release archive (macOS)
+        if: matrix.os == 'mac'
+        shell: bash
+        run: |
+          mkdir -p release
+          cp "dist/${{ matrix.bundle }}" release/
+          cat > "release/START.command" <<'SH'
+          #!/bin/bash
+          cd "$(dirname "$0")" || exit 1
+          FILE="$(find . -maxdepth 1 -name 'Nova3-Mac-*' -type f | head -n 1)"
+          if [[ -z "$FILE" ]]; then echo 'Launcher binary missing'; read -r; exit 1; fi
+          "./${FILE#./}" "$@"
+          status=$?
+          echo
+          read -r -p 'Press Enter to close...'
+          exit "$status"
+          SH
+          chmod +x release/*
+          cp docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
+          printf '%s\n' "$GITHUB_REPOSITORY" > release/NOVA3-REPO.txt
+          ditto -c -k --sequesterRsrc --keepParent release "${{ matrix.bundle }}.zip"
+      - name: Assemble release archive (Linux)
+        if: matrix.os == 'linux'
+        shell: bash
+        run: |
+          mkdir -p release
+          cp "dist/${{ matrix.bundle }}" release/
+          cat > release/START.sh <<'SH'
+          #!/bin/sh
+          cd "$(dirname "$0")" || exit 1
+          exec ./Nova3-Linux-x64 "$@"
+          SH
+          chmod +x release/*
+          cp docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
+          printf '%s\n' "$GITHUB_REPOSITORY" > release/NOVA3-REPO.txt
+          tar czf "${{ matrix.bundle }}.tar.gz" -C release .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.bundle }}
+          path: |
+            ${{ matrix.bundle }}.zip
+            ${{ matrix.bundle }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          pattern: Nova3-*
+          merge-multiple: true
+      - name: Publish launchers on tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ls -lh files
+          gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz \
+            --title "NOVA3 contributor launcher $RELEASE_TAG" \
+            --notes "Unsigned first-run launchers. Each user must have private repository access, authenticate with GitHub and their selected AI provider, and approve dependency installation. No game data is included."
