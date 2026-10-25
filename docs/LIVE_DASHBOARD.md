@@ -1,27 +1,27 @@
-# NOVA3 live worker dashboard
+# NOVA3 worker dashboard (v2)
 
-The launcher shows a terminal dashboard after account checks and sign-in.
+The dashboard reads live worker output and GitHub issue/PR counts. **It does not know the percentage of N.O.V.A. 3 reconstructed.** The current set of GitHub issues primarily covers infrastructure and investigation, not every game function.
 
-- **Stage and timer:** derived from actual local worker messages. A timer or animation only means the process is still running, not that an AI has made progress.
-- **Task and session:** extracted from the worker's actual task claim/session messages.
-- **GitHub queue:** counts actual **open** issues with `nova:queued`, `nova:claimed`, and `nova:review` labels. An issue without these labels is counted as *other*.
-- **Pull requests:** open PR count read from GitHub and the number of submissions observed in the current worker process.
-- **Queue bar:** relative issue-state distribution, **not** the percent of original game reconstructed.
-- **Local source inventory:** counts C/C++ files in `reconstruction/engine` and `reconstruction/tests`, if present. Counts are not proof of correctness.
-- **Game matching progress:** explicitly marked *not established*. Binary matching requires verified function inventory and a reproducible matching workflow.
-- **Worker events:** a bounded tail of exact sanitised worker status messages. The AI CLI's normal detailed output is captured by the worker and recorded in its task handoff files, not streamed to this dashboard.
+## Running
 
-Stats refresh approximately once per minute. If GitHub is unavailable the worker continues; counts can be stale and the display says so.
+From the already configured project: `./START-LINUX.sh`. Normal mode on Linux/macOS uses a terminal-managed screen (Python's built-in curses), not repeated ANSI screen-clears. It redraws the same screen and should not print duplicate header lines into the normal terminal scrollback.
 
-Run on Linux: `bash START-LINUX.sh` from the checkout, or use the release `START.sh`. Ctrl+C stops; launch again to resume saved local checkouts when their issue leases remain available. After an unexpected power loss, saved source changes survive if the local storage survives, but the current in-memory AI reasoning and unsaved writes cannot be recovered. An expired task claim may be reassigned.
+* `Ctrl+C`: stop; saved worker checkouts remain available for resumption, provided GitHub task ownership allows it.
+* `NOVA3_COMPACT=1 ./START-LINUX.sh`: simple append-only status view (no cursor-control sequences), useful on terminals that behave unusually.
+* `NOVA3_PLAIN_OUTPUT=1 ./START-LINUX.sh`: raw worker output, useful for debugging.
 
-If Codex reports that `~/.codex/config.toml` is unreadable, it may have root-owned files left by an earlier `sudo codex`. From an ordinary Linux terminal, run:
+Windows defaults to the append-only view. Linux/macOS terminals that cannot initialise curses fall back to append-only mode. A terminal smaller than 45 columns by 15 rows shows a minimal size hint rather than overflowing.
 
-```bash
-sudo find "$HOME/.codex" -xdev -user root -exec chown -h "$(id -u):$(id -g)" {} +
-codex login status
-```
+## Time estimates
 
-Never launch the project or its AI worker with sudo. Never share the `.codex` directory or credentials.
+* **Session timeout ceiling:** each AI session is currently capped at **30 minutes** by `nova3_team/worker.py`. The countdown is an upper bound on the current AI execution slice, **not a prediction of completion**. Three sessions can be attempted for a single task, followed by validation and PR work.
+* **Queue ETA:** appears only after observing at least four NOVA-labelled GitHub issue closures spanning more than 30 minutes, including a closure within 72 hours. It is an approximate, historical-rate forecast for the currently queued/claimed GitHub issues. It may change significantly and does not include uncreated tasks.
+* **Overall decompilation ETA:** unavailable until a verified full function inventory and sustained measured throughput exist. No credible estimate is derivable from 12 infrastructure issues.
 
-Set `NOVA3_PLAIN_OUTPUT=1` to disable the dashboard and see chronological worker lines directly, e.g. `NOVA3_PLAIN_OUTPUT=1 bash START-LINUX.sh`. Noninteractive terminals fall back to plain output.
+## Colours and progress bars
+
+The issue bar shows the distribution of GitHub issues by state (queued, claimed, review). It is **not a completeness meter**. PR counts and issue counts update approximately once per minute. Local engine/test source-file counts are an inventory, not verification.
+
+## If fullscreen still renders badly
+
+Run `NOVA3_COMPACT=1 ./START-LINUX.sh` and report the terminal application and `$TERM`; this mode is guaranteed not to emit ANSI redraws from the NOVA3 dashboard. Avoid running multiple worker instances with the same GitHub identity and saved checkout.
