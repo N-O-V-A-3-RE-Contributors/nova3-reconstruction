@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+from nova3_team import dashboard  # NOVA3-LIVE-DASHBOARD-v1
 
 OLD_REPO = 'crjase/nova3-reconstruction'
 PACKAGES = {'codex': '@openai/codex', 'claude': '@anthropic-ai/claude-code', 'gemini': '@google/gemini-cli'}
@@ -257,6 +258,13 @@ def install_provider(provider):
 def provider_login(provider, cfg):
     if provider=='codex':
         cp=command([exe('codex'),'login','status'],capture=True)
+        detail=(cp.stderr or '')+'\n'+(cp.stdout or '')
+        if cp.returncode and ('Permission denied' in detail or 'os error 13' in detail):
+            raise RuntimeError(
+                'Codex cannot read ~/.codex (possibly left root-owned by an old sudo session). '
+                'On Linux, run: sudo find "$HOME/.codex" -xdev -user root '
+                '-exec chown -h "$(id -u):$(id -g)" {} + ; '
+                'then run: codex login status . Do not run NOVA3 with sudo.')
         if cp.returncode:
             msg('Sign into Codex using your own ChatGPT/Codex account.')
             command([exe('codex'),'login'],check=True)
@@ -330,7 +338,7 @@ def main(argv=None):
     print('Leave this window open. Ctrl+C stops it. Relaunch to resume saved work.')
     command_line=py+['-m','nova3_team.worker','run','--repo',repo,'--provider',provider]
     if a.once: command_line+=['--once']
-    try:return command(command_line,cwd=directory).returncode
+    try:return dashboard.run(command_line,cwd=directory,repo=repo,provider=provider)
     except KeyboardInterrupt:
         msg('Stopped by user; next launch can continue from the local checkpoint.')
         return 130
