@@ -1,3 +1,11 @@
+
+<!-- NOVA-CONTRIBUTOR-QUICKSTART -->
+## Contribute with your own AI
+
+**[Windows, macOS and Linux: contributor quickstart](docs/START_HERE.md)**
+
+Download the repository ZIP and run the `START-*` launcher for your operating system, or use `python3 nova3_start.py`. GitHub access and a Codex/Claude/Gemini coding CLI are required. Original game binaries and assets are not included.
+
 # Contributor quickstart
 
 1. Get access to the project repo and clone it. Install Python 3.10+, Git, GitHub CLI, and your preferred AI CLI.

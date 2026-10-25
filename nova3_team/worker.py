@@ -131,7 +131,7 @@ Do not start nested AI sessions. End after this bounded slice; supervisor handle
 def verify(workdir):
     """Independent bounded checks, all build artifacts outside the tracked checkout."""
     root=pathlib.Path(workdir)
-    checks=[['python3','-m','unittest','discover','-s','nova3_team/tests','-v']]
+    checks=[[sys.executable,'-m','unittest','discover','-s','nova3_team/tests','-v']]
     if (root/'CMakeLists.txt').exists() and shutil.which('cmake'):
         scratch=root.parent/'.nova-build'/root.name
         scratch.mkdir(parents=True,exist_ok=True)

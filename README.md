@@ -1,3 +1,11 @@
+
+<!-- NOVA-CONTRIBUTOR-QUICKSTART -->
+## Contribute with your own AI
+
+**[Windows, macOS and Linux: contributor quickstart](docs/START_HERE.md)**
+
+Download the repository ZIP and run the `START-*` launcher for your operating system, or use `python3 nova3_start.py`. GitHub access and a Codex/Claude/Gemini coding CLI are required. Original game binaries and assets are not included.
+
 # N.O.V.A. 3 independent source reconstruction
 
 This is an early reconstruction, not a playable game. It contains source-owned CRC32, repeating-XOR and ZIP local-header/index traversal and bounded payload decoder modules, with pinned source-built zlib. Original executable code is used only in isolated offline research oracles and is never a production build input.
