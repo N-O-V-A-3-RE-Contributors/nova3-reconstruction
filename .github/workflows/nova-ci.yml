@@ -1,0 +1,27 @@
+name: NOVA verification
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  source-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Source hygiene
+        run: python -m nova3_team.guard --repo . --all
+      - name: Unit tests for collaboration runtime
+        run: python -m unittest discover -s nova3_team/tests -v
+      - name: Rebuild reconstructed host library
+        run: |
+          cmake -S . -B /tmp/nova3-build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          cmake --build /tmp/nova3-build -j 2
+          ctest --test-dir /tmp/nova3-build --output-on-failure

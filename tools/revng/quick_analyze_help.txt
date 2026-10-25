@@ -1,0 +1,29 @@
+Usage: revng quick analyze [OPTIONS] BINARY -- [PIPEBOX ARGS...]
+
+  Note: All arguments after '--' are passed to the pipebox initialize
+  function.
+
+Options:
+  Wrappers:               Run program(s) wrapped inside one of the specified
+                          wrappers
+    --perf                Run program(s) under perf (for use with hotspot).
+    --heaptrack           Run program(s) under heaptrack.
+    --gdb                 Run program(s) under gdb.
+    --lldb                Run program(s) under lldb.
+    --valgrind            Run program(s) under valgrind.
+    --callgrind           Run program(s) under callgrind.
+    --rr                  Run program(s) under rr.
+    --wrapper WRAPPER     Run program(s) with the specified wrapper.
+  -o FILENAME             Path to write the model to, if not specified, the
+                          result will be printed to stdout.  [default: -]
+  --analyses TEXT         Instead of running the default initial auto
+                          analysis, run the specified list of (comma-
+                          separated) analyses
+  --debug RUNNER_CONTEXT  Run the command in debug mode with the specified
+                          directory (it will be created if missing). Where
+                          possible the pipes and analyses will be run as
+                          subcommands via `run-pipe` and `run-analysis` with
+                          input and output files in subdirectories in the
+                          specified directory.
+  --help-full             Show help with hidden options and exit.
+  --help                  Show this message and exit.

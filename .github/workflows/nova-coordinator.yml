@@ -1,0 +1,28 @@
+name: NOVA task coordinator
+on:
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: nova3-task-coordinator
+  cancel-in-progress: false
+jobs:
+  coordinate:
+    if: ${{ github.event_name != 'issue_comment' || (!endsWith(github.event.comment.user.login, '[bot]') && startsWith(github.event.comment.body, '/nova ')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m nova3_team.coordinator
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

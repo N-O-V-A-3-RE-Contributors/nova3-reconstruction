@@ -1,0 +1,41 @@
+Usage: revng [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  -C, --directory DIRECTORY  Run the command as it was started in the
+                             specified directory
+  --pipebox PIPEBOX          Path to the pipebox file. Defaults to the
+                             "PYPELINE_PIPEBOX" environment variable, then
+                             "pipebox.py".  [default: /home/jason/Projects/nov
+                             a3_re/.cache/revng-c865bc3/revng-public-
+                             demo/root/lib64/python3.14/site-
+                             packages/revng/internal/pipebox.py]
+  --verbose                  Enable debug logging for the pypeline related
+                             code.
+  --help                     Show this message and exit.
+
+Commands:
+  autocomplete                  Generate shell completion script for the...
+  check-compatibility-with-abi  see revng check-compatibility-with-abi...
+  check-conventions             see revng check-conventions --help
+  check-decompiled-c            see revng check-decompiled-c --help
+  clift-opt                     see revng clift-opt --help
+  ensure-rft-equivalence        see revng ensure-rft-equivalence --help
+  lddtree                       see revng lddtree --help
+  llm-rename                    Rename the provided PTML with LLM
+  mass-testing                  Mass-testing CLI tools
+  merge                         Tools to merge function-wise object together
+  merge-dynamic                 Merge the dynamic portions of the...
+  model                         Model manipulation helpers
+  opt                           LLVM's opt with rev.ng passes
+  pipeline                      Low-level pipeline commands (plumbing)
+  process-docs-yaml             Process YAML containing pipeline's doc
+  project                       Project commands (porcelain)
+  ptml                          Tool to manipulate PTML files
+  pypeline-run-analysis         see revng pypeline-run-analysis --help
+  pypeline-run-pipe             see revng pypeline-run-pipe --help
+  quick                         Quick commands (japanese toilet)
+  rss                           RSS protocol group
+  system-info                   see revng system-info --help
+  tar                           Manipulate tar archives
+  test-docs                     Test mkdocs files
+  update                        see revng update --help

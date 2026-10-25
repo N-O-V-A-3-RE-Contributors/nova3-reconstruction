@@ -1,0 +1,23 @@
+# Architecture decisions — 2026-10-25
+
+Production C++17 is isolated in reconstruction/, built by root CMakeLists.txt without reading APKs, ELF references, archives, generated decompiler output, or Python research packages. No original executable is linked, loaded or shipped. Host command-line harnesses are the first targets; there is no Android application yet.
+
+Premium is primary because its symbols preserve game/engine names. DWARF is restricted to GCC/libgcc compilation units: do not plan game-class layout recovery from these types. Exact symbol names are observed evidence; signatures inferred by decompilers remain provisional.
+
+Use SQLite content-hash + ELF virtual address + symbol stable IDs; aliases are separate inventory rows. Ghidra uses a default image rebase of0x10000; retain both address spaces and validate bytes against the ELF before trusting export. Index reads/updates must follow inventory completion, not run against its write transaction. Scoped disassembly and decompilation avoid an unbounded whole-program pass on an8GiB host. Full type/call/global recovery is unfinished.
+
+Source module1: reflected CRC32 from ComputeCRC0xde2cc; table generated from independently checked polynomial rather than copied executable bytes. Module2: repeating XOR from CScrambledZipReader::unscramble0x411610; original nonempty-key domain retained, checked API adds invalid-input rejection. These are authentic utilities, not an engine or gameplay implementation. ZIP local-header traversal and bounded stored/raw-DEFLATE payload reader add partial original routines0x7fd420/0x819878. Native method8/windowBits=-15 is evidenced in zip_open_disassembly.txt; exact engine class/ownership and lookup policy remain unresolved.
+
+Research-only dependencies: pyelftools0.33 (public domain), Capstone5.0.9 (BSD), PyGhidra3.2.0/Ghidra12.1.2 (Apache2.0 plus bundled components), JPype1.7.1 (Apache2.0), pytest9.1.1 (MIT), Unicorn2.1.4 (GPL2). Confirm exact upstream license texts before redistributing tools; no research dependency enters production targets. rev.ng demo is for local research only; see REVNG.md. No downloaded code is uploaded elsewhere.
+
+Production currently depends on the C++17 standard library and compiler runtime from the installed GCC16.2.1 toolchain. GCC uses GPL3 with Runtime Library Exception; a reproducible source build/pin and full target runtime license audit remain outstanding before APK distribution. zlib1.3.2 inflater subset is now vendored under reconstruction/third_party with upstream-source hashes, permissive license, pinned fetch and source-only STATIC/PIC build; see its README and manifest. It is a dependency, not reconstructed-function coverage. The bootstrap pins Python analysis packages, checks installed host tools, and does not claim to bootstrap all Arch packages offline.
+
+Source-only guard denies recorded original executable hashes even when renamed, recursively inspects ZIP/APK executable members, requires per-executable source/hash/build provenance, and rejects forbidden linker input paths. It is a packaging regression guard, not a compiler-trust proof. Android DEX production, final linker/dependency inspection, encryption/embedded payload coverage and license/source-build audit are pending; do not claim final APK certification.
+
+## Stage2 resource and texture slice
+
+Use independently compiled checked readers for seekable file regions and owned memory ZIP data, sharing native filename/heap policy. Retain source-built zlib1.3.2. Reconstruct contiguous BRES relocation and bounded inline Collada buffers; reject unsupported shared ownership, skin/controller forms and control-field aliases explicitly. Texture reader selects real nested SPLIT RGB/alpha resources and exposes PVR mip spans; alpha mode is retained as raw data until shader behavior is recovered. Do not equate successfully reading compressed bytes with decoding/rendering pixels. Corpus and native oracle evidence remain separate from source-only unit builds. No new host packages or dependencies were added during this milestone.
+
+## Nested SB packages and program-source references
+
+Reuse owned XOR and ZIP payload/header primitives for the observed scrambled-header package, rather than introducing a binary execution layer. Basename-key decoding transforms header data only. Original GLSL recovered from asset packages stays offline research evidence; production renderer/shaders must be newly reconstructed and compiled from owned project source. Source SB scanner's extra exact-length/CRC checks and header caps intentionally exceed unsafe native behavior. SDIR, descriptor records and other PAK variants remain explicit gaps.

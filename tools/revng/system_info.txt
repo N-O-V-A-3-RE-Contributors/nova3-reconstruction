@@ -1,0 +1,64 @@
+Python version:
+  3.14.6 (main, Aug  4 2026, 07:53:26) [GCC 11.2.0]
+
+Content of /etc/os-release:
+  NAME="Arch Linux"
+  PRETTY_NAME="Arch Linux"
+  ID=arch
+  BUILD_ID=rolling
+  ANSI_COLOR="38;2;23;147;209"
+  HOME_URL="https://archlinux.org/"
+  DOCUMENTATION_URL="https://wiki.archlinux.org/"
+  SUPPORT_URL="https://bbs.archlinux.org/"
+  BUG_REPORT_URL="https://gitlab.archlinux.org/groups/archlinux/-/issues"
+  PRIVACY_POLICY_URL="https://terms.archlinux.org/docs/privacy-policy/"
+  LOGO=archlinux-logo
+
+Installed components:
+  linux-x86-64/boost/default/none_edbe19001c690fdc88415439e5decb270f95f61e.tar.xz
+  linux-x86-64/bzip2/default/none_73e4dc1efc94cdd2c9245f11a01195c05702178f.tar.xz
+  linux-x86-64/cares/default/none_3cbccab6759faa11397ed53bff7393f13e2caad7.tar.xz
+  linux-x86-64/clang-runtime/default/none_e2483ff4a3ae93877723ba814481682725f7e6f8.tar.xz
+  linux-x86-64/cython/default/none_e7b203a3a91d4d92274192e3d015447400c38bb7.tar.xz
+  linux-x86-64/elfutils/default/none_2a8925ea3f0e9ee8a89283048aa6f875b6d4c5e2.tar.xz
+  linux-x86-64/expat/optimized/none_dd070b2e51e13915a6520dd15f279c50f0bda44e.tar.xz
+  linux-x86-64/flamegraph/default/none_23507ce90e5d70cfca57de24b3a762186c0ecfe7.tar.xz
+  linux-x86-64/gcc-runtime/default/none_fbd67c618613a0d4ac429f75c80930d45791fae2.tar.xz
+  linux-x86-64/glib/default/none_56cb9fa467ae733e5ac97b9d3ac70ce4ba6e267c.tar.xz
+  linux-x86-64/glibc/default/none_3c6deec80b70a0951b77a9723f383620d1d73f30.tar.xz
+  linux-x86-64/icu/default/none_9e30cc31bfbb46d07b1495159f3924832f7e48c4.tar.xz
+  linux-x86-64/jemalloc/default/none_341abe288a5638a3a4b9935d0d3597bd3e641c5f.tar.xz
+  linux-x86-64/libarchive/default/none_239304275dc590e7eac62629e09aa3642ff73b3f.tar.xz
+  linux-x86-64/libb2/default/none_008d8f2053e7d19d441e3d787820a6b5df2a5cce.tar.xz
+  linux-x86-64/libedit/default/none_5f345443f7f185c4e1f12619c3e34a1d981e3c9b.tar.xz
+  linux-x86-64/libffi/default/none_120bbae940f7d0ad7491dc6b0ff9c7864e358fe3.tar.xz
+  linux-x86-64/libpq/default/none_87ce0b0d8b60ee0bacd7e417c5656a45a071be57.tar.xz
+  linux-x86-64/libunwind/default/none_2b4f55e97850fa968d4ae91213137dfaea0e2600.tar.xz
+  linux-x86-64/libuv/default/none_5829706cf607868527e77aa3b3e8cd80879b880e.tar.xz
+  linux-x86-64/libxcrypt/default/none_fc2b7f142ec83e9ec0f8b21987cb011f4ceab9ee.tar.xz
+  linux-x86-64/libyaml/default/none_4bc116e2285b0d02a7151647126296e10b335abd.tar.xz
+  linux-x86-64/lit/default/none_58097fb3112a9d62aa76a69a6edb859d8bf5ff34.tar.xz
+  linux-x86-64/llvm/optimized/83b85f196975ab58c9207f306bf753c96489438c_dbb83c0fb3ec40ae0804eeea2c8b2615ef84561a.tar.xz
+  linux-x86-64/nanobind/default/a111828dd36d1ce3c8443d2bfc74ac292169a0f3_f65703285887548722ed6de8f2fe92850ec66e09.tar.xz
+  linux-x86-64/ncurses/default/none_d28b7e6215e91c7fd3ec347bf2de52bd54eb34d2.tar.xz
+  linux-x86-64/nghttp2/default/none_eb1a9dfde85924d412070f3661265995cbbc01c8.tar.xz
+  linux-x86-64/nodejs/default/none_dcd599602accb986d29cbc3b050d8891b594749f.tar.xz
+  linux-x86-64/openssl/default/none_271ae7ea3e89f391d7dc10429ec4a8236cda9ebf.tar.xz
+  linux-x86-64/python-base-packages/default/none_dbc1528eca268db4923b26682f9a8ea7c7dd636d.tar.xz
+  linux-x86-64/python/default/none_59331eeeebb6ce5ad8a66686d53a541b9ced5b87.tar.xz
+  linux-x86-64/pyyaml/default/none_70dbcec6a5da6486cc003fdbccce42a297b23243.tar.xz
+  linux-x86-64/qemu/optimized/c9dd0d8936f892904090c8c55ad2ef54b8d7bcc3_1e7c4cc70317fd0ae17a63bce6c957f837ef03cf.tar.xz
+  linux-x86-64/readline/default/none_fc3560ffeb3e039590a2b68cfd530804948a0235.tar.xz
+  linux-x86-64/revng-python-dependencies/default/none_0a2f602dfc981feca7d6c5f90b20ef8c9e5a210e.tar.xz
+  linux-x86-64/revng-qa-python-dependencies/default/none_93ec82d2a1f5de55948f497e9271beb8c639cd20.tar.xz
+  linux-x86-64/revng/optimized/ba8cdb0278084da07b2655f19d1e5f1ce2ebbbdf_bd576c8c818d26e9f88eaeda137c929c5f852e20.tar.xz
+  linux-x86-64/sqlite/default/none_0a3679679365cbe94b0f8ee3cc3288dce78f76be.tar.xz
+  linux-x86-64/toolchain/host/binutils/default/none_e801abeebd6498a95c82bba6a89033cbadeb7c17.tar.xz
+  linux-x86-64/toolchain/host/gcc/stage2/none_e794c2320890b1c9a1a685d22fe56da02f4ec1da.tar.xz
+  linux-x86-64/toolchain/host/linux-headers/default/none_39fab753e6c89474ed474c53ef41988d828ceeea.tar.xz
+  linux-x86-64/uvloop/default/none_fe286e749ce33e3342b6563841784d2eec85021a.tar.xz
+  linux-x86-64/xz/default/none_1c1087e5bbd0b58c1dd682a5b34ae057567b9120.tar.xz
+  linux-x86-64/zlib/default/none_948ab6fed4951697bb1e2dca3d81c0051eac5761.tar.xz
+  linux-x86-64/zstd/default/none_2e74b94863d47fdd2738841e88af3be99c3ab3fa.tar.xz
+
+Couldn't get revng-distributable release info

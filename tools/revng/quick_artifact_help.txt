@@ -1,0 +1,19 @@
+Usage: revng quick artifact [OPTIONS] COMMAND [ARGS]...
+
+  Run analyses and compute an artifact
+
+Options:
+  --help-full  Show help with hidden options and exit.
+  --help       Show this message and exit.
+
+Commands:
+  disassemble
+  emit-c
+  emit-c-as-single-file
+  emit-helper-header
+  emit-single-type-definition
+  emit-type-and-global-header
+  hexdump
+  render-svg-call-graph
+  render-svg-call-graph-slice
+  render-svg-cfg

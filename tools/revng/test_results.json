@@ -1,0 +1,32 @@
+{
+  "tool": ".cache/revng-c865bc3/revng-public-demo/revng",
+  "command": [
+    "quick",
+    "artifact",
+    "emit-c"
+  ],
+  "limits": {
+    "virtual_memory_bytes": 1073741824,
+    "file_bytes": 134217728
+  },
+  "tests": [
+    {
+      "input": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "timeout_seconds": 90,
+      "exit": 124,
+      "log": ".cache/revng-test/premium.log",
+      "artifact": ".cache/revng-test/premium.c.yml",
+      "artifact_exists": false,
+      "log_bytes": 0
+    },
+    {
+      "input": "analysis/N.O.V.A.3_premium/lib/armeabi/libnativeinterface.so",
+      "timeout_seconds": 30,
+      "exit": 124,
+      "log": ".cache/revng-test/bridge.log",
+      "artifact": ".cache/revng-test/bridge.c.yml",
+      "artifact_exists": false,
+      "log_bytes": 0
+    }
+  ]
+}

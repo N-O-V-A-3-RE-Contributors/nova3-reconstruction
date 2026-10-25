@@ -1,0 +1,6 @@
+pyelftools==0.33
+capstone==5.0.9
+pyghidra==3.2.0
+JPype1==1.7.1
+pytest==9.1.1
+unicorn==2.1.4

@@ -1,0 +1,299 @@
+{
+  "binary_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+  "tables": {
+    "ColladaPrimitiveMap": {
+      "address": "0xc82050",
+      "bytes": "0600000004000000030000000100000002000000",
+      "values": [
+        6,
+        4,
+        3,
+        1,
+        2
+      ]
+    },
+    "PrimitiveTypeMap": {
+      "address": "0xc79dec",
+      "bytes": "000000000300000002000000010000000500000006000000040000000500000000000000",
+      "values": [
+        0,
+        3,
+        2,
+        1,
+        5,
+        6,
+        4,
+        5,
+        0
+      ]
+    },
+    "VertexAttributeTypeMap": {
+      "address": "0xc79ef4",
+      "bytes": "00140000011400000214000003140000000000000000000006140000",
+      "values": [
+        5120,
+        5121,
+        5122,
+        5123,
+        0,
+        0,
+        5126
+      ]
+    },
+    "IndexTypeMap": {
+      "address": "0xc79e10",
+      "bytes": "011400000314000005140000",
+      "values": [
+        5121,
+        5123,
+        5125
+      ]
+    }
+  },
+  "constructor_cases": [
+    {
+      "serialized": 0,
+      "runtime": 6
+    },
+    {
+      "serialized": 1,
+      "runtime": 4
+    },
+    {
+      "serialized": 2,
+      "runtime": 3
+    },
+    {
+      "serialized": 3,
+      "runtime": 1
+    },
+    {
+      "serialized": 4,
+      "runtime": 2
+    }
+  ],
+  "type_copy_cases": [
+    {
+      "serialized_type": 0,
+      "runtime_type": 0
+    },
+    {
+      "serialized_type": 1,
+      "runtime_type": 1
+    },
+    {
+      "serialized_type": 2,
+      "runtime_type": 2
+    },
+    {
+      "serialized_type": 3,
+      "runtime_type": 3
+    },
+    {
+      "serialized_type": 4,
+      "runtime_type": 4
+    },
+    {
+      "serialized_type": 5,
+      "runtime_type": 5
+    },
+    {
+      "serialized_type": 6,
+      "runtime_type": 6
+    }
+  ],
+  "attribute_cases": [
+    {
+      "serialized_type": 0,
+      "gl_type": 5120,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 1,
+      "gl_type": 5121,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 2,
+      "gl_type": 5122,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 3,
+      "gl_type": 5123,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 4,
+      "gl_type": 0,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 5,
+      "gl_type": 0,
+      "normalized": 0,
+      "components": 4
+    },
+    {
+      "serialized_type": 6,
+      "gl_type": 5126,
+      "normalized": 0,
+      "components": 4
+    }
+  ],
+  "draw_cases": [
+    {
+      "runtime_primitive": 0,
+      "index_type": 0,
+      "gl_mode": 0,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 0,
+      "index_type": 1,
+      "gl_mode": 0,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 0,
+      "index_type": 2,
+      "gl_mode": 0,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 1,
+      "index_type": 0,
+      "gl_mode": 3,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 1,
+      "index_type": 1,
+      "gl_mode": 3,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 1,
+      "index_type": 2,
+      "gl_mode": 3,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 2,
+      "index_type": 0,
+      "gl_mode": 2,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 2,
+      "index_type": 1,
+      "gl_mode": 2,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 2,
+      "index_type": 2,
+      "gl_mode": 2,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 3,
+      "index_type": 0,
+      "gl_mode": 1,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 3,
+      "index_type": 1,
+      "gl_mode": 1,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 3,
+      "index_type": 2,
+      "gl_mode": 1,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 4,
+      "index_type": 0,
+      "gl_mode": 5,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 4,
+      "index_type": 1,
+      "gl_mode": 5,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 4,
+      "index_type": 2,
+      "gl_mode": 5,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 5,
+      "index_type": 0,
+      "gl_mode": 6,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 5,
+      "index_type": 1,
+      "gl_mode": 6,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 5,
+      "index_type": 2,
+      "gl_mode": 6,
+      "count": 18,
+      "gl_index_type": 5125
+    },
+    {
+      "runtime_primitive": 6,
+      "index_type": 0,
+      "gl_mode": 4,
+      "count": 18,
+      "gl_index_type": 5121
+    },
+    {
+      "runtime_primitive": 6,
+      "index_type": 1,
+      "gl_mode": 4,
+      "count": 18,
+      "gl_index_type": 5123
+    },
+    {
+      "runtime_primitive": 6,
+      "index_type": 2,
+      "gl_mode": 4,
+      "count": 18,
+      "gl_index_type": 5125
+    }
+  ],
+  "scope": "Original ARM slices 0x844318..378 (constructor map load),0x772edc..f44(attribute GL call argument setup),0x77253c..glDrawElements PLT(draw GL arguments); synthetic prior state; no complete constructor/driver/frame execution, no GL calls or code hooks"
+}

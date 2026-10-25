@@ -1,0 +1,11 @@
+{
+  "url": "https://revng-website-downloads.s3.fr-par.scw.cloud/binary-archives/public/linux-x86-64/revng-distributable-public-demo/default/none_c865bc3d1d83af224d0b92b0369b3bd412a46c04.tar.xz",
+  "archive": ".cache/revng-c865bc3.tar.xz",
+  "size": 544913104,
+  "sha256": "a1e7d2a622ea48a8c8888d0bdbed7b9ed965a38ebfe16fcc4582a7957e96cc94",
+  "member_count": 46333,
+  "total_uncompressed": 3787315109,
+  "top_level": [
+    "revng-public-demo"
+  ]
+}
