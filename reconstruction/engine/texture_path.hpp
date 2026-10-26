@@ -12,5 +12,8 @@ struct TextureResourceResult {
     ArchiveError archive=ArchiveError::ok;
     TextureError texture=TextureError::ok;
 };
+// Try the rewritten name across the mounts first, then the original name only
+// if the resource read failed. A successfully read but invalid image does not
+// trigger fallback. Output is replaced only when both reading and parsing pass.
 TextureResourceResult load_etc_texture(ResourcePackages& packages,const std::string& name,TextureBundle& output);
 }
