@@ -158,8 +158,11 @@ def generate_from_ledger(data):
             key='functions-'+hashlib.sha256((digest+','+','.join(ids)).encode()).hexdigest()[:22]
             lib_safe = re.sub(r'[^a-zA-Z0-9_]', '_', refs[digest].removesuffix('.so'))
             basename=f'block_{chunk[0][0]:08x}'
+            # NOVA3_CLUSTER_SCOPES_V2: only the task-specific output filenames and subdirectories.
             paths=[f'reconstruction/recovered/{lib_safe}/{basename}.cpp',
+                   f'reconstruction/recovered/{lib_safe}/{basename}',
                    f'reconstruction/tests/recovered/{lib_safe}/{basename}_test.cpp',
+                   f'reconstruction/tests/recovered/{lib_safe}/{basename}',
                    f'coordination/evidence/{key}.json']
             short = ', '.join('0x'+x.split(':')[0] for x in ids)
             body = (f'Reference library: {refs[digest]}\n'
@@ -167,6 +170,7 @@ def generate_from_ledger(data):
                     f'Function boundaries (tool-identified only): {short}\n'
                     f'Addresses/sizes: {ids}\n\n'
                     'Reconstruct this cluster into human-readable C++ using only lawfully held local references. '
+                    'Source files beyond the named block file must go inside that block-specific directory. '
                     'Do not patch the APK or library. Verify with reproducible compilation, assembly comparison '
                     'and/or behavioural tests. When reference machine-code comparison is unavailable, record '
                     'NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. '

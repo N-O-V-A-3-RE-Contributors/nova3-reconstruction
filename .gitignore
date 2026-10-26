@@ -57,3 +57,7 @@ __pycache__/
 *.swp
 *.tmp
 .DS_Store
+# NOVA3_WORKER_GENERATED_CACHE_IGNORE
+**/__pycache__/
+*.py[cod]
+.pytest_cache/

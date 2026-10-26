@@ -73,14 +73,11 @@ def allowed_from_issue(body):
 
 
 def changed_paths(work):
-    # -- includes untracked files after git add -A, but only after verifying original and dangerous contents
-    out=git(work,'status','--porcelain','-z').stdout
-    paths=[]
-    for item in out.split('\0'):
-        if item:
-            if item[:2].strip() in ('R','C'):continue
-            paths.append(item[3:])
-    return paths
+    # NOVA3_CHANGED_FILE_ENUMERATION_V2: git status -uall gives leaf files.
+    # This prevents untracked directories from failing valid task scopes.
+    from .path_inventory import changed_files
+    return changed_files(work)
+
 
 
 def validate_scope(work,allowed):
@@ -272,7 +269,21 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
         checklog='No verification run'
         phase=recovery.load(root,n).get('phase','checkout')
         if phase not in ('committed','pushed','pr_created'):
-            for k in range(1,rounds+1):
+            # NOVA3_COMPLETED_SESSION_RECOVERY_V2: never rerun a successful
+            # Codex session just because prior file-scope validation failed.
+            recovered_ready = False
+            saved = recovery.load(root,n)
+            if (saved.get('provider_exit') == 0
+                    and saved.get('phase') in ('blocked','running','checkpoint')
+                    and git(work,'status','--short',check=False).stdout.strip()):
+                existing_files = validate_scope(work,allowed)
+                if existing_files:
+                    verified,checklog=verify(work)
+                    recovered_ready = True
+                    note(f'#{n} reusing completed AI output: {len(existing_files)} files; '
+                         f'independent tests: {"PASS" if verified else "FAIL (draft PR)"}')
+            for k in ([] if recovered_ready else range(1,rounds+1)):
+
                 gh.comment(n,f'/nova heartbeat {token} AI_RUNNING')
                 current_calls=int(recovery.load(root,n).get('provider_calls',0))
                 recovery.update(root,n,phase='running',round=k,
