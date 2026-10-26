@@ -12,7 +12,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
+from nova3_team import indexer
+from nova3_team.autofeed import generate_from_ledger
 from nova3_team.indexer import LedgerError, SCHEMA, build_ledger
 
 
@@ -329,6 +332,158 @@ class IndexerTests(unittest.TestCase):
             malformed = subprocess.run(command, capture_output=True, env=env)
             self.assertEqual(malformed.returncode, 2)
             self.assertEqual(malformed.stdout, b"")
+
+
+class CoordinationLedgerTests(unittest.TestCase):
+    def export(self, data, **changes):
+        return ghidra_fixture(data, **{"ghidra_version": "12.1.2", **changes})
+
+    def public(self, data, *records):
+        return indexer.build_coordination_ledger(
+            data, library="libSynthetic.so", ghidra_exports=records)
+
+    def test_allowlisted_provenance_and_feeder_integration(self):
+        data = elf_fixture([symbol(), symbol("callee", 0x1020, 8)])
+        record = self.export(data, analysis_scope="PRIVATE_SCOPE_SENTINEL")
+        public = self.public(data, record)
+        digest = hashlib.sha256(data).hexdigest()
+        self.assertEqual(public["references"], [{
+            "library": "libSynthetic.so", "sha256": digest, "architecture": "ARM",
+            "elf_class": 32, "endianness": "little", "elf_type": "ET_DYN"}])
+        self.assertEqual(public["functions"], [{
+            "reference_sha256": digest, "address": 0x1000, "size": 8, "thumb": True,
+            "boundary_status": "tool_identified",
+            "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+            "boundary_evidence": {"elf_symbol_type": "STT_FUNC",
+                                  "ghidra_versions": ["12.1.2"],
+                                  "byte_mapping": "reported_validated"},
+            "state": "INVENTORIED", "status": "pending", "matching": "NOT MATCHED"}])
+        self.assertEqual(public["statistics"]["excluded"], {"missing_ghidra": 1})
+        self.assertFalse(public["statistics"]["inventory_complete"])
+        tasks = generate_from_ledger(public)
+        self.assertEqual(len(tasks), 1)
+        self.assertIn(digest, tasks[0]["description"])
+        self.assertIn("00001000:8", tasks[0]["description"])
+        serialized = json.dumps((public, tasks))
+        for private in ("PRIVATE_SCOPE_SENTINEL", "SYNTHETIC_PSEUDOCODE_SENTINEL",
+                        "SENTINEL_BYTES", "incoming", "callee", "entry", "00011020"):
+            self.assertNotIn(private, serialized)
+
+    def test_no_evidence_does_not_manufacture_boundaries(self):
+        for data, reason in ((elf_fixture(), "missing_ghidra"),
+                             (elf_fixture([symbol(size=0)]), "unknown_size")):
+            with self.subTest(reason=reason):
+                public = self.public(data)
+                self.assertEqual(public["functions"], [])
+                self.assertEqual(public["statistics"]["excluded"], {reason: 1})
+                self.assertEqual(generate_from_ledger(public), [])
+
+    def test_ambiguous_extents_and_modes_are_excluded(self):
+        cases = [([symbol(), symbol("alias", size=4)], "conflicting_sizes", 1),
+                 ([symbol(), symbol("arm", value=0x1000)], "conflicting_modes", 2),
+                 ([symbol(size=16), symbol("inside", value=0x1005, size=4),
+                   symbol("tail", value=0x100b, size=8)], "overlapping_extents", 3),
+                 ([symbol(size=7)], "unaligned_extent", 1),
+                 ([symbol(value=0x1002, size=4)], "unaligned_extent", 1)]
+        for symbols, reason, count in cases:
+            with self.subTest(reason=reason):
+                public = self.public(elf_fixture(symbols))
+                self.assertEqual(public["functions"], [])
+                self.assertEqual(public["statistics"]["excluded"], {reason: count})
+
+    def test_adjacent_extents_are_not_overlaps_and_aliases_deduplicate(self):
+        data = elf_fixture([symbol(), symbol("alias"), symbol("next", 0x1009, 8)],
+                           dynamic=[symbol()])
+        records = [self.export(data), self.export(data, address=0x1008, raw_value=0x1009,
+                   symbol="next", ghidra_address=0x11008, calls=[])]
+        first = self.public(data, *records, records[0])
+        self.assertEqual(first, self.public(data, *reversed(records)))
+        self.assertEqual([f["address"] for f in first["functions"]], [0x1000, 0x1008])
+        self.assertEqual(first["statistics"]["excluded"], {})
+
+    def test_reported_mapping_and_version_required_without_claiming_verification(self):
+        data = elf_fixture()
+        cases = [({"byte_mapping_validated": False}, "unconfirmed_mapping"),
+                 ({"byte_mapping_validated": None}, "unconfirmed_mapping"),
+                 ({"ghidra_version": None}, "missing_tool_version"),
+                 ({"ghidra_version": "PRIVATE_VERSION_SENTINEL"}, "missing_tool_version")]
+        for changes, reason in cases:
+            with self.subTest(changes=changes):
+                public = self.public(data, self.export(data, **changes))
+                self.assertEqual(public["functions"], [])
+                self.assertEqual(public["statistics"]["excluded"], {reason: 1})
+                self.assertNotIn("PRIVATE_VERSION_SENTINEL", json.dumps(public))
+        # A later positive report must not silently override contradictory evidence.
+        public = self.public(data, self.export(data, byte_mapping_validated=False), self.export(data))
+        self.assertEqual(public["functions"], [])
+        with mock.patch.object(indexer, "MAX_PUBLISHED_FUNCTION_SIZE", 4):
+            self.assertEqual(self.public(data)["statistics"]["excluded"], {"oversized": 1})
+
+    def test_all_hash_mode_size_and_rebase_checks_apply_to_public_output(self):
+        data = elf_fixture()
+        for change in ({"binary_sha256": "0" * 64}, {"raw_value": 0x1000},
+                       {"symbol_size": 4}, {"ghidra_address": 0x1000},
+                       {"architecture": "AARCH64:LE:64:v8A"}):
+            with self.subTest(change=change), self.assertRaises(LedgerError):
+                self.public(data, self.export(data, **change))
+        for library in (None, "../libSynthetic.so", "/tmp/libSynthetic.so", "libX.so\n",
+                        "libX.so/PRIVATE_PATH", "PRIVATE_SENTINEL"):
+            with self.subTest(library=library), self.assertRaises(LedgerError):
+                indexer.build_coordination_ledger(data, library=library)
+
+    def test_big_endian_arm_provenance(self):
+        data = elf_fixture([symbol(value=0x1000)], endian=">", kind=2)
+        public = self.public(data, self.export(data, architecture="ARM:BE:32:v7",
+                             thumb=False, raw_value=0x1000))
+        self.assertEqual(public["references"][0]["endianness"], "big")
+        self.assertEqual(public["references"][0]["elf_type"], "ET_EXEC")
+        self.assertFalse(public["functions"][0]["thumb"])
+
+    def test_cli_directory_is_read_only_deterministic_and_metadata_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "libSynthetic.so"
+            exports = Path(tmp) / "exports"
+            exports.mkdir()
+            data = elf_fixture()
+            binary.write_bytes(data)
+            export = exports / "00001000.json"
+            raw = json.dumps(self.export(data)).encode()
+            export.write_bytes(raw)
+            (exports / "ignored.txt").write_text("not JSON", encoding="utf-8")
+            command = [sys.executable, "-m", "nova3_team.indexer", str(binary),
+                       "--format", "coordination", "--ghidra-directory", str(exports)]
+            env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+            runs = [subprocess.run(command, capture_output=True, env=env) for _ in range(2)]
+            for run in runs:
+                self.assertEqual(run.returncode, 0, run.stderr)
+                self.assertEqual(json.loads(run.stdout), self.public(data, self.export(data)))
+                self.assertNotIn(tmp.encode(), run.stdout)
+                self.assertNotIn(b"SYNTHETIC_PSEUDOCODE_SENTINEL", run.stdout)
+            self.assertEqual(runs[0].stdout, runs[1].stdout)
+            self.assertEqual(binary.read_bytes(), data)
+            self.assertEqual(export.read_bytes(), raw)
+            export.write_text('{"address": 4096, "address": 4098}', encoding="utf-8")
+            failed = subprocess.run(command, capture_output=True, env=env)
+            self.assertEqual(failed.returncode, 2)
+            self.assertEqual(failed.stdout, b"")
+            export.unlink()
+            failed = subprocess.run(command, capture_output=True, env=env)
+            self.assertEqual(failed.returncode, 2)
+            self.assertEqual(failed.stdout, b"")
+            self.assertIn(b"BLOCKED", failed.stderr)
+
+    def test_bounded_export_reads_and_duplicate_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "fixture.json"
+            path.write_text(json.dumps(self.export(elf_fixture())), encoding="utf-8")
+            for limit in ("MAX_EXPORT_BYTES", "MAX_TOTAL_EXPORT_BYTES", "MAX_EXPORTS"):
+                with self.subTest(limit=limit), mock.patch.object(indexer, limit, 0):
+                    with self.assertRaises(LedgerError):
+                        list(indexer._read_exports([path]))
+            for raw in (b'{"address":1,"address":2}', b'{', b'\xff'):
+                path.write_bytes(raw)
+                with self.subTest(raw=raw), self.assertRaises(LedgerError):
+                    list(indexer._read_exports([path]))
 
 
 if __name__ == "__main__":
