@@ -1,0 +1,1021 @@
+{
+  "schema_version": 1,
+  "task": 34,
+  "task_key": "functions-47c9103100e968d1cdb6ec",
+  "cluster_status": "PARTIAL",
+  "matching": "NOT MATCHED",
+  "verification_grade": "tested",
+  "whole_function_equivalence": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available": true,
+    "location": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "access": "read-only; independently hashed locally"
+  },
+  "counts": {
+    "task_functions": 4,
+    "existing_exports_locally_available": 4,
+    "new_decompilations": 0,
+    "portable_payload_units_implemented_and_tested": 1,
+    "complete_original_functions_reconstructed": 0,
+    "whole_original_functions_verified": 0,
+    "machine_code_matches": 0,
+    "gameplay_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x0041198c",
+      "symbol": "_ZN19CScrambledZipReader8openFileEi",
+      "size": 608,
+      "mode": "ARM",
+      "export_instruction_count": 147,
+      "export_bytes_compared": 588,
+      "export_sha256": "8397a5c8039066e7752facc3b31b5997231d1a5e8c97d8d3f8d40dd6345d8c88",
+      "ghidra_version": "12.1.2",
+      "original_function_status": "PARTIALLY RECONSTRUCTED",
+      "matching": "NOT MATCHED",
+      "whole_function_equivalence": "UNVERIFIED",
+      "existing_export_state": "DECOMPILED",
+      "implemented_scope": "Portable bounded payload-opening unit only; native class ABI, stream cursor/ownership and unsafe malformed-input behavior excluded."
+    },
+    {
+      "address": "0x00411fc0",
+      "symbol": "_ZN19CScrambledZipReader15scanLocalHeaderEv",
+      "size": 1904,
+      "mode": "ARM",
+      "export_instruction_count": 468,
+      "export_bytes_compared": 1872,
+      "export_sha256": "5f719338bf3aecc08349a1e27ff65612984cf320e0c34d5969e0419b0458a565",
+      "ghidra_version": "12.1.2",
+      "original_function_status": "NOT RECONSTRUCTED",
+      "matching": "NOT MATCHED",
+      "whole_function_equivalence": "UNVERIFIED",
+      "existing_export_state": "DECOMPILED",
+      "implemented_scope": null
+    },
+    {
+      "address": "0x00412730",
+      "symbol": "_ZN19CScrambledZipReader4initEbbj",
+      "size": 1424,
+      "mode": "ARM",
+      "export_instruction_count": 354,
+      "export_bytes_compared": 1416,
+      "export_sha256": "0cb5f1d7fedd982fae64f8e96f36d9a5c0b8f8a4a839240237e26a20614abe45",
+      "ghidra_version": "12.1.2",
+      "original_function_status": "NOT RECONSTRUCTED",
+      "matching": "NOT MATCHED",
+      "whole_function_equivalence": "UNVERIFIED",
+      "existing_export_state": "DECOMPILED",
+      "implemented_scope": null
+    },
+    {
+      "address": "0x0069c6f0",
+      "symbol": "_ZN6glitch3res4File4InitEv",
+      "size": 1676,
+      "mode": "ARM",
+      "export_instruction_count": 404,
+      "export_bytes_compared": 1616,
+      "export_sha256": "0622f224ce0aa1748c857f1e3cccc327225b0a4a9a4aebad586a8911180d42c1",
+      "ghidra_version": "12.1.2",
+      "original_function_status": "NOT RECONSTRUCTED",
+      "matching": "NOT MATCHED",
+      "whole_function_equivalence": "UNVERIFIED",
+      "existing_export_state": "DECOMPILED",
+      "implemented_scope": null
+    }
+  ],
+  "reference_export_validation": {
+    "method": "Every exported instruction byte compared to its original PT_LOAD file bytes after subtracting the Ghidra image base; all four exports passed. Only addresses, counts and hashes are retained here.",
+    "scope": "Validates existing local analysis provenance. Does not compare candidate code. Literal pools and other non-exported bytes are excluded.",
+    "compared_bytes": 5492
+  },
+  "source_inputs": [
+    {
+      "path": "reconstruction/recovered/libNOVA3_neon/block_0041198c.cpp",
+      "sha256": "f588e8eab2806152d213b93ef8efa82fedc4f5006bdb4992dc4fdb6fc8e0490d"
+    },
+    {
+      "path": "reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp",
+      "sha256": "22993fb047a2870d98a8f273c0577ff64105f1880d7614e9b7861e005305a4e6"
+    }
+  ],
+  "implementation": {
+    "state": "TESTED",
+    "namespace": "nova3::recovered::block_0041198c",
+    "api": "open_file(ByteView, const std::vector<Entry>&, int, size_t, MemoryFile&)",
+    "recovered_semantics": [
+      "Native reader+16 entry array, stride 16; entry offsets 0/4/8/12 are payload offset/output length/packed length/name pointer.",
+      "Bit 31 selects raw DEFLATE with low 31 bits as compressed input size; stored branch ignores the low packed bits and reads output_size bytes.",
+      "Raw inflate windowBits=-15, Z_FINISH; memory-file creation receives original name, output length and delete-buffer flag 1."
+    ],
+    "source_policy_differences": [
+      "Bounded memory view replaces virtual seek/read; source does not reproduce stream cursor changes.",
+      "std::string/vector own names and output bytes; native allocator, intrusive pointers, logging and class ABI are not reproduced.",
+      "Reject invalid indices, unavailable bytes, output limits, malformed DEFLATE, trailing compressed bytes and output-size mismatches. Output is unchanged on error.",
+      "No ZIP CRC validation in this payload unit, consistent with observed opening dependencies."
+    ],
+    "no_runtime_original_dependency": true,
+    "third_party": "Repository-vendored zlib 1.3.2 built from source; existing reconstruction/third_party/zlib_manifest.json and LICENSE; no added dependency.",
+    "integration": "Standalone unit/test only. CMake integration is outside allowed paths."
+  },
+  "builds": [
+    {
+      "kind": "host-release",
+      "compiler_version": "c++ (GCC) 16.2.1 20260810",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -DNDEBUG -I reconstruction/third_party/zlib-1.3.2 reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp /tmp/nova3-task34-zlib/libnova3_zlib.a -o /tmp/nova3-task34-test",
+      "exit_code": 0,
+      "test_command": "/tmp/nova3-task34-test",
+      "test_exit_code": 0
+    },
+    {
+      "kind": "host-sanitized",
+      "compiler_version": "clang version 23.1.3",
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie -I reconstruction/third_party/zlib-1.3.2 reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp /tmp/nova3-task34-zlib-sanitized/libnova3_zlib.a -o /tmp/nova3-task34-sanitized",
+      "exit_code": 0,
+      "test_command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task34-sanitized",
+      "test_exit_code": 0,
+      "scope": "ASan and UBSan instrument candidate and source-built zlib. LeakSanitizer disabled because this sandbox prohibits its ptrace-based check."
+    },
+    {
+      "kind": "ARMv7-object-only",
+      "compiler_version": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)",
+      "command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=armv7a-linux-androideabi21 -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -I reconstruction/third_party/zlib-1.3.2 -c reconstruction/recovered/libNOVA3_neon/block_0041198c.cpp -o /tmp/nova3-task34-armv7.o",
+      "exit_code": 0,
+      "object_sha256": "98a329fcee30a169be64e8095376d75138616e4ab358c1fbed4ec644acc42b34",
+      "target": "ELF32 little-endian ARM EABI5 relocatable; not executed or linked into an APK",
+      "machine_code_comparison": "NOT PERFORMED / NOT MATCHED"
+    }
+  ],
+  "unit_tests": {
+    "generated_successful_opens": 514,
+    "additional_success_cases": [
+      "empty null byte view",
+      "fixed-Huffman hello world fixture"
+    ],
+    "coverage": [
+      "Stored packed-size bits ignored",
+      "Raw DEFLATE final uncompressed blocks",
+      "Fixed Huffman stream",
+      "Nonzero offsets, second array entry, data ownership, filename preservation, unchanged input",
+      "Negative/out-of-range indices, pointer/bounds/limit errors, all stream truncations, wrong output sizes, trailing data, invalid raw DEFLATE and zlib envelope",
+      "Checks stay active under -DNDEBUG"
+    ],
+    "native_equivalence_claim": false
+  },
+  "reproduce_from_repository_root": [
+    "cmake -S reconstruction/third_party -B /tmp/nova3-task34-zlib -G Ninja -DCMAKE_BUILD_TYPE=Release",
+    "cmake --build /tmp/nova3-task34-zlib -j2",
+    "ctest --test-dir /tmp/nova3-task34-zlib --output-on-failure",
+    "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -DNDEBUG -I reconstruction/third_party/zlib-1.3.2 reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp /tmp/nova3-task34-zlib/libnova3_zlib.a -o /tmp/nova3-task34-test",
+    "/tmp/nova3-task34-test",
+    "cmake -S reconstruction/third_party -B /tmp/nova3-task34-zlib-sanitized -G Ninja -DCMAKE_BUILD_TYPE=Debug '-DCMAKE_C_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie' '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined -no-pie' -DCMAKE_C_COMPILER=clang",
+    "cmake --build /tmp/nova3-task34-zlib-sanitized -j2",
+    "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie -I reconstruction/third_party/zlib-1.3.2 reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp /tmp/nova3-task34-zlib-sanitized/libnova3_zlib.a -o /tmp/nova3-task34-sanitized",
+    "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task34-sanitized",
+    "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=armv7a-linux-androideabi21 -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -I reconstruction/third_party/zlib-1.3.2 -c reconstruction/recovered/libNOVA3_neon/block_0041198c.cpp -o /tmp/nova3-task34-armv7.o"
+  ],
+  "native_oracle": {
+    "python": "3.14.8",
+    "unicorn": "2.1.4",
+    "pyelftools": "0.33",
+    "modeled_zlib_runtime": "1.3.2",
+    "executed_native_ranges": [
+      "0x0041198c..0x00411bec (opener)",
+      "0x0041174c..0x00411758 (12-byte null intrusive-pointer construction helper)"
+    ],
+    "script_sha256": "83d805feaf4daee4fd9dce6116bf19d4988176843fa70b272b3a8001159f9e6d",
+    "script": "import hashlib, json, os, pathlib, struct, subprocess, sys, zlib, random\nfrom elftools.elf.elffile import ELFFile\nfrom unicorn import Uc, UcError, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_READ\nfrom unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC\n\nreference = pathlib.Path(os.environ.get('NOVA3_TASK34_REFERENCE', '/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so'))\ncandidate = os.environ.get('NOVA3_TASK34_CANDIDATE', '/tmp/nova3-task34-test')\ndigest = hashlib.sha256(reference.read_bytes()).hexdigest()\nassert digest == '84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf'\nsegments = []\nwith reference.open('rb') as handle:\n    for segment in ELFFile(handle).iter_segments():\n        if segment['p_type'] == 'PT_LOAD':\n            segments.append((segment['p_vaddr'], segment['p_memsz'], segment.data()))\n\nregisters = (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3)\n\ndef original(packed, length, payload, index=0, fail_allocation=0, inflate_init_result=0):\n    uc = Uc(UC_ARCH_ARM, UC_MODE_ARM)\n    for address, size, data in segments:\n        low, high = address & ~4095, (address + size + 4095) & ~4095\n        uc.mem_map(low, high-low)\n        uc.mem_write(address, data)\n    uc.mem_map(0x2000000, 0x200000)\n    reader, result, entries = 0x2000100, 0x2000200, 0x2001000\n    file, vtable, name, stop = 0x2005000, 0x2006000, 0x2007000, 0x21ffff0\n    put = lambda address, value: uc.mem_write(address, struct.pack('<I', value))\n    get = lambda address: struct.unpack('<I', uc.mem_read(address, 4))[0]\n    put(reader + 8, file)\n    put(reader + 16, entries)\n    # Supply the entry at index 0 or 1 to independently check native stride.\n    for offset, value in ((0, 13), (4, length), (8, packed), (12, name)):\n        put(entries + index * 16 + offset, value)\n    uc.mem_write(name, b'fixture.bin\\0')\n    put(file, vtable)\n    for offset in (12, 24):\n        put(vtable + offset, 0x2100000 + offset)\n    cursor = 0\n    allocation_count = 0\n    calls, allocation_sizes, memory_file = [], [], []\n    entry_reads = set()\n\n    def read_hook(machine, access, address, size, value, user):\n        if entries <= address < entries + 32:\n            entry_reads.add(address - entries)\n\n    def hook(machine, address, instruction_size, user):\n        nonlocal cursor, allocation_count\n        if 0x41198c <= address < 0x411bec or 0x41174c <= address < 0x411758:\n            return\n        args = [machine.reg_read(register) for register in registers]\n        calls.append(hex(address))\n        value = 0\n        if address == 0x69bf94:  # operator new[]\n            allocation_count += 1\n            allocation_sizes.append(args[0])\n            assert args[0] <= 1024 * 1024\n            value = 0 if allocation_count == fail_allocation else 0x2020000 + allocation_count * 0x20000\n        elif address == 0x2100018:  # IReadFile::seek(offset, relative)\n            assert args[0] == file and args[2] == 0\n            cursor = args[1] - 13\n            value = 1\n        elif address == 0x210000c:  # IReadFile::read(buffer, length)\n            assert args[0] == file\n            data = payload[cursor:cursor+args[2]]\n            machine.mem_write(args[1], data)\n            cursor += len(data)\n            value = len(data)\n        elif address == 0x92c190:  # inflateInit2_\n            assert args[1] == 0xfffffff1 and args[3] == 56\n            value = inflate_init_result & 0xffffffff\n        elif address == 0x92c6c8:  # inflate; z_stream is the ARM32 zlib layout\n            assert args[1] == 4  # Z_FINISH\n            stream = args[0]\n            source, available, target, capacity = get(stream), get(stream+4), get(stream+12), get(stream+16)\n            compressed = bytes(machine.mem_read(source, available))\n            decoder = zlib.decompressobj(-15)\n            try:\n                output = decoder.decompress(compressed, max(1, capacity))\n                if len(output) > capacity:\n                    output = output[:capacity]\n                    value = 0xfffffffb  # Z_BUF_ERROR\n                else:\n                    value = 1 if decoder.eof else 0xfffffffb\n                machine.mem_write(target, output)\n                put(stream+8, available-len(decoder.unused_data)-len(decoder.unconsumed_tail))\n                put(stream+20, len(output))\n            except zlib.error:\n                value = 0xfffffffd  # Z_DATA_ERROR\n        elif address == 0x92c2a4:  # inflateEnd\n            value = 0\n        elif address == 0x7fe5ec:  # createMemoryReadFile(sret, buffer, length, name, delete)\n            assert args[3] == name\n            assert get(machine.reg_read(UC_ARM_REG_SP)) == 1\n            memory_file.append(bytes(machine.mem_read(args[1], args[2])))\n            put(args[0], 0x2008000)\n            value = args[0]\n        elif address in (0x69b7fc, 0x69a288):  # delete[] and logging\n            pass\n        else:\n            raise AssertionError('unexpected external dependency ' + hex(address))\n        machine.reg_write(UC_ARM_REG_R0, value)\n        machine.reg_write(UC_ARM_REG_PC, machine.reg_read(UC_ARM_REG_LR))\n\n    uc.hook_add(UC_HOOK_CODE, hook)\n    uc.hook_add(UC_HOOK_MEM_READ, read_hook)\n    for register, value in ((UC_ARM_REG_R0, result), (UC_ARM_REG_R1, reader),\n                            (UC_ARM_REG_R2, index), (UC_ARM_REG_SP, 0x21ff000),\n                            (UC_ARM_REG_LR, stop)):\n        uc.reg_write(register, value)\n    uc.emu_start(0x41198c, stop, count=10000)\n    assert uc.reg_read(UC_ARM_REG_PC) == stop\n    result_value = get(result)\n    assert bool(result_value) == bool(memory_file)\n    return dict(result='ok:'+memory_file[0].hex() if memory_file else 'error',\n                allocations=allocation_sizes, calls=calls, entry_reads=sorted(entry_reads))\n\ncases = []\nplains = [bytes((i * 137 + length) & 255 for i in range(length)) for length in (0, 1, 2, 5, 31, 256)]\nrng = random.Random(34)\nplains.append(bytes(rng.choices(range(32), weights=range(32, 0, -1), k=8192)))\nblock_types = set()\nfor plain in plains:\n    length = len(plain)\n    compressor = zlib.compressobj(wbits=-15)\n    compressed = compressor.compress(plain) + compressor.flush()\n    block_types.add((compressed[0] >> 1) & 3)\n    for index in (0, 1):\n        for packed, payload in ((0, plain), (0x7fffffff, plain),\n                                (0x80000000 | len(compressed), compressed)):\n            native = original(packed, length, payload, index)\n            actual = subprocess.check_output([candidate, '--probe', str(packed), str(length), payload.hex()], text=True).strip()\n            assert actual == native['result'], (length, packed, index, actual, native)\n            assert native['allocations'] == ([length, len(payload)] if packed & 0x80000000 else [length])\n            assert native['entry_reads'] == [index*16+offset for offset in (0, 4, 8, 12)]\n            cases.append(dict(length=length, packed=hex(packed), index=index,\n                              input_sha256=hashlib.sha256(payload).hexdigest(),\n                              output_sha256=hashlib.sha256(bytes.fromhex(native['result'][3:])).hexdigest(),\n                              allocations=native['allocations'], entry_reads=native['entry_reads']))\n\ndifferences = []\nassert block_types == {0, 1, 2}\nfor payload in (b'\\xff\\xff\\xff', b'\\x01\\x05\\x00\\xfa\\xffa'):\n    packed = 0x80000000 | len(payload)\n    native = original(packed, 5, payload)\n    actual = subprocess.check_output([candidate, '--probe', str(packed), '5', payload.hex()], text=True).strip()\n    assert actual == 'error'\n    differences.append(dict(kind='invalid-deflate', candidate_result=actual,\n                            native_returns_memory_file=native['result'].startswith('ok:'),\n                            note='Returned bytes include modeled zeroed/uninitialized allocation contents; no output-byte equivalence claimed.',\n                            input_sha256=hashlib.sha256(payload).hexdigest(), calls=native['calls']))\n\nfailures = []\nfor failure in (1, 2):\n    result = original(0x80000007, 5, b'1234567', fail_allocation=failure)\n    assert result['result'] == 'error'\n    failures.append(dict(kind='allocation-failure', allocation=failure, **result))\nresult = original(0x80000007, 5, b'1234567', inflate_init_result=-6)\nfailures.append(dict(kind='inflate-init-failure', **result))\n\nprint(json.dumps(dict(reference_sha256=digest, native_entry='0x0041198c',\n    differential_cases=len(cases), deflate_block_types=sorted(block_types), cases=cases, deliberate_safety_differences=differences, native_only_failures=failures,\n    scope='Original ARM opener control flow and entry layout only. Allocators, virtual seek/read, memory-file construction, logging, and zlib are modeled dependencies; original inflater, C++ ABI/ownership, file-init and header scanning are excluded. NOT MATCHED.'), indent=2))\n",
+    "run_command": "/home/jason/Projects/nova3_re/.venv/bin/python -c 'import json; exec(json.load(open(\"coordination/evidence/functions-47c9103100e968d1cdb6ec.json\"))[\"native_oracle\"][\"script\"])'",
+    "overrides": "NOVA3_TASK34_REFERENCE and NOVA3_TASK34_CANDIDATE override paths; reference SHA256 remains mandatory.",
+    "result": {
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "native_entry": "0x0041198c",
+      "differential_cases": 42,
+      "deflate_block_types": [
+        0,
+        1,
+        2
+      ],
+      "cases": [
+        {
+          "length": 0,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 0,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 0,
+          "packed": "0x80000002",
+          "index": 0,
+          "input_sha256": "9b4fb24edd6d1d8830e272398263cdbf026b97392cc35387b991dc0248a628f9",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0,
+            2
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 0,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 0,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 0,
+          "packed": "0x80000002",
+          "index": 1,
+          "input_sha256": "9b4fb24edd6d1d8830e272398263cdbf026b97392cc35387b991dc0248a628f9",
+          "output_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "allocations": [
+            0,
+            2
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x80000003",
+          "index": 0,
+          "input_sha256": "d308487a5988e1040c51483dd0a4776a807bc22679361733cac655f20220b574",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1,
+            3
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 1,
+          "packed": "0x80000003",
+          "index": 1,
+          "input_sha256": "d308487a5988e1040c51483dd0a4776a807bc22679361733cac655f20220b574",
+          "output_sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "allocations": [
+            1,
+            3
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x80000004",
+          "index": 0,
+          "input_sha256": "bbde72d04f9921ef8445bc5b98cc45eb9165348ea8c2fbdd2bb137e3dbb6e5c3",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2,
+            4
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 2,
+          "packed": "0x80000004",
+          "index": 1,
+          "input_sha256": "bbde72d04f9921ef8445bc5b98cc45eb9165348ea8c2fbdd2bb137e3dbb6e5c3",
+          "output_sha256": "44f589105aae347066cd79e0c3c5fc70fd019710c0c195ce2d18f19acf771c9c",
+          "allocations": [
+            2,
+            4
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x80000007",
+          "index": 0,
+          "input_sha256": "f3d678195d3eebb2de373507ae936a71353987728bc789710f07d171c002528e",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5,
+            7
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 5,
+          "packed": "0x80000007",
+          "index": 1,
+          "input_sha256": "f3d678195d3eebb2de373507ae936a71353987728bc789710f07d171c002528e",
+          "output_sha256": "a64fc9e2d26aa2c68c5239fda31f84668a72b25c82ed2ba1c2cf97c4fded9e27",
+          "allocations": [
+            5,
+            7
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x80000022",
+          "index": 0,
+          "input_sha256": "819746579234eda1b5e4525d69892dd8db5d0e26e6939fef5db9d5d71e9d86d1",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31,
+            34
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 31,
+          "packed": "0x80000022",
+          "index": 1,
+          "input_sha256": "819746579234eda1b5e4525d69892dd8db5d0e26e6939fef5db9d5d71e9d86d1",
+          "output_sha256": "3ad5eb216d483e6ed665aafcf44c0e4dd8a237dc6c60b25562e17df48d8cb0df",
+          "allocations": [
+            31,
+            34
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x80000105",
+          "index": 0,
+          "input_sha256": "34d53a902a1c7708ddabfa5ae5d6a496f7c5874f1a98713f7d4e3e2a75b9f8b5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256,
+            261
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 256,
+          "packed": "0x80000105",
+          "index": 1,
+          "input_sha256": "34d53a902a1c7708ddabfa5ae5d6a496f7c5874f1a98713f7d4e3e2a75b9f8b5",
+          "output_sha256": "c75b4e20af8029df1db6efcd81de2018509de6073f223ce583aedaae4964fcd5",
+          "allocations": [
+            256,
+            261
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x0",
+          "index": 0,
+          "input_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x7fffffff",
+          "index": 0,
+          "input_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x8000144e",
+          "index": 0,
+          "input_sha256": "09c99957959312d103e1c7d2d2f071bec16249923142736806e68ec32cf21be8",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192,
+            5198
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x0",
+          "index": 1,
+          "input_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x7fffffff",
+          "index": 1,
+          "input_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        },
+        {
+          "length": 8192,
+          "packed": "0x8000144e",
+          "index": 1,
+          "input_sha256": "09c99957959312d103e1c7d2d2f071bec16249923142736806e68ec32cf21be8",
+          "output_sha256": "09507ff71bfdda20bce0d69b15038dce73af14db8d39c1b923b1777bf452531c",
+          "allocations": [
+            8192,
+            5198
+          ],
+          "entry_reads": [
+            16,
+            20,
+            24,
+            28
+          ]
+        }
+      ],
+      "deliberate_safety_differences": [
+        {
+          "kind": "invalid-deflate",
+          "candidate_result": "error",
+          "native_returns_memory_file": true,
+          "note": "Returned bytes include modeled zeroed/uninitialized allocation contents; no output-byte equivalence claimed.",
+          "input_sha256": "5ae7e6a42304dc6e4176210b83c43024f99a0bce9a870c3b6d2c95fc8ebfb74c",
+          "calls": [
+            "0x69bf94",
+            "0x69bf94",
+            "0x2100018",
+            "0x210000c",
+            "0x92c190",
+            "0x92c6c8",
+            "0x92c2a4",
+            "0x92c2a4",
+            "0x7fe5ec",
+            "0x69b7fc"
+          ]
+        },
+        {
+          "kind": "invalid-deflate",
+          "candidate_result": "error",
+          "native_returns_memory_file": true,
+          "note": "Returned bytes include modeled zeroed/uninitialized allocation contents; no output-byte equivalence claimed.",
+          "input_sha256": "4364d8b3b0d9418fe1fcec2b0535f6a80365382029e41bbd2297b9914880d69a",
+          "calls": [
+            "0x69bf94",
+            "0x69bf94",
+            "0x2100018",
+            "0x210000c",
+            "0x92c190",
+            "0x92c6c8",
+            "0x92c2a4",
+            "0x92c2a4",
+            "0x7fe5ec",
+            "0x69b7fc"
+          ]
+        }
+      ],
+      "native_only_failures": [
+        {
+          "kind": "allocation-failure",
+          "allocation": 1,
+          "result": "error",
+          "allocations": [
+            5
+          ],
+          "calls": [
+            "0x69bf94",
+            "0x69a288"
+          ],
+          "entry_reads": [
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "allocation-failure",
+          "allocation": 2,
+          "result": "error",
+          "allocations": [
+            5,
+            7
+          ],
+          "calls": [
+            "0x69bf94",
+            "0x69bf94",
+            "0x69b7fc",
+            "0x69a288"
+          ],
+          "entry_reads": [
+            4,
+            8,
+            12
+          ]
+        },
+        {
+          "kind": "inflate-init-failure",
+          "result": "error",
+          "allocations": [
+            5,
+            7
+          ],
+          "calls": [
+            "0x69bf94",
+            "0x69bf94",
+            "0x2100018",
+            "0x210000c",
+            "0x92c190",
+            "0x69a288",
+            "0x69b7fc",
+            "0x69b7fc"
+          ],
+          "entry_reads": [
+            0,
+            4,
+            8,
+            12
+          ]
+        }
+      ],
+      "scope": "Original ARM opener control flow and entry layout only. Allocators, virtual seek/read, memory-file construction, logging, and zlib are modeled dependencies; original inflater, C++ ABI/ownership, file-init and header scanning are excluded. NOT MATCHED."
+    },
+    "limits": [
+      "Native opener control flow only; zlib, virtual I/O, allocation, memory-file construction and logging are modeled. This does not validate original inflater instructions, filesystem, ownership, or ABI equivalence.",
+      "Two malformed streams return memory files under the native/model harness while candidate rejects them; modeled allocation contents are not original reference output bytes.",
+      "Three allocator/init failure observations exercise the original only; no source failure-injection equivalence claimed."
+    ]
+  },
+  "failed_attempts_and_limits": [
+    "Initial GCC -Werror build flagged vector range-insert bounds in the test; fixture construction was changed to pre-sized storage and copy. Final build passes with warnings treated as errors.",
+    "Initial ASan run passed assertions but exited 1 when LeakSanitizer could not use ptrace. Final ASan/UBSan run exits 0 with detect_leaks=0; host security settings unchanged.",
+    "Early oracle failure-path model assumed a null-constructor argument contract; corrected by executing the original 12-byte construction helper. Only final harness observations count."
+  ],
+  "remaining_work": [
+    "0x00411fc0: recover scanner record insertion, descriptor handling and cursor semantics; exercise original virtual I/O and COW strings in a bounded harness. Existing engine/scrambled_zip.cpp is a checked header subset, not this full method.",
+    "0x00412730: recover basename/key setup, both boolean options, third unsigned argument and entry ordering using observed scanner state; no wrapper or guessed success implementation supplied.",
+    "0x0069c6f0: recover File::Init object/global contracts, shared strings and process-buffer ownership before implementing it.",
+    "Recover exact native file/class/allocator ABI and malformed-input behavior separately before any whole-function equivalence claim.",
+    "Target compiler/link environment and candidate/reference instruction-stream comparison still required for matching."
+  ],
+  "constraints": {
+    "edited_only_task_paths": true,
+    "network_access": false,
+    "packages_installed": false,
+    "child_agents": false,
+    "originals_modified": false,
+    "github_state_modified": false,
+    "commits_created": false,
+    "original_bytes_or_decompiler_text_in_artifact": false
+  }
+}
