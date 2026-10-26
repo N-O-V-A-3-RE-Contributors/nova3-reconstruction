@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from .common import GitHub, lease_active, lease_get, label_names
 from .guard import check as guard_check
 from . import recovery  # NOVA3-DURABLE-RESUME-v1
+from . import reliability  # NOVA3-RELIABILITY-FAILSTOP-v2
 
 
 def run(cmd, cwd=None, timeout=90, capture=True, check=True):
@@ -216,6 +217,37 @@ def record_handoff(workdir,round_num,cmd,cp,changes):
     return handoff.read_text()
 
 
+def pause_failed_task(gh, root, number, token, provider, user, error):
+    """Fail-closed, externally visible state without retry/comment storms.
+
+    Never delete local checkouts. GitHub coordinator is the sole label writer.
+    """
+    previous = recovery.load(root, number)
+    decision = reliability.failure_decision(previous, error)
+    recovery.update(root, number,
+                    failure_key=decision['key'], failure_code=decision['code'],
+                    failure_count=decision['count'],
+                    retry_after=int(time.time())+(86400 if decision['blocked'] else decision['delay']),
+                    last_error=str(error)[:600],
+                    phase=(previous.get('phase') if previous.get('phase') in ('pushed','committed','pr_created')
+                           else 'blocked' if decision['blocked'] else previous.get('phase', 'error')))
+    if decision['blocked']:
+        note(f'ALERT #{number}: BLOCKED ({decision["code"]}). Existing checkout retained. '
+             'No more automatic attempts until a maintainer fixes the cause.')
+        try:
+            gh.comment(number, f'/nova block {token} {decision["code"]}')
+        except Exception as exc:
+            note(f'ALERT #{number}: unable to notify GitHub coordinator: {exc}')
+    else:
+        note(f'ALERT #{number}: transient worker failure. 10-minute cooldown; '
+             'one identical recurrence will block the task.')
+        try:
+            gh.comment(number, f'/nova release {token}')
+        except Exception as exc:
+            note(f'ALERT #{number}: unable to release claim: {exc}')
+    return False
+
+
 def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
     n=issue['number']
     prior=recovery.load(root,n)
@@ -241,16 +273,28 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
         phase=recovery.load(root,n).get('phase','checkout')
         if phase not in ('committed','pushed','pr_created'):
             for k in range(1,rounds+1):
-                gh.comment(n,f'/nova heartbeat {token}')
-                recovery.update(root,n,phase='running',round=k)
+                gh.comment(n,f'/nova heartbeat {token} AI_RUNNING')
+                current_calls=int(recovery.load(root,n).get('provider_calls',0))
+                recovery.update(root,n,phase='running',round=k,
+                                provider_calls=current_calls+1,
+                                provider_started_unix=int(time.time()),
+                                provider_exit=None)
                 prompt=session_prompt(issue,k,handoff,allowed,binary_root)
                 cmd=command_for(provider,prompt)
-                note(f'#{n} AI session {k}/{rounds} ({provider})')
+                note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 try:
                     cp=run(cmd,cwd=work,timeout=1800,check=False)
                 except subprocess.TimeoutExpired as e:
                     cp=subprocess.CompletedProcess(cmd,124,stdout=e.stdout.decode(errors='replace') if isinstance(e.stdout,bytes) else (e.stdout or ''),stderr='Session timed out')
+                recovery.update(root,n,provider_completed_unix=int(time.time()),
+                                provider_exit=cp.returncode)
+                try:
+                    gh.comment(n,f'/nova heartbeat {token} AI_FINISHED')
+                except Exception as exc:
+                    note(f'WARN #{n}: GitHub activity signal unavailable: {exc}')
+                note(f'#{n} Codex/AI session finished: exit={cp.returncode}; checking changed files')
                 paths=validate_scope(work,allowed)
+                recovery.update(root,n,changed_files=len(paths))
                 handoff=record_handoff(work,k,cmd,cp,paths)
                 recovery.update(root,n,phase='checkpoint',round=k)
                 if paths:
@@ -260,10 +304,8 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                 if cp.returncode!=0:note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
             paths=validate_scope(work,allowed)
             if not paths:
-                gh.comment(n,f'No source changes after bounded sessions; released for reassignment. Worker={user}, provider={provider}.')
-                gh.comment(n,f'/nova release {token}')
-                recovery.update(root,n,phase='released')
-                return False
+                return pause_failed_task(gh,root,n,token,provider,user,
+                                         RuntimeError('No source changes after bounded AI sessions'))
             git(work,'add','--',*paths)
             staged=git(work,'diff','--cached','--name-only','-z').stdout.split('\0')
             bad=guard_check(pathlib.Path(work),[x for x in staged if x])
@@ -294,12 +336,13 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
             if prs:
                 pr=prs[0]['url']
             else:
-                desc=f'Refs #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
+                desc=f'Closes #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
                 args=['gh','pr','create','--repo',upstream,'--head',head,
                       '--base','main','--title',f'#{n}: {issue["title"]}','--body',desc]
                 if not verified:args.append('--draft')
                 pr=run(args,cwd=work,timeout=120).stdout.strip()
-            recovery.update(root,n,phase='pr_created',pr=pr,retry_after=0,pr_failures=0)
+            recovery.update(root,n,phase='pr_created',pr=pr,retry_after=0,pr_failures=0,
+                            failure_count=0,failure_key='',failure_code='')
         current=recovery.load(root,n)
         if current.get('phase')=='pr_created':
             gh.comment(n,f'/nova submitted {token} {current["pr"]}')
@@ -309,19 +352,8 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
         return False
     except Exception as e:
         note(f'FAILED #{n}: {e}')
-        # Keep phase='pushed' or phase='committed' to resume submission WITHOUT
-        # wasting another model session. Bounded exponential cooldown stops loops.
-        state=recovery.load(root,n)
-        count=int(state.get('pr_failures',0))+1
-        delay=min(3600,300*(2**min(count-1,4)))
-        recovery.update(root,n,pr_failures=count,retry_after=int(time.time())+delay,
-                        last_error=str(e)[:700])
-        note(f'#{n} paused for {delay//60} minutes after repeated failure; saved source untouched')
-        try:
-            gh.comment(n, f'Worker failure ({provider}, {user}): {str(e)[:400]}; preserving local checkout for resumption. Paused to avoid retry loop.')
-            gh.comment(n,f'/nova release {token}')
-        except Exception:pass
-        return False
+        # Preserve existing commits, pushed PR head and all uncommitted work.
+        return pause_failed_task(gh,root,n,token,provider,user,e)
 
 
 def main():
@@ -346,6 +378,9 @@ def main():
         print(json.dumps(counts,indent=2));return
     root=pathlib.Path.home()/'.cache'/'nova3-team'/upstream.replace('/','_')
     attempt=0
+    consecutive_failures=0
+    coordinator_failures=0
+    unclaimed_attempts=0
     while True:
         try:
             issues=[]
@@ -366,13 +401,35 @@ def main():
                 for issue in issues[:8]:
                     note(f'Trying #{issue["number"]}: {issue["title"]}')
                     result=work_one(gh,upstream,user,issue,args.provider,root,args.rounds,args.binary_root)
-                    # A busy task should not stop a worker trying the next one.
-                    if result is not None:
+                    # An unresponsive GitHub/API setup must not burn hours or tokens.
+                    if result is True:
+                        consecutive_failures=0
+                        unclaimed_attempts=0
                         break
+                    if result is None:
+                        unclaimed_attempts+=1
+                        if unclaimed_attempts>=3:
+                            note('ALERT WORKER STOPPED: 3 task claims were not granted. '
+                                 'Check GitHub Actions coordinator permissions and task leases.')
+                            raise SystemExit(4)
+                    if result is False:
+                        consecutive_failures+=1
+                        if consecutive_failures>=3:
+                            note('ALERT WORKER STOPPED: 3 consecutive task failures. '
+                                 'Check nova:blocked/attention tasks on the GitHub status issue. '
+                                 'Checkouts retained. Fix the shared cause before relaunching.')
+                            raise SystemExit(3)
         except KeyboardInterrupt:
             raise
         except Exception as e:
-            note(f'Coordinator/worker transient failure: {e}')
+            coordinator_failures+=1
+            note(f'Coordinator/worker failure {coordinator_failures}/3: {e}')
+            if coordinator_failures>=3:
+                note('ALERT WORKER STOPPED: repeated coordinator/API failures. '
+                     'No additional AI will launch until the configuration is fixed.')
+                raise SystemExit(5)
+        else:
+            coordinator_failures=0
         attempt+=1
         if args.once:break
         time.sleep(args.poll)

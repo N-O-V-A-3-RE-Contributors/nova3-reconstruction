@@ -20,7 +20,7 @@ class DashboardTests(unittest.TestCase):
             {'labels': [{'name': 'other'}]},
         ]
         self.assertEqual(dashboard.summarize_issues(issues),
-                         {'total': 4, 'queued': 1, 'claimed': 1, 'review': 1, 'other': 1, 'limited': False})
+                         {'total': 4, 'queued': 1, 'claimed': 1, 'review': 1, 'blocked': 0, 'other': 1, 'limited': False})
 
     def test_handoff_events_update_task_and_session(self):
         status = dashboard.Status('team/nova3','codex')

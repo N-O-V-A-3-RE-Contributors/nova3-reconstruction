@@ -1,0 +1,31 @@
+name: NOVA project status
+on:
+  schedule:
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+  issues:
+    types: [closed]
+  pull_request:
+    types: [closed]
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+concurrency:
+  group: nova3-reconstruction-status
+  cancel-in-progress: false
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Update project status issue (never run PR code)
+        run: python -m nova3_team.report publish --repo "$GITHUB_REPOSITORY"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

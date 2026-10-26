@@ -47,6 +47,8 @@ def elapsed(seconds: float) -> str:
 
 def identify_phase(line: str, existing: str = 'CONNECTING') -> str:
     rules = (
+        ('ALERT WORKER STOPPED:', 'SAFE STOP — FAILURES DETECTED'),
+        ('ALERT #', 'TASK BLOCKED / ATTENTION'),
         ('No queued tasks.', 'WAITING FOR TASKS'),
         ('Requested task #', 'RESERVING ISSUE'),
         ('AI session ', 'AI SESSION RUNNING'),
@@ -69,10 +71,13 @@ def identify_phase(line: str, existing: str = 'CONNECTING') -> str:
 
 
 def summarize_issues(issues: list[dict]) -> dict:
-    labels = ('nova:queued', 'nova:claimed', 'nova:review')
-    result = {'total': len(issues), 'queued': 0, 'claimed': 0, 'review': 0, 'other': 0}
+    labels = ('nova:queued', 'nova:claimed', 'nova:review', 'nova:blocked')  # NOVA3-RELIABILITY-DASHBOARD-v2
+    result = {'total': len(issues), 'queued': 0, 'claimed': 0, 'review': 0, 'blocked': 0, 'other': 0}
     for issue in issues:
         names = {label.get('name') for label in issue.get('labels', []) if isinstance(label, dict)}
+        if 'nova:dashboard' in names:
+            result['total']-=1
+            continue
         found = next((label for label in labels if label in names), None)
         if found:
             result[found.split(':')[1]] += 1
@@ -141,7 +146,9 @@ def fetch_stats(repo: str, timeout: float = 15) -> tuple[dict | None, str | None
                                  '--limit', '100', '--json', 'number,closedAt,labels'],
                                 capture_output=True, text=True, timeout=timeout)
         if closed.returncode == 0:
-            counts['backlog_estimate'] = estimate_backlog(opened, json.loads(closed.stdout))
+            closed_items=json.loads(closed.stdout)
+            counts['backlog_estimate'] = estimate_backlog(opened, closed_items)
+            counts['integrated'] = sum(any(label.get('name')=='nova:integrated' for label in x.get('labels',[])) for x in closed_items)
         return counts, None
     except (ValueError, subprocess.TimeoutExpired, OSError) as exc:
         return None, f'GitHub status unavailable: {str(exc)[:110]}'
@@ -249,9 +256,9 @@ def render(status: Status, now: float | None = None, width: int = 90,
     if c:
         suffix = '+' if c.get('limited') else ''
         lines.extend([
-            f"Tasks: {c['total']}{suffix} open    {c['queued']} queued    {c['claimed']} active    {c['review']} review",
+            f"Tasks: {c['total']}{suffix} open    {c['queued']} queued    {c['claimed']} claimed    {c['review']} review    {c.get('blocked',0)} BLOCKED",
             _bar(c, max(4, width-2)),
-            f"Open PRs: {c.get('open_prs', '?')}     PRs submitted by this worker: {status.pr_submitted}",
+            f"Integrated tasks: {c.get('integrated', '?')}    Open PRs: {c.get('open_prs','?')}    This worker PRs: {status.pr_submitted}",
         ])
     else:
         lines.append('GitHub: ' + (status.error or 'Fetching task data…'))

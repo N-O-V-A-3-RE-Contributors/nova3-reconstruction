@@ -2,12 +2,15 @@ name: NOVA task coordinator
 on:
   issue_comment:
     types: [created]
+  pull_request:
+    types: [closed]
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
   issues: write
+  pull-requests: read
 concurrency:
   group: nova3-task-coordinator
   cancel-in-progress: false
@@ -23,6 +26,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m nova3_team.coordinator
+      - name: Coordinate leases; auto-close linked merged tasks
+        run: python -m nova3_team.coordinator
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NOVA3_ALERT_USER: crjase
