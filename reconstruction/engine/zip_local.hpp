@@ -12,8 +12,12 @@ struct ZipLocalEntry {
 };
 // Header-reading portion of glitch::io::CZipReader::scanLocalHeader,
 // Premium ARM0x007fd420. Only flags 0/UTF8 and stored/deflate local headers are supported.
-// bytes need contain header/name/extra; archive_size bounds the referenced data.
-// Unsupported descriptors/ZIP64 are explicit errors, not silently misparsed.
+// bytes points to the local header itself, even when offset is nonzero; offset
+// is its absolute archive position. available bounds bytes, independently of
+// archive_size, which bounds the referenced header and compressed data.
+// Payload bytes need not be available. Extra fields are skipped, not decoded;
+// data-descriptor flags and ZIP64 size sentinels are explicitly unsupported.
+// On any error, entry is unchanged. This does not validate payloads or CRCs.
 ZipError parse_zip_local(const std::uint8_t* bytes, std::size_t available,
                         std::uint64_t offset, std::uint64_t archive_size,
                         ZipLocalEntry& entry);
