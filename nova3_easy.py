@@ -337,6 +337,14 @@ def main(argv=None):
     msg(f'Working: {repo} | provider={provider} | source={directory}')
     print('Leave this window open. Ctrl+C stops it. Relaunch to resume saved work.')
     command_line=py+['-m','nova3_team.worker','run','--repo',repo,'--provider',provider]
+    # NOVA3-LOCAL-REFERENCE-AUTOSELECT-v1
+    # On the owner's machine, analysis/ contains legally held local references.
+    # On contributor machines, this remains opt-in via NOVA3_REFERENCE_ROOT.
+    local_ref=os.environ.get('NOVA3_REFERENCE_ROOT', '').strip()
+    if not local_ref and (directory/'analysis').is_dir():
+        local_ref=str((directory/'analysis').resolve())
+    if local_ref and Path(local_ref).expanduser().is_dir():
+        command_line+=['--binary-root',str(Path(local_ref).expanduser().resolve())]
     if a.once: command_line+=['--once']
     try:return dashboard.run(command_line,cwd=directory,repo=repo,provider=provider)
     except KeyboardInterrupt:
