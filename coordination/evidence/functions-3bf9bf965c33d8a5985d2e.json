@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "task": 32,
+  "task_key": "functions-3bf9bf965c33d8a5985d2e",
+  "scope": "One portable CRC32 entry; initializer remains unreconstructed. No gameplay functionality established.",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "local_path": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "hash_checked": true,
+    "architecture": "32-bit little-endian ARM EABI; both entries ARM mode",
+    "size_note": "Task sizes 934 and 18 are hexadecimal; ELF and ledger sizes are 2356 and 24 decimal."
+  },
+  "functions": [
+    {
+      "address": "0x008cfb78",
+      "size_bytes": 2356,
+      "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_GL2JNILib_init",
+      "state": "INVENTORIED",
+      "verification_grade": "unmapped",
+      "matching": "NOT MATCHED",
+      "implementation": "NOT RECONSTRUCTED",
+      "behaviour": "UNVERIFIED",
+      "reason": "Local selected Ghidra export has undefined no-argument signature, one block and no call edges. It does not establish the JNI parameters, callback table layout, indirect JNIEnv operations or initialization dependencies. No success stub or speculative implementation added.",
+      "observed_static_metadata": "Local ELF symbol confirms entry/extent; external ARM branch targets glf::AndroidInit at 0x008cfb44. No initializer execution or parity test performed."
+    },
+    {
+      "address": "0x008d890c",
+      "size_bytes": 24,
+      "symbol": "_ZN3glf10CrcChecker5CRC32EPKvij",
+      "source_entry": "nova3::recovered::crc32_008d890c",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "behaviour_scope": "Scoped independent evidence: 1027 synthetic cases agree between host C++, source ARMv7, original ARM entry and Python zlib. Includes 25 null cases (10 with negative signed lengths), five priors, alignments 0..7 and sizes through 65535. Original-only callee interception verifies 50 forwarding cases, including all signed-int boundary representations, without claiming full CRC validity for enormous or negative non-null lengths.",
+      "dependencies": [
+        "reconstruction/engine/crc32.hpp",
+        "reconstruction/engine/crc32.cpp"
+      ],
+      "abi_limit": "Portable C++ entry has a different mangled name; original C++ class ABI and JNI integration are not provided.",
+      "scope_limits": [
+        "Finite synthetic corpus only; not a proof for all buffers/lengths.",
+        "No original class symbol, Android lifecycle, JNI startup, threading or packaging parity established.",
+        "50 interception cases test original argument forwarding and synthetic return propagation, not original CRC execution."
+      ]
+    }
+  ],
+  "preservation": "Pre-existing untracked recovered source and tests were inspected and retained. Changes add extent/status clarification and stronger synthetic tests. No original executable modified, copied or bundled.",
+  "source_files": [
+    "reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78_test.cpp"
+  ],
+  "reproduce": {
+    "working_directory": "repository root",
+    "build_directory": "/tmp/nova3-task32-5bSG6K",
+    "host_command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp reconstruction/engine/crc32.cpp reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78_test.cpp -o /tmp/nova3-task32-5bSG6K/block_test",
+    "test_command": "/tmp/nova3-task32-5bSG6K/block_test",
+    "sanitizer_build_command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp reconstruction/engine/crc32.cpp reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78_test.cpp -o /tmp/nova3-task32-5bSG6K/block_test_sanitize",
+    "sanitizer_test_command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task32-5bSG6K/block_test_sanitize",
+    "arm_build_command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ -std=c++17 -O2 -marm -march=armv7-a -mfpu=neon -mfloat-abi=softfp -Wall -Wextra -Wpedantic -Werror -fno-exceptions -fno-rtti -fPIC -nostdlib -shared -Wl,--no-undefined -Wl,-Bsymbolic reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp reconstruction/engine/crc32.cpp -o /tmp/nova3-task32-5bSG6K/libtask32.so",
+    "directory_note": "Create a fresh temporary build directory and substitute its path in commands/environment; no persistent build products required.",
+    "oracle_environment": {
+      "NOVA3_REFERENCE_ELF": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "NOVA3_TASK32_TEST": "/tmp/nova3-task32-5bSG6K/block_test",
+      "NOVA3_TASK32_ARM_SO": "/tmp/nova3-task32-5bSG6K/libtask32.so"
+    },
+    "oracle_command": "python3 -c 'import json; from pathlib import Path; e=json.loads(Path(\"coordination/evidence/functions-3bf9bf965c33d8a5985d2e.json\").read_text()); exec(compile(e[\"reproduce\"][\"oracle_python\"], \"<task32-offline-oracle>\", \"exec\"))' ",
+    "oracle_python": "import hashlib, importlib.metadata, io, json, os, pathlib, subprocess, zlib\nfrom elftools.elf.elffile import ELFFile\nfrom elftools.elf.relocation import RelocationSection\nfrom unicorn import Uc, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE\nfrom unicorn.arm_const import (UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2,\n    UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7, UC_ARM_REG_R8,\n    UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11, UC_ARM_REG_SP,\n    UC_ARM_REG_LR, UC_ARM_REG_PC, UC_ARM_REG_CPSR)\nREFERENCE_HASH = '84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf'\nreference = pathlib.Path(os.environ['NOVA3_REFERENCE_ELF'])\nsource_arm = pathlib.Path(os.environ['NOVA3_TASK32_ARM_SO'])\nsource_host = pathlib.Path(os.environ['NOVA3_TASK32_TEST'])\nreference_bytes = reference.read_bytes()\nassert hashlib.sha256(reference_bytes).hexdigest() == REFERENCE_HASH\nsource_bytes = source_arm.read_bytes()\ninput_base, stack_base, stop = 0x2000000, 0x3008000, 0x300fffc\nsaved = [UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,\n         UC_ARM_REG_R8, UC_ARM_REG_R9, UC_ARM_REG_R10, UC_ARM_REG_R11]\nsaved_values = [0x5a000000 + i * 0x10101 for i in range(8)]\n\ndef load(data):\n    elf = ELFFile(io.BytesIO(data))\n    assert elf.elfclass == 32 and elf.little_endian and elf['e_machine'] == 'EM_ARM'\n    symbols = {s.name: s for s in elf.get_section_by_name('.symtab').iter_symbols()\n               if s['st_info']['type'] == 'STT_FUNC'}\n    segments = [s for s in elf.iter_segments() if s['p_type'] == 'PT_LOAD']\n    u = Uc(UC_ARCH_ARM, UC_MODE_ARM)\n    pages = set()\n    for segment in segments:\n        first = segment['p_vaddr'] & ~4095\n        last = (segment['p_vaddr'] + segment['p_memsz'] + 4095) & ~4095\n        pages.update(range(first, last, 4096))\n    # Merge adjacent pages: one region per page exceeds Unicorn's section limit\n    # for this large ELF. Map each contiguous union once, then load segments.\n    ordered = sorted(pages)\n    first = previous = ordered[0]\n    for page in ordered[1:]:\n        if page != previous + 4096:\n            u.mem_map(first, previous + 4096 - first)\n            first = page\n        previous = page\n    u.mem_map(first, previous + 4096 - first)\n    for segment in segments:\n        u.mem_write(segment['p_vaddr'], segment.data())\n    u.mem_map(input_base, 0x20000)\n    u.mem_map(0x3000000, 0x10000)\n    return u, elf, symbols\n\noriginal, reference_elf, original_symbols = load(reference_bytes)\nrebuilt, source_elf, rebuilt_symbols = load(source_bytes)\nwrapper = original_symbols['_ZN3glf10CrcChecker5CRC32EPKvij']\ninitializer = original_symbols['Java_com_gameloft_android_GAND_GloftN3LT_GL2JNILib_init']\nassert (wrapper['st_value'], wrapper['st_size']) == (0x8d890c, 24)\nassert (initializer['st_value'], initializer['st_size']) == (0x8cfb78, 2356)\ncandidate = rebuilt_symbols['_ZN5nova39recovered14crc32_008d890cEPKvij']\nassert candidate['st_value'] & 1 == 0\nassert not any(s.num_relocations() for s in source_elf.iter_sections()\n               if isinstance(s, RelocationSection)), 'source ELF needs a relocation-aware loader'\nneeded = [t.needed for s in source_elf.iter_sections() if s['sh_type'] == 'SHT_DYNAMIC'\n          for t in s.iter_tags() if t['d_tag'] == 'DT_NEEDED']\nassert needed == [], needed\n\ndef reset(u, pointer, length, prior):\n    u.reg_write(UC_ARM_REG_CPSR, 0x10)\n    for reg, value in [(UC_ARM_REG_R0, pointer), (UC_ARM_REG_R1, length & 0xffffffff),\n                       (UC_ARM_REG_R2, prior), (UC_ARM_REG_SP, stack_base),\n                       (UC_ARM_REG_LR, stop)] + list(zip(saved, saved_values)):\n        u.reg_write(reg, value)\n\ndef finish(u, entry):\n    u.emu_start(entry, stop, count=2000000)\n    assert u.reg_read(UC_ARM_REG_PC) == stop, 'did not return within instruction budget'\n    assert u.reg_read(UC_ARM_REG_SP) == stack_base, 'stack pointer changed'\n    assert [u.reg_read(r) for r in saved] == saved_values, 'callee-saved register changed'\n    return u.reg_read(UC_ARM_REG_R0)\n\n# The C++ executable emits only generated inputs/results, never reference bytes.\ntranscript = subprocess.check_output([str(source_host), '--emit-cases'])\nlines = transcript.decode('ascii').splitlines()\nassert len(lines) == 1027\nnull_cases = negative_null_cases = 0\nfor line in lines:\n    prior, length, alignment, is_null, result, payload = line.split()\n    prior, length, alignment, is_null, result = map(int, (prior, length, alignment, is_null, result))\n    data = b'' if payload == '-' else bytes.fromhex(payload)\n    assert len(data) == (max(length, 0) if not is_null else 0)\n    expected = 0 if is_null else zlib.crc32(data, prior)\n    assert result == expected, 'host C++ differs from Python zlib'\n    pointer = 0 if is_null else input_base + alignment\n    null_cases += is_null\n    negative_null_cases += bool(is_null and length < 0)\n    for u, entry in [(original, wrapper['st_value']), (rebuilt, candidate['st_value'])]:\n        if not is_null:\n            u.mem_write(pointer, data or b'\\x00')\n        reset(u, pointer, length, prior)\n        assert finish(u, entry) == result, 'ARM and host results differ'\n        if not is_null:\n            assert bytes(u.mem_read(pointer, max(1, len(data)))) == (data or b'\\x00')\n\n# Isolate forwarding from CRC execution: hook the existing callee entry, without\n# modifying any reference instruction or executing a huge invalid buffer read.\n# These tests establish argument forwarding only, NOT CRC validity for negative\n# lengths on non-null buffers. The callee's sentinel return is synthetic.\n# Use a fresh emulator so the entry hook exists before any block translation.\nforwarder, _, _ = load(reference_bytes)\nforwarded = []\ncallee = original_symbols['crc32']['st_value']\ndef intercept(u, address, size, user_data):\n    forwarded.append(tuple(u.reg_read(r) for r in [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2]))\n    u.reg_write(UC_ARM_REG_R0, 0xa5f00d5a)\n    u.reg_write(UC_ARM_REG_PC, u.reg_read(UC_ARM_REG_LR))\nhook = forwarder.hook_add(UC_HOOK_CODE, intercept, begin=callee, end=callee)\nfor pointer in [0, input_base + 3]:\n    for length in [0, 1, 0x7fffffff, -0x80000000, -1]:\n        for prior in [0, 1, 0xffffffff, 0x12345678, 0x80000000]:\n            before = len(forwarded)\n            reset(forwarder, pointer, length, prior)\n            result = finish(forwarder, wrapper['st_value'])\n            assert result == 0xa5f00d5a, (result, len(forwarded), hex(callee))\n            assert len(forwarded) == before + 1\n            assert forwarded[-1] == (prior, pointer, length & 0xffffffff)\nforwarder.hook_del(hook)\n\ndef code_metadata(elf, symbol):\n    address, size = symbol['st_value'], symbol['st_size']\n    segment = next(s for s in elf.iter_segments() if s['p_type'] == 'PT_LOAD'\n                   and s['p_vaddr'] <= address and address + size <= s['p_vaddr'] + s['p_filesz'])\n    code = segment.data()[address-segment['p_vaddr']:address-segment['p_vaddr']+size]\n    return {'address': hex(address), 'size': size, 'sha256': hashlib.sha256(code).hexdigest()}\noriginal_code = code_metadata(reference_elf, wrapper)\nsource_code = code_metadata(source_elf, candidate)\nassert original_code['size'] != source_code['size'] or original_code['sha256'] != source_code['sha256']\nprint(json.dumps({\n    'reference_sha256': REFERENCE_HASH,\n    'source_arm_sha256': hashlib.sha256(source_bytes).hexdigest(),\n    'source_host_sha256': hashlib.sha256(source_host.read_bytes()).hexdigest(),\n    'versions': {p: importlib.metadata.version(p) for p in ['unicorn', 'pyelftools']},\n    'python_zlib_version': zlib.ZLIB_RUNTIME_VERSION,\n    'cases_sha256': hashlib.sha256(transcript).hexdigest(),\n    'full_crc_cases': len(lines), 'null_cases': null_cases,\n    'negative_null_cases': negative_null_cases, 'forwarding_only_cases': len(forwarded),\n    'reference_wrapper': original_code, 'candidate_wrapper': source_code,\n    'machine_code_status': 'NOT MATCHED',\n    'result': 'PASS: host C++, source ARMv7, original ARM and Python zlib agree on 1027 cases; 50 original forwarding-only cases pass; stack/callee-saved registers/input preserved',\n    'initializer_status': 'NOT RECONSTRUCTED / UNVERIFIED'\n}, indent=2))\n",
+    "oracle_requirements": "Installed pyelftools and Unicorn; local reference ELF. Research-only emulation is outside all production source/build paths. This script never patches instructions or writes reference files."
+  },
+  "tests": [
+    {
+      "name": "GCC host build and tests",
+      "exit_code": 0,
+      "result": "1027 cases including two check vectors; seeded/null/unaligned/boundary-length CRC, incremental chaining, non-null empty input, input immutability"
+    },
+    {
+      "name": "Clang ASan/UBSan first run",
+      "exit_code": 1,
+      "result": "All 1027 test cases passed; LeakSanitizer shutdown failed due to ptrace restrictions in this session."
+    },
+    {
+      "name": "Clang ASan/UBSan with ASAN_OPTIONS=detect_leaks=0",
+      "exit_code": 0,
+      "result": "All 1027 cases passed; no address/undefined-behaviour diagnostics. Leak detection is excluded; no host security setting changed."
+    },
+    {
+      "name": "Android ARMv7 source-only shared library build",
+      "exit_code": 0,
+      "result": "32-bit ARM source-built ELF; no DT_NEEDED entries or runtime relocations. Original reference not a build input."
+    },
+    {
+      "name": "Offline oracle first loader attempt",
+      "exit_code": 134,
+      "result": "Unicorn internal phys_section_add assertion: one mapping per ELF page exceeded its region limit. Loader fixed to merge contiguous page unions; no reference instructions or files changed."
+    },
+    {
+      "name": "Offline oracle second attempt",
+      "exit_code": 1,
+      "result": "1027 full CRC comparisons completed; forwarding-only sentinel assertion then failed after a hook was added to an already-executed emulator. The harness now uses a fresh emulator with the hook installed before any execution; full CRC implementation unchanged."
+    },
+    {
+      "name": "Offline original ARM / source ARM / host / zlib differential oracle",
+      "exit_code": 0,
+      "result": "PASS: host C++, source ARMv7, original ARM and Python zlib agree on 1027 cases; 50 original forwarding-only cases pass; stack/callee-saved registers/input preserved",
+      "evidence": "oracle_result and reproduce.oracle_python in this file"
+    }
+  ],
+  "matching": "NOT MATCHED",
+  "handoff": {
+    "blockers": [
+      "JNI initializer ABI, callback cache and dependencies remain insufficiently recovered; original reference is available locally, not missing.",
+      "No Android device or complete startup integration tested."
+    ],
+    "next_attempts": [
+      "Recover JNI initializer indirect calls and their precise JNIEnv slots, Java method signatures and cache stores from local reference analysis; validate every edge and side effect before source implementation.",
+      "Reproduce CRC builds/tests and the stored offline oracle with the recorded environment; preserve scoped evidence and explicit NOT MATCHED status. Add original class ABI integration only when independently justified."
+    ],
+    "docs_note": "docs/worker-notes is outside this task allowlist; this evidence is the task-specific handoff.",
+    "completed": "Retained portable CRC entry, clarified hexadecimal sizes, strengthened 1027-case tests, cross-built source-only ARMv7 library, executed independent four-way oracle and recorded explicit machine-code mismatch. Task #32 remains partial because the initializer is not reconstructed."
+  },
+  "session_date": "2026-10-27",
+  "counts": {
+    "inventoried_cluster_functions": 2,
+    "new_decompilations": 0,
+    "source_entries_present": 1,
+    "source_entries_behaviourally_tested": 1,
+    "machine_code_matched": 0,
+    "unreconstructed_cluster_functions": 1,
+    "end_to_end_game_scenarios": 0
+  },
+  "oracle_result": {
+    "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "source_arm_sha256": "53ea00215259644847ff7d92d404094b464d89dca7a4aebb08d76b6e09394d5f",
+    "source_host_sha256": "39233b983bc4868c82e351abab8ec989528ca0a00a2c38279c4708aeb0fe2805",
+    "versions": {
+      "unicorn": "2.1.4",
+      "pyelftools": "0.33"
+    },
+    "python_zlib_version": "1.3.2",
+    "cases_sha256": "76a5067eee817fb6cb6ff87d91f40909e3773f227e598b94a8f1924385933b21",
+    "full_crc_cases": 1027,
+    "null_cases": 25,
+    "negative_null_cases": 10,
+    "forwarding_only_cases": 50,
+    "reference_wrapper": {
+      "address": "0x8d890c",
+      "size": 24,
+      "sha256": "5f4343a2bdf22e6f1ad0eae861766c0e335600785164737a9835361d9d29d7a5"
+    },
+    "candidate_wrapper": {
+      "address": "0x614",
+      "size": 16,
+      "sha256": "1b7e1e4b69e81302b5b499176ce0ae3a7e544b805dafa7ba823d5e28921a5b12"
+    },
+    "machine_code_status": "NOT MATCHED",
+    "result": "PASS: host C++, source ARMv7, original ARM and Python zlib agree on 1027 cases; 50 original forwarding-only cases pass; stack/callee-saved registers/input preserved",
+    "initializer_status": "NOT RECONSTRUCTED / UNVERIFIED"
+  },
+  "build_provenance": {
+    "source_sha256": {
+      "reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp": "5fff5c8d6e5e203e111d19f91f0b72d5d6ecfa293b3d170b474b6bdcdf4c43e5",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78_test.cpp": "ceadfabb72d0431f01c3f1b6bd521625422e2ba263cac9331ad340b9573fcd0c",
+      "reconstruction/engine/crc32.cpp": "0b4b74dfc024326312aaf541f8fc1338d48e882d145519280ca61b83cb2f65a8",
+      "reconstruction/engine/crc32.hpp": "33a4625574736361cf99e5d87166f172e3e993ddb598f2d937012021a66936ef"
+    },
+    "compilers": {
+      "host": "c++ (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+      "sanitizer": "clang version 23.1.3\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/bin",
+      "android_armv7": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)\nTarget: armv7a-unknown-linux-android21\nThread model: posix\nInstalledDir: /opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+    },
+    "commands": "Exact compiler flags and source inputs are in reproduce.*_command. The source CRC dependency is unchanged.",
+    "source_manifest_sha256": "6eaad87de1e83b765aee8d56265a227c68783686bb3c8c4f4f9da544072bfa65"
+  },
+  "machine_code_comparison": {
+    "status": "NOT MATCHED",
+    "reference_wrapper": {
+      "address": "0x8d890c",
+      "size": 24,
+      "sha256": "5f4343a2bdf22e6f1ad0eae861766c0e335600785164737a9835361d9d29d7a5"
+    },
+    "candidate_wrapper": {
+      "address": "0x614",
+      "size": 16,
+      "sha256": "1b7e1e4b69e81302b5b499176ce0ae3a7e544b805dafa7ba823d5e28921a5b12"
+    },
+    "scope": "Exact entire symbol extent compared by size and SHA-256 from respective ELF PT_LOAD data. Size differs (24 vs 16), so exact equality is excluded. No instruction normalization or partial-match claim. Candidate compiled from the recorded source with the recorded Android compiler/flags.",
+    "raw_reference_bytes_included": false
+  }
+}
