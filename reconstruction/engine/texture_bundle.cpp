@@ -18,8 +18,14 @@ TextureError read_texture_bundle(std::vector<std::uint8_t> bytes,TextureBundle& 
         for(std::size_t i=0;i<archive.entries().size();++i)names.push_back({zip_entry_key(archive.entries()[i].local.name,true,true),i});
         sort_zip_lookup(names);bool rgb=false,alpha=false;
         for(const auto& entry:names){
-            if(!rgb && entry.key.compare(0,3,"rgb")==0)rgb=archive.read_index(entry.archive_index,next.rgb.bytes)==ArchiveError::ok;
-            else if(!alpha && entry.key.compare(0,5,"alpha")==0)alpha=archive.read_index(entry.archive_index,next.alpha.bytes)==ArchiveError::ok;
+            if(!rgb && entry.key.compare(0,3,"rgb")==0){
+                if(archive.read_index(entry.archive_index,next.rgb.bytes)!=ArchiveError::ok)return TextureError::split;
+                rgb=true;
+            }else if(!alpha && entry.key.compare(0,5,"alpha")==0){
+                if(archive.read_index(entry.archive_index,next.alpha.bytes)!=ArchiveError::ok)return TextureError::split;
+                alpha=true;
+            }
+            if(rgb && alpha)break;
         }
         if(!rgb || !alpha)return TextureError::split;
         if(read_etc1_pvr(next.rgb.bytes.data(),next.rgb.bytes.size(),next.rgb.image)!=PvrError::ok ||
