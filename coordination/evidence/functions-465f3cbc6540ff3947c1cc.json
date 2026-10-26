@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "task_id": 33,
+  "task_key": "functions-465f3cbc6540ff3947c1cc",
+  "round": 1,
+  "result": "PARTIAL: two new portable PVR computations, existing header predicate and ETC1 branch reused; complete native functions remain unverified",
+  "matching": "NOT MATCHED",
+  "verification_grade": "behavioural",
+  "verification_scope": "Only the explicitly bounded per-function scopes below. No complete-function, ARM ABI, GPU, APK or gameplay equivalence claim.",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "sha256_checked": true,
+    "size_bytes": 18696442,
+    "architecture": "ARM32 little-endian EABI5",
+    "local_read_only_path": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "provenance": "SHA256 computed from the local reference; ELF .symtab STT_FUNC address/size/name metadata rechecked with readelf -Ws. No original instruction bytes or decompiler dumps are included.",
+    "input_availability": "The task message said no reference was provided. A matching read-only local reference was discovered at the project's documented path."
+  },
+  "counts": {
+    "inventoried_requested_functions": 4,
+    "new_source_computations": 2,
+    "fully_reconstructed_native_functions": 0,
+    "source_owned_existing_modules_reused": 2,
+    "original_arm_comparisons_by_entry": {
+      "0x00781c78": 5810,
+      "0x00781e08": 5810,
+      "0x007914a4": 240,
+      "0x007a5088": 3202
+    },
+    "matching_native_functions": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x00781c78",
+      "size_bytes": 400,
+      "thumb": false,
+      "symbol": "glitch::video::(anonymous namespace)::readPVRHeader",
+      "state": "TESTED",
+      "coverage": "PARTIAL",
+      "matching": "NOT MATCHED",
+      "source": "reconstruction/engine/pvr_texture.cpp",
+      "source_change": "Existing valid_pvr_v2_header implementation preserved and reused.",
+      "evidence": "5810 synthetic original ARM acceptance results equal the existing source predicate. Includes short input, all 256 format values, flag combinations, cube/volume/mipmap dimensions, overflow and deterministic corrupt metadata.",
+      "excluded": [
+        "Original IReadFile virtual ABI and actual I/O side effects",
+        "Header destination mutation on partial read",
+        "Filename lookup and diagnostic messages",
+        "Full function equivalence"
+      ]
+    },
+    {
+      "address": "0x00781e08",
+      "size_bytes": 1136,
+      "thumb": false,
+      "symbol": "glitch::video::CImageLoaderPVR::loadTextureHeader",
+      "state": "TESTED",
+      "coverage": "PARTIAL",
+      "matching": "NOT MATCHED",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp",
+      "reconstructed_entry": "nova3::recovered::pvr::load_texture_header",
+      "evidence": "5810 original ARM comparisons of return value and every byte of the 32-byte texture descriptor. Includes partial writes on errors, reserved storage, 34 recognized format values, alpha variants, layout rejection and cube-size multiplication with ARM32 wraparound.",
+      "exclusions": [
+        "IReadFile seek/read/getSize/getFileName dispatch is modeled, not rebuilt with the original ABI",
+        "Original logging text and side effects",
+        "Complete native enum names and class definitions are not recovered"
+      ],
+      "uncertain_names": "type_code, format_code and layout_code deliberately retain neutral numeric names. TextureDescription is a portable API with observed fields, not a recovered game class."
+    },
+    {
+      "address": "0x007914a4",
+      "size_bytes": 18796,
+      "thumb": false,
+      "symbol": "glitch::video::pixel_format::convert",
+      "state": "TESTED",
+      "coverage": "PARTIAL",
+      "matching": "NOT MATCHED",
+      "source": "reconstruction/engine/etc1.cpp",
+      "source_change": "Existing decode_etc1 implementation preserved; no new converter implementation is claimed.",
+      "evidence": "240 new synthetic original ARM comparisons for valid ETC1 format 29 -> RGB8 format 10, explicit nonzero source/destination pitches, dimensions divisible by 4, individual/differential blocks and both Y directions. Pixel bytes match; native destination padding and trailing canaries stay intact. No code hooks or helper substitutions are reached on this original path.",
+      "exclusions": [
+        "Other source/destination formats: NOT RECONSTRUCTED here",
+        "Original bool/strided-buffer ABI differs from source vector API",
+        "Zero pitch, tiny crops and malformed blocks excluded from these native comparisons",
+        "Full convert function equivalence"
+      ]
+    },
+    {
+      "address": "0x007a5088",
+      "size_bytes": 292,
+      "thumb": false,
+      "symbol": "glitch::video::CImageLoaderPVR::loadTextureData",
+      "state": "TESTED",
+      "coverage": "PARTIAL",
+      "matching": "NOT MATCHED",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp",
+      "reconstructed_entry": "nova3::recovered::pvr::load_texture_data",
+      "evidence": "3202 original ARM comparisons of wrapper return, selection/load dispatch counts and DataInfo getter results. Native CDataInfo getter functions execute unchanged. Tests include header failures, size mismatch, cube/volume flags, invalid format, mip choices -1 through 257, bpp arithmetic overflow, file-size underflow and delegate failure propagation.",
+      "dependencies": [
+        {
+          "address": "0x0077f604",
+          "name": "IImageLoader::getMipmapToLoad",
+          "status": "External DataLoadServices selection dependency; modeled in tests, implementation not recovered here"
+        },
+        {
+          "address": "0x007a4988",
+          "name": "IImageLoader::loadData",
+          "status": "External DataLoadServices load dependency; argument/result boundary tested, real file/texture loading not implemented here"
+        }
+      ],
+      "excluded": [
+        "Actual generic texture upload and ITexture ownership",
+        "Original file/class/vtable ABI",
+        "Original dependency semantics beyond modeled callback contracts",
+        "Unbounded selector values; 0xfffffffe exhausts the native probe instruction budget"
+      ]
+    }
+  ],
+  "recovered_rules": [
+    "loadTextureHeader sets type/depth, dimensions, layout and the one-byte mip flag before checking file size; reserved word and padding remain unchanged.",
+    "Cube flag 0x1000 takes precedence over volume flag 0x4000 and expects six payloads; expected size uses wrapping 32-bit arithmetic.",
+    "The descriptor mip flag uses flag 0x100; the data wrapper instead branches on the header's mip-count field.",
+    "Flag 0x8000 selects alpha variants for applicable compressed-format codes.",
+    "Flag 0x200 writes layout code 3 and rejects mapped formats outside codes 17..31, after writing the format code.",
+    "Data wrapper uses actual file size minus 52 and skipped-byte offset, rather than the header's declared payload length.",
+    "Skipped mip bytes use wrapping width*height*bpp before shifting right three; width/height halve with a minimum of one after each iteration.",
+    "DataInfo reports file pitch zero, little endian true and needsFlip false in the tested paths.",
+    "A selector result of 0xffffffff fails; large other results are not clamped."
+  ],
+  "source_sha256": "2b40bcc50920c0872dce9dd78912980f42030b5bac6764ac893cd29b41ec4361",
+  "source_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp": "2b40bcc50920c0872dce9dd78912980f42030b5bac6764ac893cd29b41ec4361",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_00781c78_test.cpp": "84ecc4ef0ceb369fa073b014546ed1c9ec019dfe077264b76b732cd04e5914bf",
+    "reconstruction/engine/pvr_texture.cpp": "437816b735d02e8946878c65207a602614670b436b13c0ce24bbf83220cb6016",
+    "reconstruction/engine/pvr_texture.hpp": "4f5da9154ad02486f2515016949fae32a532a65618b39c81bab8667cb28fc320",
+    "reconstruction/engine/etc1.cpp": "896be0a5fc36f47e4800d66631e54e8bab12d7bb2f8b87b4b782c5cd315f73c2",
+    "reconstruction/engine/etc1.hpp": "c1cfad2112f56bd7299e3d5489fb3d2be73d34516e2caa333701e6f9d6942c95"
+  },
+  "toolchain": {
+    "compiler_version": "c++ (GCC) 16.2.1 20260810",
+    "flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "target": "x86_64-pc-linux-gnu",
+    "sanitizer_compiler_version": "clang version 23.1.3",
+    "sanitizer_flags": [
+      "-std=c++17",
+      "-O1",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-fno-pie",
+      "-no-pie"
+    ],
+    "python_version": "3.14.8",
+    "unicorn_version": "2.1.4",
+    "pyelftools_version": "0.33",
+    "reference_python": "/home/jason/Projects/nova3_re/.venv/bin/python"
+  },
+  "checks": [
+    {
+      "name": "independent production translation unit compilation",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp -o /tmp/nova3-task33-block.o",
+      "exit_code": 0
+    },
+    {
+      "name": "GCC standalone test build",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_00781c78_test.cpp reconstruction/engine/pvr_texture.cpp reconstruction/engine/etc1.cpp -o /tmp/nova3-task33-test",
+      "exit_code": 0
+    },
+    {
+      "name": "synthetic unit tests including ETC1 smoke vector",
+      "command": "/tmp/nova3-task33-test",
+      "exit_code": 0
+    },
+    {
+      "name": "GCC local original ARM differential tests",
+      "command": "/tmp/nova3-task33-test --oracle /home/jason/Projects/nova3_re/.venv/bin/python /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "exit_code": 0,
+      "predicate_cases": 5810,
+      "descriptor_cases": 5810,
+      "data_dispatch_cases": 3202,
+      "etc1_pixel_cases": 240,
+      "transcript_sha256": "af885d97d3a409ec7ae9cd631f618e6fdf73e95885e3a85f34b7b89e0dcf94f0"
+    },
+    {
+      "name": "Clang ASan/UBSan test build",
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_00781c78_test.cpp reconstruction/engine/pvr_texture.cpp reconstruction/engine/etc1.cpp -o /tmp/nova3-task33-sanitize",
+      "exit_code": 0
+    },
+    {
+      "name": "Clang ASan/UBSan synthetic tests",
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task33-sanitize",
+      "exit_code": 0
+    },
+    {
+      "name": "Clang ASan/UBSan original ARM differential tests",
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task33-sanitize --oracle /home/jason/Projects/nova3_re/.venv/bin/python /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "exit_code": 0,
+      "transcript_sha256": "af885d97d3a409ec7ae9cd631f618e6fdf73e95885e3a85f34b7b89e0dcf94f0",
+      "limitations": "Leak detection disabled only for these processes because LeakSanitizer cannot operate under this sandbox's tracing restrictions."
+    },
+    {
+      "name": "existing ETC1 regression test rebuilt independently",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -Ireconstruction/engine reconstruction/tests/etc1_test.cpp reconstruction/engine/etc1.cpp -o /tmp/nova3-task33-etc1-test && /tmp/nova3-task33-etc1-test",
+      "exit_code": 0
+    },
+    {
+      "name": "mismatched-reference rejection",
+      "command": "/tmp/nova3-task33-test --oracle /home/jason/Projects/nova3_re/.venv/bin/python /tmp/nova3-task33-test",
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "Reference SHA256 mismatch; refusing oracle"
+    }
+  ],
+  "machine_code_comparison": {
+    "status": "NOT MATCHED",
+    "performed": false,
+    "evidence": null,
+    "reason": "The new computation APIs were host-compiled; target ARM compiler/ABI output was not compared to original instructions. Behavioral comparisons do not establish a byte match."
+  },
+  "failures_and_corrections": [
+    "Initial texture-header probe faulted on an unmodeled IReadFile getSize virtual slot. Added the observed slot 0x20 to the analysis model; all retained reference runs returned to their expected stop address.",
+    "A source assumption that all negative selector values fail was disproved: 0xfffffffe exhausted a 20000-instruction probe budget, while 0xffffffff failed immediately. Source now preserves the explicit sentinel and unsigned loop; unbounded values are not included in completed behavioral coverage.",
+    "Differential tests disproved use of flag 0x100 for data dispatch and use of declared payload for remaining bytes. Corrected to header mip count and actual file size respectively, then reran all retained cases.",
+    "LeakSanitizer failed after unit tests because tracing/ptrace restrictions prevent its operation. No host settings changed. ASan/UBSan and all reference comparisons subsequently passed with detect_leaks=0."
+  ],
+  "source_only": {
+    "production_build_requires_originals": false,
+    "ordinary_tests_require_originals": false,
+    "optional_oracle_requires_local_reference": true,
+    "new_third_party_runtime_dependencies": [],
+    "existing_source_dependencies": [
+      "reconstruction/engine/pvr_texture.cpp",
+      "reconstruction/engine/etc1.cpp"
+    ],
+    "original_code_or_assets_embedded": false,
+    "final_apk_certification": "NOT PERFORMED: no APK build in this bounded task",
+    "network_access": false,
+    "host_configuration_changes": false
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_00781c78_test.cpp",
+      "coordination/evidence/functions-465f3cbc6540ff3947c1cc.json"
+    ],
+    "integration": "Not added to CMake: CMakeLists.txt and a public header are outside allowed paths. The standalone test includes the new implementation and links existing source modules. Existing files are unchanged.",
+    "blockers": [
+      "Full generic image loading requires 0x007a4988 and mip selection 0x0077f604",
+      "Most branches of the 18796-byte convert function remain unreconstructed",
+      "Original class ABI, actual file I/O/logging and GPU behavior remain outside proof"
+    ],
+    "next_attempts": [
+      "Assign bounded recovery of 0x0077f604 and 0x007a4988, preserving this tested orchestration.",
+      "Authorize a header/CMake integration path for the portable PVR APIs.",
+      "Expand convert through another evidence-backed pixel-format branch with independent reference cases."
+    ],
+    "complete_native_functions": 0,
+    "gameplay_status": "No gameplay or renderer produced by this slice"
+  }
+}
