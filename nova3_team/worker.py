@@ -95,6 +95,32 @@ def validate_scope(work,allowed):
     return changed
 
 
+# NOVA_PR_OWNER_FIX_V1: distinguish a real fork from a redirected old repository URL.
+def canonical_repo_name(requested):
+    cp=run(['gh','repo','view',requested,'--json','nameWithOwner','--jq','.nameWithOwner'],
+           timeout=90,check=False)
+    if cp.returncode!=0 or not cp.stdout.strip():
+        return None
+    return cp.stdout.strip()
+
+
+def can_push_to_repo(upstream):
+    cp=run(['gh','api',f'repos/{upstream}','--jq','.permissions.push'],timeout=90,check=False)
+    return cp.returncode==0 and cp.stdout.strip().lower()=='true'
+
+
+def pr_head(upstream,account,branch):
+    """Use bare branch for upstream branches, user:branch for genuine forks."""
+    resolved=canonical_repo_name(account)
+    if not resolved:
+        raise RuntimeError(f'Cannot resolve GitHub head repository {account}; check access')
+    if resolved.casefold()==upstream.casefold():
+        return branch
+    if resolved.casefold()!=account.casefold():
+        raise RuntimeError(f'Fork address {account} redirects to {resolved}; cannot submit as a fork')
+    return f'{resolved.split("/",1)[0]}:{branch}'
+
+
 def prepare_checkout(upstream,user,root,issue):
     state=recovery.resume_info(root, issue['number'], upstream, user)
     if state is not None:
@@ -105,13 +131,24 @@ def prepare_checkout(upstream,user,root,issue):
             note(f'Reusing saved checkout {work} (no files reset)')
             return work,branch,state['account']
         raise RuntimeError(f'Saved checkout {work} is on an unexpected branch; refusing to overwrite')
-    name=upstream.split('/')[-1];owner=upstream.split('/')[0]
-    account=upstream if user==owner else f'{user}/{name}'
-    if user!=owner:
-        cp=run(['gh','repo','view',account,'--json','name'],check=False)
-        if cp.returncode:
-            note(f'Creating fork {account}')
-            run(['gh','repo','fork',upstream,'--clone=false'],timeout=180)
+    name=upstream.split('/')[-1]
+    # Owner/maintainer with write access can submit branches directly to the upstream.
+    # Read-only contributors must have a real fork, NOT a redirect from a transfer.
+    if can_push_to_repo(upstream):
+        account=upstream
+    else:
+        account=f'{user}/{name}'
+        resolved=canonical_repo_name(account)
+        if not resolved or resolved.casefold()!=account.casefold():
+            if resolved:
+                note(f'{account} resolves to {resolved}; that is not a fork')
+            note(f'Creating contributor fork {account}')
+            cp=run(['gh','repo','fork',upstream,'--clone=false'],timeout=180,check=False)
+            if cp.returncode:
+                raise RuntimeError('Unable to create a private fork. Check the organisation fork policy and contributor access. '+(cp.stderr or '')[-350:])
+            resolved=canonical_repo_name(account)
+            if not resolved or resolved.casefold()!=account.casefold():
+                raise RuntimeError(f'Expected fork {account}, but GitHub resolves it to {resolved!r}. Refusing to push to the wrong repository.')
     work=root/(str(issue['number'])+'-'+uuid.uuid4().hex[:6])
     work.parent.mkdir(parents=True,exist_ok=True)
     run(['gh','repo','clone',account,str(work),'--','--quiet'], timeout=180)
@@ -244,19 +281,25 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
             recovery.update(root,n,phase='pushed')
         current=recovery.load(root,n)
         if current.get('phase')=='pushed':
-            # Look for a PR if the previous process died after creating one.
-            existing=run(['gh','pr','list','--repo',upstream,'--head',f'{user}:{branch}',
+            # GitHub redirects old owner paths after a repository transfer. Resolve
+            # the ACTUAL owner of the pushed branch before creating a PR.
+            head=pr_head(upstream,account,branch)
+            remote=git(work,'ls-remote','--heads','origin',branch,check=False)
+            if remote.returncode or not remote.stdout.strip():
+                raise RuntimeError(f'Pushed branch {branch} is missing from origin; refusing to invent a PR')
+            note(f'#{n} PR source: {head} -> {upstream}:main')
+            existing=run(['gh','pr','list','--repo',upstream,'--head',head,
                           '--state','all','--json','url'],cwd=work,timeout=90).stdout
             prs=json.loads(existing or '[]')
             if prs:
                 pr=prs[0]['url']
             else:
                 desc=f'Refs #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
-                args=['gh','pr','create','--repo',upstream,'--head',f'{user}:{branch}',
+                args=['gh','pr','create','--repo',upstream,'--head',head,
                       '--base','main','--title',f'#{n}: {issue["title"]}','--body',desc]
                 if not verified:args.append('--draft')
                 pr=run(args,cwd=work,timeout=120).stdout.strip()
-            recovery.update(root,n,phase='pr_created',pr=pr)
+            recovery.update(root,n,phase='pr_created',pr=pr,retry_after=0,pr_failures=0)
         current=recovery.load(root,n)
         if current.get('phase')=='pr_created':
             gh.comment(n,f'/nova submitted {token} {current["pr"]}')
@@ -266,8 +309,16 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
         return False
     except Exception as e:
         note(f'FAILED #{n}: {e}')
+        # Keep phase='pushed' or phase='committed' to resume submission WITHOUT
+        # wasting another model session. Bounded exponential cooldown stops loops.
+        state=recovery.load(root,n)
+        count=int(state.get('pr_failures',0))+1
+        delay=min(3600,300*(2**min(count-1,4)))
+        recovery.update(root,n,pr_failures=count,retry_after=int(time.time())+delay,
+                        last_error=str(e)[:700])
+        note(f'#{n} paused for {delay//60} minutes after repeated failure; saved source untouched')
         try:
-            gh.comment(n, f'Worker failure ({provider}, {user}): {str(e)[:400]}; preserving local checkout for resumption.')
+            gh.comment(n, f'Worker failure ({provider}, {user}): {str(e)[:400]}; preserving local checkout for resumption. Paused to avoid retry loop.')
             gh.comment(n,f'/nova release {token}')
         except Exception:pass
         return False
@@ -308,6 +359,7 @@ def main():
                             and lease and lease_active(lease) and lease.get('owner')==user
                             and lease.get('token')==previous.get('token')):
                         issues.append(i)
+            issues=[i for i in issues if float(recovery.load(root,i['number']).get('retry_after',0))<=time.time()]
             issues.sort(key=lambda i:(0 if 'nova:claimed' in label_names(i) else 1,-int(next((line.split(':',1)[1].strip() for line in i.get('body','').splitlines() if line.startswith('Priority:')),'50')),i['number']))
             if not issues:note('No queued tasks. Polling again.')
             else:
