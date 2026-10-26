@@ -25,6 +25,13 @@ binary bytes, local paths or incoming non-call references enter the ledger.
 
 Ordering is deterministic. Records remain INVENTORIED; inventory_complete is
 always false. This format makes no reconstruction or machine-code match claim.
+
+``--format coordination`` emits only allowlisted reference/boundary metadata for
+coordination/function_ledger.json and autofeed. It requires matching Ghidra
+records with a reported byte mapping check and version. Zero sizes, conflicting
+sizes/modes, overlapping extents and missing evidence are excluded, not guessed.
+ELF and Ghidra symbol bounds are not independent proofs of behaviour or even of
+all instruction boundaries: boundary_status remains tool_identified.
 """
 from __future__ import annotations
 
@@ -39,8 +46,14 @@ from collections.abc import Iterable, Mapping
 
 
 SCHEMA = "nova3.function-ledger/1"
-EXPORTER_VERSION = "1"
+EXPORTER_VERSION = "2"
 _U32 = (1 << 32) - 1
+MAX_EXPORTS = 100_000
+MAX_EXPORT_BYTES = 4 * 1024 * 1024
+MAX_TOTAL_EXPORT_BYTES = 64 * 1024 * 1024
+MAX_PUBLISHED_FUNCTION_SIZE = 1024 * 1024
+_LIBRARY = re.compile(r"lib[a-zA-Z0-9_+.-]{1,70}\.so\Z")
+_TOOL_VERSION = re.compile(r"[0-9]+(?:\.[0-9]+){1,3}\Z")
 
 
 class LedgerError(ValueError):
@@ -272,15 +285,145 @@ def build_ledger(data: bytes, ghidra_exports: Iterable[Mapping] = ()) -> dict:
     return ledger
 
 
+def build_coordination_ledger(data: bytes, *, library: str,
+                              ghidra_exports: Iterable[Mapping] = ()) -> dict:
+    """Return feeder-compatible metadata, never names, calls, paths or code.
+
+    The reference hash is calculated from local ELF bytes, not trusted from a
+    filename or export directory. Ghidra hash/mode/rebase/name/size checks use
+    build_ledger. Its byte mapping flag is still only a tool report. A matching
+    export may derive its size from the same ELF symbol; this is NOT independent
+    boundary verification. Every accepted record remains INVENTORIED/NOT MATCHED.
+
+    Missing/ambiguous evidence is counted and omitted. Malformed or mismatched
+    evidence fails the entire operation; callers never receive partial output.
+    """
+    if not isinstance(library, str) or not _LIBRARY.fullmatch(library):
+        raise LedgerError("library must be a lib*.so basename")
+    private = build_ledger(data, ghidra_exports)
+    functions = private["functions"]
+    # Mark every participant in intersecting symbol extents, in O(n log n).
+    # Zero-length symbols are unknown bounds and do not establish an overlap.
+    overlaps = set()
+    furthest_end = -1
+    furthest_id = None
+    for function in sorted(functions, key=lambda f: (f["address"], f["thumb"])):
+        if not function["size"]:
+            continue
+        if function["address"] < furthest_end:
+            overlaps.update((furthest_id, function["id"]))
+        end = function["address"] + function["size"]
+        if end > furthest_end:
+            furthest_end, furthest_id = end, function["id"]
+    modes = {}
+    for function in functions:
+        modes.setdefault(function["address"], set()).add(function["thumb"])
+    excluded = {}
+    rows = []
+    for function in functions:
+        sources = function["call_sources"]
+        reason = None
+        if function["size_conflict"]:
+            reason = "conflicting_sizes"
+        elif len(modes[function["address"]]) != 1:
+            reason = "conflicting_modes"
+        elif not function["size"]:
+            reason = "unknown_size"
+        elif function["size"] > MAX_PUBLISHED_FUNCTION_SIZE:
+            reason = "oversized"
+        elif function["id"] in overlaps:
+            reason = "overlapping_extents"
+        elif (function["address"] % (2 if function["thumb"] else 4)
+              or function["size"] % (2 if function["thumb"] else 4)):
+            reason = "unaligned_extent"
+        elif not sources:
+            reason = "missing_ghidra"
+        elif any(s["byte_mapping_reported_validated"] is not True for s in sources):
+            reason = "unconfirmed_mapping"
+        elif any(not isinstance(s["ghidra_version"], str)
+                 or not _TOOL_VERSION.fullmatch(s["ghidra_version"]) for s in sources):
+            reason = "missing_tool_version"
+        if reason:
+            excluded[reason] = excluded.get(reason, 0) + 1
+            continue
+        rows.append({"reference_sha256": private["binary"]["sha256"],
+                     "address": function["address"], "size": function["size"],
+                     "thumb": function["thumb"], "boundary_status": "tool_identified",
+                     "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+                     "boundary_evidence": {
+                         "elf_symbol_type": "STT_FUNC",
+                         "ghidra_versions": sorted({s["ghidra_version"] for s in sources}),
+                         "byte_mapping": "reported_validated"},
+                     "state": "INVENTORIED", "status": "pending",
+                     "matching": "NOT MATCHED"})
+    binary = private["binary"]
+    return {"schema_version": 1,
+            "exporter": {"name": "nova3_team.indexer", "version": EXPORTER_VERSION},
+            "references": [{"library": library, "sha256": binary["sha256"],
+                            "architecture": binary["architecture"],
+                            "elf_class": binary["elf_class"],
+                            "endianness": binary["endianness"],
+                            "elf_type": binary["elf_type"]}],
+            "functions": rows,
+            "statistics": {"elf_function_count": len(functions),
+                           "functions_with_ghidra_exports": private["coverage"]["functions_with_call_exports"],
+                           "boundaries_extracted": len(rows), "excluded": excluded,
+                           "inventory_complete": False},
+            "notes": "Tool-identified metadata only; Ghidra bounds may derive from ELF symbols. "
+                     "NOT MATCHED; no behavioural equivalence or complete function census claimed."}
+
+
+def _json_object(pairs: list[tuple]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise LedgerError("duplicate Ghidra JSON object key")
+        result[key] = value
+    return result
+
+
+def _read_exports(paths: Iterable[Path]) -> Iterable[Mapping]:
+    total = 0
+    for count, path in enumerate(paths, 1):
+        if count > MAX_EXPORTS:
+            raise LedgerError("too many Ghidra exports")
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_EXPORT_BYTES + 1)
+        total += len(raw)
+        if len(raw) > MAX_EXPORT_BYTES or total > MAX_TOTAL_EXPORT_BYTES:
+            raise LedgerError("Ghidra JSON input exceeds size limit")
+        try:
+            yield json.loads(raw, object_pairs_hook=_json_object)
+        except (ValueError, UnicodeError, RecursionError):
+            raise LedgerError("invalid Ghidra JSON object") from None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("binary", type=Path, help="local ARM32 ELF (read only)")
     parser.add_argument("--ghidra-export", type=Path, action="append", default=[],
                         help="local export_batch.py JSON; repeat for multiple records")
+    parser.add_argument("--ghidra-directory", type=Path,
+                        help="read *.json records in one local export directory (not recursively)")
+    parser.add_argument("--format", choices=("private", "coordination"), default="private",
+                        help="private symbol inventory (default), or allowlisted feeder metadata")
+    parser.add_argument("--library", help="lib*.so basename for coordination metadata (defaults to binary basename)")
     args = parser.parse_args(argv)
     try:
-        records = [json.loads(path.read_text(encoding="utf-8")) for path in args.ghidra_export]
-        ledger = build_ledger(args.binary.read_bytes(), records)
+        paths = list(args.ghidra_export)
+        if args.ghidra_directory is not None:
+            if not args.ghidra_directory.is_dir():
+                raise LedgerError("Ghidra export directory is unavailable")
+            paths.extend(sorted(args.ghidra_directory.glob("*.json")))
+        records = _read_exports(paths)
+        data = args.binary.read_bytes()
+        if args.format == "coordination":
+            ledger = build_coordination_ledger(data, library=args.library or args.binary.name,
+                                               ghidra_exports=records)
+            if not ledger["functions"]:
+                raise LedgerError("no publishable ELF/Ghidra boundaries; keep prerequisite BLOCKED")
+        else:
+            ledger = build_ledger(data, records)
     except (OSError, ValueError, UnicodeError) as exc:
         parser.exit(2, f"indexer: {exc}\n")
     json.dump(ledger, sys.stdout, indent=2, sort_keys=True, ensure_ascii=True)

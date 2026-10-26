@@ -1,0 +1,1148 @@
+{
+  "exporter": {
+    "name": "nova3_team.indexer",
+    "version": "2"
+  },
+  "functions": [
+    {
+      "address": 866800,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 80,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 910028,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 84,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2746288,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 12,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2769816,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 688,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2806852,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 984,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2808216,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 2188,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2814228,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 408,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2814636,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 792,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2815428,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 756,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 2816184,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 28,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 4265240,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 172,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 4265488,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 84,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 4266380,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 608,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 4267968,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1904,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 4269872,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1424,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 6932208,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1676,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 6977804,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 2872,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 6980676,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 212,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7014696,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 372,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7085440,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1924,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7121056,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1148,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7122204,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 692,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7176032,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1140,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7178376,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1380,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7405920,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 28,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7405948,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7406360,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 24,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7406412,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 28,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7406440,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 24,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7407360,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7423660,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 96,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7423852,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 96,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7464040,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 68,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7489804,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 576,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7600132,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 148,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7632936,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 372,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7647816,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 2176,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7783412,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 128,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7852924,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 80,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7853004,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 112,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7871608,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 400,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7872008,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1136,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 7935140,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 18796,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8016008,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 292,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8066016,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1920,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8068588,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 332,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8096116,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8096132,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8376000,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 444,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8377044,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 332,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8377376,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1060,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8457604,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1096,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8493176,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 1632,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8494808,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 76,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 8502560,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 160,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9216192,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 48,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9216240,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9230324,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 140,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9239288,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 76,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9239364,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 52,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9239416,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 2356,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 9275660,
+      "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
+      "boundary_evidence": {
+        "byte_mapping": "reported_validated",
+        "elf_symbol_type": "STT_FUNC",
+        "ghidra_versions": [
+          "12.1.2"
+        ]
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 24,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    }
+  ],
+  "notes": "Tool-identified metadata only; Ghidra bounds may derive from ELF symbols. NOT MATCHED; no behavioural equivalence or complete function census claimed.",
+  "references": [
+    {
+      "architecture": "ARM",
+      "elf_class": 32,
+      "elf_type": "ET_DYN",
+      "endianness": "little",
+      "library": "libNOVA3_neon.so",
+      "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf"
+    }
+  ],
+  "schema_version": 1,
+  "statistics": {
+    "boundaries_extracted": 62,
+    "elf_function_count": 39092,
+    "excluded": {
+      "conflicting_sizes": 2,
+      "missing_ghidra": 38999,
+      "overlapping_extents": 16,
+      "unknown_size": 13
+    },
+    "functions_with_ghidra_exports": 62,
+    "inventory_complete": false
+  }
+}
