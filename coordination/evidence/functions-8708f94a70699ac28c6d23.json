@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "task": 35,
+  "task_key": "functions-8708f94a70699ac28c6d23",
+  "status": "PARTIAL",
+  "verification_grade": "tested",
+  "matching_claim": "NOT MATCHED",
+  "whole_function_equivalence": "UNVERIFIED",
+  "summary": "Checked in-memory adapter for existing source-owned ZIP primitives. Adds scan-to-sorted-entry integration and returns sorted vector positions from find_file. No original class ABI reconstruction or machine-code match is claimed.",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_verified_this_session": true,
+    "hash_unchanged_after_oracle": true,
+    "architecture": "ELF32 little-endian ARM, EABI5",
+    "discovery": "Absent from disposable checkout; present in existing /home/jason/Projects/nova3_re. Read-only local analysis and offline test-oracle use.",
+    "relative_path": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "boundaries_checked_against": "ELF .symtab STT_FUNC values and sizes using pyelftools 0.33",
+    "local_ghidra_metadata": {
+      "version": "12.1.2",
+      "byte_mapping_validated_field": true,
+      "image_base_adjustment": "0x10000; metadata call edges use Ghidra addresses, task boundaries are ELF addresses",
+      "new_decompilation_performed": false,
+      "contents_redistributed": false
+    }
+  },
+  "functions": [
+    {
+      "address": "0x007fcec0",
+      "size": 444,
+      "mode": "ARM",
+      "operation": "find_file",
+      "scope": "Logical C-string query normalization and first-equal lower_bound, returning the sorted vector position. Uses existing zip_query_key.",
+      "status": "PARTIAL",
+      "scope_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "oracle_cases": 136,
+      "excluded": "Native COW ownership, object layout, 32-bit return ABI, allocation/refcounts/exceptions. Null rejection is added policy."
+    },
+    {
+      "address": "0x007fd2d4",
+      "size": 332,
+      "mode": "ARM",
+      "operation": "extract_filename",
+      "scope": "Logical entry key: ASCII-only case folding and slash-only basename with separator-at-zero preservation. Uses existing zip_entry_key.",
+      "status": "PARTIAL",
+      "scope_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "oracle_cases": 48,
+      "excluded": "Original filename-length field, buffer/string construction, additional entry string fields and COW ownership."
+    },
+    {
+      "address": "0x007fd420",
+      "size": 1060,
+      "mode": "ARM",
+      "operation": "scan_local_header",
+      "scope": "Checked contiguous classic local-header subset via existing parse_zip_local, with cursor advancement and normalized key.",
+      "status": "PARTIAL",
+      "scope_grade": "tested",
+      "matching_claim": "NOT MATCHED",
+      "original_scanner_comparison": "UNVERIFIED; the offline ARM lookup oracle hooks this entire function to return zero",
+      "excluded": "Original stream/vector/COW ABI, descriptor/encryption/ZIP64 forms, CRC/decompression, malformed-input parity, central-directory validation."
+    },
+    {
+      "address": "0x00810d84",
+      "size": 1096,
+      "mode": "ARM",
+      "operation": "init",
+      "scope": "Checked scan loop plus metadata-preserving entry permutation using existing native-policy heapsort.",
+      "status": "PARTIAL",
+      "scope_grade": "tested; sorting sub-operation behavioural",
+      "matching_claim": "NOT MATCHED",
+      "sort_oracle_cases": 1096,
+      "whole_init_comparison": "UNVERIFIED",
+      "excluded": "Stream lifecycle, option packing/third parameter, original scan loop/exception handling, allocation/refcounts and full ZIP archive validation."
+    }
+  ],
+  "implementation": {
+    "source": "reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp",
+    "test": "reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp",
+    "source_sha256": "f02b9fad7fe2a6a30e89ba6c2442ed381ecc4f5dec8e90b5c5c3468bdc8da3a9",
+    "test_sha256": "2a2158b1c845b4869cde84a0108fe48910c243ce38839cef6dc87cc471343922",
+    "dependency_sha256": {
+      "reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp": "f02b9fad7fe2a6a30e89ba6c2442ed381ecc4f5dec8e90b5c5c3468bdc8da3a9",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp": "2a2158b1c845b4869cde84a0108fe48910c243ce38839cef6dc87cc471343922",
+      "reconstruction/engine/zip_lookup.cpp": "b15436b437c437356618780071c9061110e9814a1f5c78a8016286f7b6a20ba9",
+      "reconstruction/engine/zip_lookup.hpp": "50f306837babd455a8b623af0c2676f75494ae8d87cb6e42558b1f75d7cd0375",
+      "reconstruction/engine/zip_local.cpp": "19b004ef2233467fe948f8a7bc1f04872347fd44402669af5aa4ea75bbcf54df",
+      "reconstruction/engine/zip_local.hpp": "4583503ffb7b7bad0260b84cce70e92f01b1f1bcef73e499e68c1834d41e8742"
+    },
+    "integration": "Standalone compilation. Tests include the block .cpp because no public header or build-system path was allocated. Do not also link a separately compiled block object into that test executable.",
+    "runtime_inputs": "Owned C++ source and standard C++ library only; no reference ELF/APK/OBB, copied executable bytes, or oracle dependencies.",
+    "new_engine_algorithms_claimed": false,
+    "owned_safety_policy": [
+      "Reject null nonempty buffers, unsafe names, unsupported formats, truncated/bounds-invalid records and entry-limit excess.",
+      "Preserve output entry/cursor on returned errors; preserve previous index on rebuild failure.",
+      "Stop at local-stream EOF or central/EOCD signature without validating the remaining archive.",
+      "Use host-size sentinel for logical lookup failure; oracle CLI converts it to original uint32 0xffffffff."
+    ]
+  },
+  "build_provenance": {
+    "host_compiler": "/usr/bin/c++: GCC 16.2.1 20260810",
+    "host_flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "sanitizer_compiler": "/usr/bin/clang++: clang 23.1.3, x86_64-pc-linux-gnu",
+    "sanitizer_flags": [
+      "-std=c++17",
+      "-O1",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-fno-pie",
+      "-no-pie"
+    ],
+    "sanitizer_environment": {
+      "ASAN_OPTIONS": "detect_leaks=0"
+    },
+    "arm_compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++",
+    "arm_compiler_version": "Android 13989888 clang 21.0.0, r563880c, llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349",
+    "arm_target": "armv7a-unknown-linux-android21",
+    "arm_flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "assembly_comparison": {
+      "status": "NOT MATCHED",
+      "comparison_performed": false,
+      "reason": "Different portable interface, layout and standard-library ABI. ARM object compilation demonstrates buildability only; no original instruction equality has been established."
+    }
+  },
+  "checks": [
+    {
+      "command": "mkdir -p /tmp/nova3-task35-fbf9e5",
+      "exit_code": 0
+    },
+    {
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp -o /tmp/nova3-task35-fbf9e5/block.o",
+      "exit_code": 0,
+      "meaning": "Independent host object compilation."
+    },
+    {
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp reconstruction/engine/zip_lookup.cpp reconstruction/engine/zip_local.cpp -o /tmp/nova3-task35-fbf9e5/block_test",
+      "exit_code": 0
+    },
+    {
+      "command": "/tmp/nova3-task35-fbf9e5/block_test",
+      "exit_code": 0,
+      "stdout": "PASS: ZIP cluster integration, errors, sorted slots, 3280 exhaustive indexes",
+      "meaning": "Synthetic fixtures, not original-scanner equivalence. Tests stored/deflate metadata, opaque extras/payload skip, offsets, duplicate metadata permutation, first-equal lookup, NUL/high-byte queries, unsupported formats, truncations, limits and rollback."
+    },
+    {
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp reconstruction/engine/zip_lookup.cpp reconstruction/engine/zip_local.cpp -o /tmp/nova3-task35-fbf9e5/block_test_sanitized_nopie",
+      "exit_code": 0
+    },
+    {
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task35-fbf9e5/block_test_sanitized_nopie",
+      "exit_code": 0,
+      "meaning": "Same synthetic suite; ASan and UBSan enabled. Leak detection disabled due sandbox limitation."
+    },
+    {
+      "command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp -o /tmp/nova3-task35-fbf9e5/block_armv7.o",
+      "exit_code": 0,
+      "meaning": "Source-only ARMv7 object compilation; not original code matching, linking or device execution."
+    },
+    {
+      "command": "readelf -h /tmp/nova3-task35-fbf9e5/block_armv7.o",
+      "exit_code": 0,
+      "observed": "ELF32, little endian, REL, ARM, Version5 EABI."
+    }
+  ],
+  "offline_behavioural_oracle": {
+    "status": "PASS",
+    "exit_code": 0,
+    "original_executable_used_only_in_offline_test": true,
+    "runtime": "unicorn 2.1.4; pyelftools 0.33; main project .venv/bin/python",
+    "oracle_script": "tools/compare/lookup_evidence.py",
+    "oracle_script_sha256": "b9b959793d4b071fe0c462b592ee306e8c53c188049b234c02be426aaab7cb4d",
+    "counts": {
+      "entry": 48,
+      "query": 136,
+      "sort_existing": 3,
+      "sort_exhaustive": 1093,
+      "total": 1280
+    },
+    "scope": "Original ARM entry/query normalization and lower_bound, plus init post-scan heap permutation with modeled dependencies. Extended sort cases cover every sequence over three nonempty ASCII keys through length six.",
+    "modeled_boundaries": [
+      "COW assignment/substr/comparison/destruction",
+      "allocation/free/atomic/refcount helpers",
+      "scanLocalHeader returns zero to isolate init sorting"
+    ],
+    "not_proven": [
+      "Whole init/scanner behaviour",
+      "Native allocation/ownership/refcount correctness",
+      "Original class layout/ABI",
+      "Exact target machine code",
+      "Device/game runtime functionality"
+    ],
+    "writes": "Existing oracle report write intercepted in memory. No original tree or original files modified.",
+    "reproduce": "Build block_test with commands above. Set NOVA3_REFERENCE_ROOT and NOVA3_TASK35_TEST if different. Run the following Python using the local reference project virtualenv. Requires the pinned existing source-owned oracle script.",
+    "reproduce_python": "import hashlib, itertools, json, os, pathlib, runpy, struct, subprocess\nfrom unittest.mock import patch\nroot = pathlib.Path(os.environ.get('NOVA3_REFERENCE_ROOT', '/home/jason/Projects/nova3_re'))\nexe = os.environ.get('NOVA3_TASK35_TEST', '/tmp/nova3-task35-fbf9e5/block_test')\nscript = root / 'tools/compare/lookup_evidence.py'\nreference = root / 'analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so'\nexpected_hash = '84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf'\nassert hashlib.file_digest(reference.open('rb'), 'sha256').hexdigest() == expected_hash\nassert hashlib.sha256(script.read_bytes()).hexdigest() == 'b9b959793d4b071fe0c462b592ee306e8c53c188049b234c02be426aaab7cb4d'\ncaptured = {}\ndef capture(path, contents, *args, **kwargs):\n    assert path.name == 'lookup_evidence_results.json'\n    captured.update(json.loads(contents))\n    return len(contents)\n# Keep the existing oracle's report entirely in memory; no reference-tree edits.\nwith patch.object(pathlib.Path, 'write_text', capture):\n    original = runpy.run_path(str(script), run_name='__task35_oracle__')\ncounts = {'entry': 0, 'query': 0, 'sort_existing': 0, 'sort_exhaustive': 0}\nfor case in captured['cases']:\n    if case['kind'] == 'entry':\n        actual = subprocess.check_output([exe, 'entry', str(case['flags']), case['name']], text=True).strip()\n        assert actual == case['key']\n    else:\n        actual = int(subprocess.check_output([exe, 'find', str(case['flags']), case['name'], *case['keys']], text=True))\n        assert actual == case['index']\n    counts[case['kind']] += 1\nfor case in captured['sort_cases']:\n    actual = [int(x) for x in subprocess.check_output([exe, 'sort', *case['keys']], text=True).split()]\n    assert actual == case['archive_index_order']\n    counts['sort_existing'] += 1\n# Extend the same offline init oracle across every three-key sequence of length\n# zero through six, retaining its explicitly modeled helper/stream boundaries.\nstate = original['call'].__globals__\nu = state['u']\nobj, base = 0x2000000, 0x2001000\np32 = state['p32']\nfor length in range(7):\n    for keys in itertools.product((b'a', b'b', b'c'), repeat=length):\n        state['heap'] = 0x2020000\n        u.mem_write(obj, bytes(48))\n        u.mem_write(obj + 8, p32(1))\n        u.mem_write(obj + 16, p32(base) + p32(base + 48 * length))\n        for i, key in enumerate(keys):\n            entry = base + 48 * i\n            u.mem_write(entry, bytes(48))\n            for offset in (0, 4, 8):\n                state['put'](entry + offset, key)\n                u.mem_write(state['rd'](entry + offset) - 4, p32(0))\n            u.mem_write(entry + 12, p32(i))\n        u.reg_write(state['UC_ARM_REG_R2'], 0)\n        u.reg_write(state['UC_ARM_REG_R3'], 0)\n        state['call'](0x810d84, obj, 0)\n        expected = [state['rd'](base + 48 * i + 12) for i in range(length)]\n        actual = [int(x) for x in subprocess.check_output([exe, 'sort', *[k.hex() for k in keys]], text=True).split()]\n        assert actual == expected, (length, keys, actual, expected)\n        counts['sort_exhaustive'] += 1\nassert hashlib.file_digest(reference.open('rb'), 'sha256').hexdigest() == expected_hash\nprint('PASS: source versus offline ARM', json.dumps(counts, sort_keys=True))\n"
+  },
+  "failed_attempts": [
+    {
+      "check": "ASan+UBSan with default PIE",
+      "exit_code": 1,
+      "reason": "ASan shadow memory overlaps this sandbox memory layout; tests did not execute. Rebuilt with -fno-pie -no-pie."
+    },
+    {
+      "check": "Non-PIE ASan+UBSan with default leak detection",
+      "exit_code": 1,
+      "reason": "Test assertions passed, then LeakSanitizer failed because the sandbox blocks required ptrace support. Rerun with ASAN_OPTIONS=detect_leaks=0 exited zero. No host settings changed."
+    }
+  ],
+  "completion_counts": {
+    "task_boundaries_inventoried": 4,
+    "new_decompiler_exports": 0,
+    "partial_logical_address_mappings": 4,
+    "new_cluster_source_files": 1,
+    "whole_original_functions_reconstructed": 0,
+    "whole_functions_machine_code_matched": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp",
+      "coordination/evidence/functions-8708f94a70699ac28c6d23.json"
+    ],
+    "blockers": [
+      "Original ARM ABI and class ownership are not implemented.",
+      "Original scanner and complete init are not compared; current oracle models scanning to stop.",
+      "No device/gameplay validation or machine-code matching."
+    ],
+    "next_attempts": [
+      "Develop a scoped original scanner oracle using a modeled IReadFile and explicit dependency boundaries; compare cursor and entry fields on synthetic headers.",
+      "Recover native init option/stream semantics and entry string/length layout before attempting ABI-compatible implementations.",
+      "Keep the checked portable adapter separate from any future faithful ABI implementation."
+    ],
+    "scope_compliance": "Only the three allocated paths changed. No package installation, sudo, network, nested AI sessions, binary patching, GitHub modification, original content redistribution or documentation edits."
+  }
+}
