@@ -1,0 +1,411 @@
+{
+  "schema_version": 1,
+  "task": 41,
+  "task_key": "functions-c9e13b3c562667c083cda1",
+  "date_utc": "2026-10-27",
+  "result": "PARTIAL: independently compiled and oracle-tested control-policy subsets",
+  "matching_claim": "NOT MATCHED",
+  "whole_function_verification": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "sha256_checked": true,
+    "available_locally": true,
+    "discovery": "Matching read-only reference exists in the established project outside this disposable checkout. No reference binary was copied into this checkout.",
+    "format": "ELF32, little-endian ARM; these four entries use ARM mode",
+    "analysis_provenance": "Existing local Ghidra 12.1.2 exports provided symbolic/dataflow evidence. Offline execution reads code directly from hash-checked ELF PT_LOAD mappings at ELF virtual addresses, without the Ghidra +0x10000 presentation adjustment.",
+    "fresh_ghidra_import_run": false,
+    "reference_files_modified": false
+  },
+  "totals": {
+    "inventoried_target_functions": 4,
+    "existing_decompiler_exports_inspected": 4,
+    "whole_functions_implemented": 0,
+    "whole_functions_verified": 0,
+    "whole_functions_machine_code_matched": 0,
+    "portable_policy_helpers_implemented": 4,
+    "portable_policy_helpers_tested_against_arm_slices": 4,
+    "differential_policy_cases_per_compiler": 6216,
+    "arm_slice_executions_per_compiler": 6224,
+    "end_to_end_game_functionality": "Not implemented or tested by this slice"
+  },
+  "source": {
+    "path": "reconstruction/recovered/libNOVA3_neon/block_006ca8a0.cpp",
+    "sha256": "950816e9fce3d9d87fb63084cee4ddb12553463346efcdf747fdfa0dd5d35762",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0_test.cpp",
+    "test_sha256": "53d1fdcc72a26f7ef4ca544b7b9eeedfb464018d851543322a3a0d25899a608a",
+    "integration": "Standalone compilation only. No CMake edits are permitted by task 41. Tests include the source file; the production source also compiles independently to an object.",
+    "production_dependencies": [
+      "C++17 standard library"
+    ],
+    "production_original_executable_dependencies": [],
+    "original_entry_points_exported": false,
+    "standalone_object_undefined_symbols": [],
+    "api_note": "Source-owned policy API, not a replacement for the original C++ ABI or complete factory/mesh implementations."
+  },
+  "functions": [
+    {
+      "address": "0x006ca8a0",
+      "size": "0x47c",
+      "symbol_name": "glitch::collada::CColladaFactory::createMaterialVertexAttributeMap",
+      "state": "DECOMPILED",
+      "whole_function_reconstructed": false,
+      "whole_function_verification": "UNVERIFIED",
+      "matching": "NOT MATCHED",
+      "subset": {
+        "helper": "select_instance_material_binding_table",
+        "state": "VERIFIED",
+        "verification_grade": "behavioural",
+        "scope": "Only the flag-family/table-selection branch, once the original cached-map path and renderer dependency have been resolved by the caller.",
+        "observed_priority": [
+          {
+            "mask": "0x007",
+            "instance_material_offset": "0x1c"
+          },
+          {
+            "mask": "0x018",
+            "instance_material_offset": "0x24"
+          },
+          {
+            "mask": "0x460",
+            "instance_material_offset": "0x14"
+          },
+          {
+            "mask": "0x300",
+            "instance_material_offset": "0x2c"
+          },
+          {
+            "mask": "0x080",
+            "instance_material_offset": "0x34"
+          }
+        ],
+        "no_selected_bits": "Original branch writes a null result; helper returns nullopt.",
+        "unknowns": "Semantic names of flag families and binding tables are unresolved.",
+        "arm_slice": {
+          "start": "0x006ca928",
+          "executed_intervals_half_open": [
+            [
+              "0x006ca928",
+              "0x006ca940"
+            ],
+            [
+              "0x006cacb8",
+              "0x006cace4"
+            ]
+          ],
+          "stop_before_selected_table_allocation": "0x006ca940",
+          "stop_after_null_result_write": "0x006cace4"
+        },
+        "differential_cases": 6144,
+        "cases": "All 2048 low-11-bit combinations, each with upper bits 0, 0x80000000 and 0xfffff800."
+      },
+      "unresolved": [
+        "Existing material attribute-map cache and force-rebuild path",
+        "Renderer dependency acquisition and lifetime",
+        "Technique lookup, per-pass vertex stream/attribute map construction and setters",
+        "Intrusive refcounts, allocation/destruction, spinlock, material linking and error unwinding"
+      ]
+    },
+    {
+      "address": "0x006cad1c",
+      "size": "0x2b4",
+      "symbol_name": "glitch::collada::CColladaFactory::createMaterialRenderer",
+      "state": "DECOMPILED",
+      "whole_function_reconstructed": false,
+      "whole_function_verification": "UNVERIFIED",
+      "matching": "NOT MATCHED",
+      "subset": {
+        "helper": "select_material_renderer_route",
+        "state": "VERIFIED",
+        "verification_grade": "behavioural",
+        "scope": "Dispatch only: driver query zero -> null-shader-manager path; otherwise no effect -> pink wireframe; otherwise getId != 0xffff -> cached renderer; missing ID -> effect builder.",
+        "unknowns": "Name/semantic meaning of the driver's virtual +0x48 query is unresolved. Driver mode is intentionally unnamed beyond zero/nonzero.",
+        "arm_slices": [
+          {
+            "start": "0x006cad48",
+            "executed_intervals_half_open": [
+              [
+                "0x006cad48",
+                "0x006cad58"
+              ]
+            ],
+            "stops": [
+              "0x006cae88",
+              "0x006cafac",
+              "0x006cad58"
+            ]
+          },
+          {
+            "start": "0x006cad88",
+            "executed_intervals_half_open": [
+              [
+                "0x006cad88",
+                "0x006cad94"
+              ]
+            ],
+            "stops": [
+              "0x006cad94",
+              "0x006cadc0"
+            ]
+          }
+        ],
+        "differential_cases": 24,
+        "arm_slice_executions": 32,
+        "cases": "Driver modes 0/1/0xffffffff, effect absent/present, IDs 0/1/0xfffe/0xffff. The eight effect-path cases additionally execute the ID branch slice."
+      },
+      "unresolved": [
+        "Driver query, material-name construction and manager getId implementation",
+        "Default shader/render states, technique construction and manager lifecycle",
+        "Pink-wireframe material implementation",
+        "Database/list copies, effect-list construction and effect compiler",
+        "Allocation, process-buffer ownership, intrusive refs and error unwinding"
+      ]
+    },
+    {
+      "address": "0x006d7f60",
+      "size": "0x474",
+      "symbol_name": "glitch::collada::CMesh::CMesh",
+      "state": "DECOMPILED",
+      "whole_function_reconstructed": false,
+      "whole_function_verification": "UNVERIFIED",
+      "matching": "NOT MATCHED",
+      "subset": {
+        "helpers": [
+          "select_mesh_buffer_lookup",
+          "recheck_mesh_buffer_cache"
+        ],
+        "state": "VERIFIED",
+        "verification_grade": "behavioural",
+        "scope": "Buffer acquisition control only: private construction ignores the cache; shared hit reuses; shared miss acquires a lock then rechecks before creating/publishing or unlocking/reusing.",
+        "field_evidence": {
+          "mesh_buffer_array_pointer_offset": "0x3c",
+          "buffer_record_stride": 56,
+          "runtime_cache_slot_offset": "0x34"
+        },
+        "initial_lookup_slice": {
+          "start": "0x006d8284",
+          "executed_intervals_half_open": [
+            [
+              "0x006d8284",
+              "0x006d8290"
+            ],
+            [
+              "0x006d80f0",
+              "0x006d8104"
+            ]
+          ],
+          "stops": [
+            "0x006d8290",
+            "0x006d8104",
+            "0x006d8360"
+          ]
+        },
+        "locked_recheck_slice": {
+          "start": "0x006d836c",
+          "executed_intervals_half_open": [
+            [
+              "0x006d836c",
+              "0x006d8380"
+            ]
+          ],
+          "stops": [
+            "0x006d8380",
+            "0x006d838c"
+          ]
+        },
+        "differential_cases": 24,
+        "cases": "All four initial share/cache combinations and both cache-under-lock values at buffer indices 0, 1, 7 and 31. Recheck cases model a changed observation, not actual concurrent execution."
+      },
+      "unresolved": [
+        "IMesh construction, full CMesh layout, geometry/resource/database ownership",
+        "On-demand mesh loading, readers and drop/release semantics",
+        "Buffer configuration and share-query dependencies",
+        "Actual CMeshBuffer construction, vertex/index uploads, buffer-vector insertion and bounds copy",
+        "Cache lock implementation, barriers, publication and intrusive reference ownership",
+        "Material/root-scene ownership, failure cleanup and original ABI"
+      ]
+    },
+    {
+      "address": "0x006d8888",
+      "size": "0x564",
+      "symbol_name": "glitch::collada::CColladaFactory::createGeometry",
+      "state": "DECOMPILED",
+      "whole_function_reconstructed": false,
+      "whole_function_verification": "UNVERIFIED",
+      "matching": "NOT MATCHED",
+      "subset": {
+        "helpers": [
+          "select_mesh_buffer_lookup",
+          "recheck_mesh_buffer_cache"
+        ],
+        "state": "VERIFIED",
+        "verification_grade": "behavioural",
+        "scope": "Buffer acquisition control only: private construction ignores the cache; shared hit reuses; shared miss acquires a lock then rechecks before creating/publishing or unlocking/reusing.",
+        "field_evidence": {
+          "mesh_buffer_array_pointer_offset": "0x3c",
+          "buffer_record_stride": 56,
+          "runtime_cache_slot_offset": "0x34"
+        },
+        "initial_lookup_slice": {
+          "start": "0x006d8a88",
+          "executed_intervals_half_open": [
+            [
+              "0x006d8a88",
+              "0x006d8aa4"
+            ]
+          ],
+          "stops": [
+            "0x006d8d20",
+            "0x006d8aa4",
+            "0x006d8d78"
+          ]
+        },
+        "locked_recheck_slice": {
+          "start": "0x006d8d84",
+          "executed_intervals_half_open": [
+            [
+              "0x006d8d84",
+              "0x006d8d98"
+            ]
+          ],
+          "stops": [
+            "0x006d8d98",
+            "0x006d8da4"
+          ]
+        },
+        "differential_cases": 24,
+        "cases": "All four initial share/cache combinations and both cache-under-lock values at buffer indices 0, 1, 7 and 31. Recheck cases model a changed observation, not actual concurrent execution."
+      },
+      "unresolved": [
+        "IMesh construction, full CMesh layout, geometry/resource/database ownership",
+        "On-demand mesh loading, readers and drop/release semantics",
+        "Buffer configuration and share-query dependencies",
+        "Actual CMeshBuffer construction, vertex/index uploads, buffer-vector insertion and bounds copy",
+        "Cache lock implementation, barriers, publication and intrusive reference ownership",
+        "Material/root-scene ownership, failure cleanup and original ABI"
+      ]
+    }
+  ],
+  "oracle": {
+    "implementation": "Optional --arm-oracle mode embedded as original test harness source in the C++ test file",
+    "research_dependencies": {
+      "python": "3.14.8",
+      "unicorn": "2.1.4"
+    },
+    "dependencies_in_production": false,
+    "fixture_data": "Synthetic stack and object fields only; no game asset fixtures or decompiler bodies embedded",
+    "executable_inputs": "Hash-checked local reference, read only and mapped into test-only emulation memory",
+    "code_patching": false,
+    "external_helper_execution": false,
+    "helper_result_substitution": false,
+    "instruction_hook": "Only validates allowed intervals and stops at declared endpoints; does not modify registers, memory or branch destinations.",
+    "instruction_budget_per_slice": 64,
+    "reference_startup_or_engine_execution": false,
+    "result": "PASS for both GCC and Clang candidates",
+    "coverage": {
+      "attribute_selection": 6144,
+      "renderer_dispatch": 24,
+      "renderer_id_lookup": 8,
+      "mesh_initial_lookup": 32,
+      "mesh_locked_recheck": 16
+    },
+    "arm_slice_executions_per_compiler": 6224,
+    "differential_policy_cases_per_compiler": 6216,
+    "additional_null_output_store_checks_per_compiler": 3,
+    "limits": "This proves the specified decisions under synthetic valid inputs. It does not prove full functions, class layout, allocation/ownership, concurrency, rendering or gameplay equivalence."
+  },
+  "builds": [
+    {
+      "compiler_version": "c++ (GCC) 16.2.1 20260810",
+      "target": "x86_64-pc-linux-gnu",
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror"
+      ],
+      "source_object_compile_exit": 0,
+      "standalone_test_compile_exit": 0,
+      "regression_run_exit": 0,
+      "arm_oracle_run_exit": 0
+    },
+    {
+      "compiler_version": "clang version 23.1.3",
+      "target": "x86_64-pc-linux-gnu",
+      "flags": [
+        "-std=c++17",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie"
+      ],
+      "standalone_test_compile_exit": 0,
+      "test_environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "regression_run_exit": 0,
+      "arm_oracle_run_exit": 0,
+      "leak_checking": "NOT VERIFIED: disabled because this sandbox does not permit LeakSanitizer's ptrace-dependent exit scan"
+    }
+  ],
+  "machine_code_comparison": {
+    "performed": false,
+    "result": "NOT MATCHED",
+    "reason": "Portable policy subsets were host-compiled. No complete ARM candidate functions, recovered original compiler configuration or whole-function byte comparison exists. Original ARM slice behaviour is separate evidence, not a matching claim."
+  },
+  "reproduction": {
+    "note": "Run from checkout root. Set NOVA3_REFERENCE to a lawfully held local ELF with the recorded SHA256. Commands use an ephemeral build directory and change none of the repository's build configuration.",
+    "commands": [
+      "TASK41_BUILD_DIR=$(mktemp -d /tmp/nova3-task41.XXXXXX)",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_006ca8a0.cpp -o \"$TASK41_BUILD_DIR/block-gcc.o\"",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0_test.cpp -o \"$TASK41_BUILD_DIR/policy-gcc\"",
+      "\"$TASK41_BUILD_DIR/policy-gcc\"",
+      "\"$TASK41_BUILD_DIR/policy-gcc\" --arm-oracle \"$NOVA3_REFERENCE\"",
+      "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0_test.cpp -o \"$TASK41_BUILD_DIR/policy-clang-sanitized-nopie\"",
+      "ASAN_OPTIONS=detect_leaks=0 \"$TASK41_BUILD_DIR/policy-clang-sanitized-nopie\"",
+      "ASAN_OPTIONS=detect_leaks=0 \"$TASK41_BUILD_DIR/policy-clang-sanitized-nopie\" --arm-oracle \"$NOVA3_REFERENCE\""
+    ],
+    "positive_commands_expected_exit": 0,
+    "expected_negative_checks": [
+      {
+        "arguments": "--arm-oracle /dev/null",
+        "exit": 1,
+        "observed": "FAIL: reference SHA256 mismatch; no comparison performed"
+      },
+      {
+        "arguments": "--invalid-argument",
+        "exit": 1,
+        "observed": "FAIL: unexpected arguments"
+      }
+    ]
+  },
+  "diagnostics_and_limits": [
+    "Initial GCC test compilation rejected a multiline // comment with -Werror=comment; changed it to a block comment and rebuilt successfully.",
+    "Initial PIE AddressSanitizer execution failed before tests with shadow-memory mapping conflict. A non-PIE build runs the tests successfully.",
+    "Non-PIE LeakSanitizer exit scan failed under ptrace restrictions; ASan/UBSan runs succeed with detect_leaks=0. No host/security configuration was changed.",
+    "No source matching or full-function reconstruction is claimed. All four original entries remain incomplete.",
+    "No docs, root CMake, infrastructure or other unallocated files were changed. No network, package installation, sudo, nested AI, GitHub mutation or commit was used."
+  ],
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_006ca8a0.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0_test.cpp",
+      "coordination/evidence/functions-c9e13b3c562667c083cda1.json"
+    ],
+    "next_attempts": [
+      "Recover selected SInstanceMaterial technique/pass record layouts and extend the binding selector into actual attribute-map construction, including cached-map/force-rebuild behaviour.",
+      "Identify the driver virtual +0x48 query and recover material-name construction, default render states, manager interfaces and effect-list ownership before implementing createMaterialRenderer.",
+      "Identify the object supplying createGeometry's virtual +0x44/+0x48 configuration outputs and +0x5c sharing query; recover SBufferConfig layout and CMeshBuffer constructor dependencies.",
+      "Implement real source-owned mesh/resource ownership and cache synchronization; preserve double-check semantics, then test actual publication/refcounts and error paths.",
+      "Only after complete source/ABI and a target ARM toolchain exist, compile ARM candidates and perform address-scoped machine-code comparisons with compiler/flags/hash provenance."
+    ]
+  }
+}
