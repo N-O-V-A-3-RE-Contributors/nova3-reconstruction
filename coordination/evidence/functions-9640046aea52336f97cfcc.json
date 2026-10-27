@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "task_key": "functions-9640046aea52336f97cfcc",
+  "issue": 36,
+  "round": 1,
+  "completion": "PARTIAL: three portable function behaviors tested; material renderer not reconstructed",
+  "matching_claim": "NOT MATCHED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_checked_locally": true,
+    "local_project": "/home/jason/Projects/nova3_re",
+    "relative_path": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "architecture": "32-bit little-endian ARM; all four entries A32",
+    "export_provenance": "Existing local Ghidra 12.1.2 / PyGhidra exports with byte_mapping_validated=true; Ghidra image base is ELF virtual address plus 0x10000",
+    "analysis_database": "Existing local analysis_db/index.sqlite opened read-only",
+    "redistributed_original_content": false
+  },
+  "files": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d39f0.cpp": {
+      "sha256": "b651c577d2d3c85a5b109f21e138b4d9e5deb1852af7d92d01f7781423e8da46",
+      "role": "Independent portable source; no original executable bytes or generated pseudocode"
+    },
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp": {
+      "sha256": "a72ad9e146f56fa6016a66de8e54b8f59fba22ac07efd09ddd1ece5b32f5d65e",
+      "role": "Standalone host regression and optional emitted offline Python differential oracle"
+    }
+  },
+  "counts": {
+    "task_boundaries_inventoried": 4,
+    "existing_local_decompiled_functions": 4,
+    "portable_behaviors_implemented": 3,
+    "behaviors_with_scoped_original_differential_evidence": 3,
+    "machine_code_matched_functions": 0,
+    "unreconstructed_functions": 1,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x000d39f0",
+      "size": 80,
+      "symbol": "JNI_OnLoad",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_on_load",
+      "matching_claim": "NOT MATCHED",
+      "behavior": "Call voice VM setter, then billing VM setter, then GetEnv with JNI 1.4. Return 0x10004 on zero status, -1 otherwise. Preserve the persistent environment output slot, including writes on failure.",
+      "dependencies": [
+        {"address": "0x009d1384", "symbol": "VoxSetJavaVM"},
+        {"address": "0x000d4cd4", "symbol": "InAppBilling_setJavaVM"},
+        {"dispatch": "JavaVM invocation table byte offset 0x18 in ARM32", "role": "GetEnv"},
+        {"address": "0x00d965b0", "symbol": "_ZL3env", "role": "persistent environment pointer"}
+      ],
+      "scope": "Portable dependency-injected control flow. Caller supplies the environment slot and three service functions; this is not a drop-in exported JNI_OnLoad or a recovered JavaVM class layout. Actual VM consumers and GetEnv are hooked in the oracle, not executed.",
+      "original_differential_cases": 16,
+      "cases": "Eight statuses (0, 1, 2, -1, -2, -3, INT32_MIN, INT32_MAX), each with and without an environment write; exact event ordering and VM/version arguments; stale output preservation; ignored VM-setter results poisoned in original emulation",
+      "assembly_comparison": "Not compared: adapted signature and explicit dependencies differ from the original JNI ABI"
+    },
+    {
+      "address": "0x000de2cc",
+      "size": 84,
+      "symbol": "_Z10ComputeCRCPhi",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_compute_crc",
+      "matching_claim": "NOT MATCHED",
+      "behavior": "Reflected CRC-32 using polynomial 0xedb88320, initial/final complement, generated table, zero result for empty input",
+      "scope": "Nonnegative signed 32-bit length with that many readable bytes; null only at zero length. Negative lengths and invalid pointers are outside the tested/precondition domain.",
+      "original_differential_cases": 473,
+      "cases": "Known, all-byte, deterministic random and boundary-length buffers through 65535 bytes, four original pointer alignments, null/empty, input preservation; original ARM compared with compiled source and Python zlib"
+    },
+    {
+      "address": "0x0029e7b0",
+      "size": 12,
+      "symbol": "_ZN17CCustomFileSystem13UseTextureETCEv",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_use_texture_etc",
+      "matching_claim": "NOT MATCHED",
+      "behavior": "Set the four-byte little-endian field at object offset 76 to 4; preserve other object bytes",
+      "scope": "Opaque original ARM32 object with at least 80 writable bytes. No inferred meaning for other fields or the function's incidental register return value.",
+      "original_differential_cases": 256,
+      "cases": "Random 128-byte objects, four original pointer alignments, complete before/after byte comparison; source idempotence. Host regressions additionally exercise unaligned source objects."
+    },
+    {
+      "address": "0x002a4398",
+      "size": 688,
+      "symbol": "CCustomColladaFactory::createMaterialRenderer",
+      "state": "DECOMPILED",
+      "verification_grade": "hypothesis",
+      "implementation": "NOT RECONSTRUCTED",
+      "matching_claim": "NOT MATCHED",
+      "behavioral_equivalence": "UNVERIFIED",
+      "observed_metadata": "Existing scoped export has 22 basic blocks and 17 direct-call sites. Symbol names identify material/technique management, shader creation, intrusive pointer ownership, virtual driver calls and exception/unwind dependencies; these do not establish the complete algorithm.",
+      "dependencies_requiring_recovery": [
+        {"address": "0x00799a58", "role": "CMaterialRendererManager::beginMaterialRenderer"},
+        {"address": "0x007b4fa0", "role": "CMaterialRendererManager::endMaterialRenderer"},
+        {"address": "0x002b6294", "role": "CMaterialRendererManager::getMaterialRenderer"},
+        {"address": "0x008e555c", "role": "glf::Strcmp"},
+        {"address": "0x006cad1c", "role": "CColladaFactory::createMaterialRenderer"},
+        {"address": "0x001088c4", "role": "intrusive_ptr_add_ref"},
+        {"address": "0x00109f94", "role": "intrusive_ptr<CMaterialRenderer> destructor"},
+        {"address": "0x007842a0", "role": "CMaterialRendererManager::beginTechnique"},
+        {"address": "0x00748c70", "role": "CNullShaderManager::createShader"},
+        {"address": "0x007b42a0", "role": "CMaterialRendererManager::addRenderPass"},
+        {"address": "0x000ec294", "role": "intrusive_ptr_release"},
+        {"address": "0x007b4898", "role": "CMaterialRendererManager::endTechnique"},
+        {"address": "0x008da5f8", "role": "glf::Console::Println"},
+        {"address": "0x000d2c40", "role": "unresolved call target"},
+        {"address": "0x000d24f0", "role": "unresolved call target"}
+      ],
+      "blocker": "Missing validated object/render-state layouts, branch semantics, virtual interfaces and dependency ownership/error behavior. No renderer stub supplied and no equivalence claim made."
+    }
+  ],
+  "builds": [
+    {
+      "kind": "host regression",
+      "compiler": "/usr/bin/c++",
+      "compiler_version": "c++ (GCC) 16.2.1 20260810",
+      "flags": ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror"],
+      "input": "reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp",
+      "output": "/tmp/nova3-task36/block_test",
+      "compile_exit_code": 0,
+      "test_exit_code": 0,
+      "result": "4100 table-vs-bitwise CRC comparisons plus known CRC and null/empty vectors; 4 unaligned ETC object tests including surrounding bytes and idempotence; 16 JNI cases. No reference required."
+    },
+    {
+      "kind": "host standalone candidate shared library",
+      "compiler": "/usr/bin/c++",
+      "compiler_version": "c++ (GCC) 16.2.1 20260810",
+      "flags": ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-fPIC", "-shared"],
+      "input": "reconstruction/recovered/libNOVA3_neon/block_000d39f0.cpp",
+      "output": "/tmp/nova3-task36/block.so",
+      "output_sha256": "40afc402ef6eeba939e0cce8dbe275b1fdb70cc7ac6bf58bbb640c2ad360627f",
+      "compile_exit_code": 0
+    },
+    {
+      "kind": "host ASan/UBSan regression",
+      "compiler": "/usr/bin/clang++",
+      "compiler_version": "clang version 23.1.3; x86_64-pc-linux-gnu",
+      "flags": ["-std=c++17", "-O1", "-g", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-fno-pie", "-no-pie"],
+      "input": "reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp",
+      "output": "/tmp/nova3-task36-sanitized-nopie",
+      "environment": {"ASAN_OPTIONS": "detect_leaks=0"},
+      "compile_exit_code": 0,
+      "test_exit_code": 0,
+      "limitations": "Initial PIE run could not initialize ASan shadow memory. Non-PIE assertions passed, but LeakSanitizer exited 1 due sandbox ptrace restrictions. Final non-PIE ASan/UBSan run passed with leak detection disabled; no leak verification claimed."
+    },
+    {
+      "kind": "ARMv7 standalone compile and raw symbol comparison",
+      "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++",
+      "compiler_version": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0; llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349; armv7a-unknown-linux-android21",
+      "flags": ["-std=c++17", "-O2", "-Wall", "-Wextra", "-Wpedantic", "-Werror", "-marm", "-march=armv7-a", "-mfpu=neon", "-mfloat-abi=softfp", "-fno-exceptions", "-fno-rtti", "-c"],
+      "input": "reconstruction/recovered/libNOVA3_neon/block_000d39f0.cpp",
+      "output": "/tmp/nova3-task36/block.arm.o",
+      "output_sha256": "12eee45558c6c7361dfc7b07df551879982d4744f27421c1635c42a5ced584f3",
+      "compile_exit_code": 0,
+      "execution": "Not executed on ARM; behavioral comparison uses the separately built host candidate",
+      "matching_claim": "NOT MATCHED"
+    }
+  ],
+  "differential_verification": {
+    "exit_code": 0,
+    "python": "/home/jason/Projects/nova3_re/.venv/bin/python",
+    "versions": {"unicorn": "2.1.4", "pyelftools": "0.33", "capstone_metadata_probe": "5.0.9"},
+    "command": "set -o pipefail; /tmp/nova3-task36/block_test --emit-oracle | /home/jason/Projects/nova3_re/.venv/bin/python - --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --candidate /tmp/nova3-task36/block.so --candidate-arm-object /tmp/nova3-task36/block.arm.o",
+    "method": "Offline original A32 emulation; entire leaf functions executed; JNI direct dependencies and GetEnv intercepted, return-PC/instruction-budget checks enforced",
+    "crc_cases": 473,
+    "etc_cases": 256,
+    "jni_cases": 16,
+    "total_cases": 745,
+    "assembly_comparisons": [
+      {
+        "reference_address": "0x000de2cc",
+        "candidate_symbol": "nova3_recovered_compute_crc",
+        "reference_size": 84,
+        "candidate_size": 72,
+        "reference_region_sha256": "beb92fd46313d46efedb8653ec44ca6e10373745dd956d3300c00211ffbbea1b",
+        "candidate_region_sha256": "82f8726db2d43940a1f257640960e384c59cd694e0ef29ecc07b060a82f58e5f",
+        "exact_region_bytes": false
+      },
+      {
+        "reference_address": "0x0029e7b0",
+        "candidate_symbol": "nova3_recovered_use_texture_etc",
+        "reference_size": 12,
+        "candidate_size": 20,
+        "reference_region_sha256": "7aa351ecb2e05f78bd395a501b47213d0ab8f028bc623da20706bfc5804f73ed",
+        "candidate_region_sha256": "d62825f14310724eeefa7f8663d783608cd7bef282034f1fc059fab97a5ccb9e",
+        "exact_region_bytes": false
+      }
+    ],
+    "assembly_scope": "Raw unlinked A32 symbol regions; no relocation masking, register renaming or original-compiler claim. Both compared regions differ. JNI and material renderer not compared."
+  },
+  "reproduction": [
+    "Run from this checkout; temporary build outputs may be replaced in /tmp/nova3-task36.",
+    "mkdir -p /tmp/nova3-task36",
+    "For each builds[] entry, invoke compiler followed by flags, input, -o output. The test includes the recovered .cpp because this task does not permit creating a public header or editing CMake.",
+    "Run /tmp/nova3-task36/block_test; then run the differential_verification.command with the already installed local research Python. No network or package installation is required.",
+    "Run ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task36-sanitized-nopie for the sanitizer regression.",
+    "Original ELF is required only for the optional research oracle; source-only compile and host tests do not use it. Original code is never linked into a candidate output."
+  ],
+  "handoff": {
+    "files_changed": "Only the two allowed C++ files and this evidence file; existing engine source/tests preserved; no docs or CMake changes permitted by task scope",
+    "blockers": [
+      "0x002a4398 still requires full semantic and ownership recovery, with validated render-state layouts and independent tests",
+      "JNI implementation is a portable dependency adapter; actual JNI ABI export/integration and real service behavior are outside this slice",
+      "Two ARM symbol regions differ from reference; no matching claim",
+      "LeakSanitizer unavailable in this sandbox; ASan/UBSan passed with leak detection disabled"
+    ],
+    "next_attempts": [
+      "Read the local 002a4398.json export without publishing it; resolve driver virtual calls and material-renderer manager contracts, return ownership and error/unwind paths at the listed dependency addresses.",
+      "Build synthetic objects with validated original layouts, then trace cached renderer, base-factory fallback, shader failure and technique/render-pass creation paths against original ARM in an offline oracle before implementing the material renderer.",
+      "Integrate the JNI behavior with source-owned real JavaVM/service adapters under a separately expanded path allocation; do not label the present callback adapter a drop-in ABI replacement."
+    ]
+  }
+}
