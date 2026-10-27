@@ -1,0 +1,456 @@
+{
+  "schema_version": 1,
+  "task_key": "functions-cc73d4b062bb2e03ec0ba4",
+  "issue": 70,
+  "round": 1,
+  "date": "2026-10-27",
+  "completion": "Four wrapper bodies independently compiled, tested and matched. Existing interrupted source and tests preserved; verifier improved and standalone build, evidence and handoff added.",
+  "matching_claim": "MATCHED",
+  "matching_scope": "Full four A32 wrapper symbol regions after analysis-only placement and dependency resolution; no byte masking or inline assembly.",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "local_path": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "architecture": "ELF32 little-endian ARM; four A32 function entries",
+    "hash_checked_before_and_after_verification": true,
+    "provenance": "Local ELF .symtab and .dynsym checked for every wrapper name, address, size and direct dependency address. Complete code-region comparison and isolated ARM execution with dependency hooks. No decompiler export used or copied.",
+    "size_discrepancy": "Task size 14 for 0x000d82e4 represents hexadecimal 0x14: both local symbol tables identify 20 decimal bytes. The complete 20-byte region is compared; other three functions are 4 bytes each.",
+    "original_content_embedded_or_redistributed": false
+  },
+  "counts": {
+    "functions_inventoried": 4,
+    "functions_decompiled_this_session": 0,
+    "wrapper_functions_source_implemented": 4,
+    "wrapper_functions_tested": 4,
+    "complete_wrapper_regions_machine_code_matched": 4,
+    "matched_code_bytes": 32,
+    "underlying_billing_dependencies_reconstructed": 0,
+    "host_cases_per_build": 547,
+    "original_differential_cases": 4096,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x000d80c0",
+      "size_bytes": 4,
+      "thumb": false,
+      "symbol": "InAppBilling_FillIdArray",
+      "source_symbol": "InAppBilling_FillIdArray",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED",
+      "scope": "Complete A32 wrapper code region after comparison-only placement and dependency resolution. Original source return types, result layout, exception metadata, real callees and game integration remain UNVERIFIED.",
+      "behavior": "Forward the r0 output pointer to the dependency and transport its r0 result bits unchanged.",
+      "dependency": {
+        "original_address": "0x000d7e5c",
+        "original_symbol": "_ZN12InAppBilling11fillIdArrayEPPPc",
+        "reconstructed_interface": "nova3_billing_fill_id_array",
+        "implementation_state": "NOT RECONSTRUCTED"
+      },
+      "original_differential_cases": 1024,
+      "assembly_comparison": {
+        "symbol": "InAppBilling_FillIdArray",
+        "address": "0xd80c0",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+        "candidate_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+        "exact_bytes_after_placement": true
+      }
+    },
+    {
+      "address": "0x000d82e4",
+      "size_bytes": 20,
+      "thumb": false,
+      "symbol": "InAppBilling_GetHeaders",
+      "source_symbol": "InAppBilling_GetHeaders",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED",
+      "scope": "Complete A32 wrapper code region after comparison-only placement and dependency resolution. Original source return types, result layout, exception metadata, real callees and game integration remain UNVERIFIED.",
+      "behavior": "Call the dependency once with the original r0 storage pointer, ignore its r0 result, and return the original storage pointer.",
+      "dependency": {
+        "original_address": "0x000d80c4",
+        "original_symbol": "_ZN12InAppBilling10getHeadersEv",
+        "reconstructed_interface": "nova3_billing_get_headers",
+        "implementation_state": "NOT RECONSTRUCTED"
+      },
+      "original_differential_cases": 1024,
+      "assembly_comparison": {
+        "symbol": "InAppBilling_GetHeaders",
+        "address": "0xd82e4",
+        "reference_size": 20,
+        "candidate_size": 20,
+        "reference_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+        "candidate_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+        "exact_bytes_after_placement": true
+      }
+    },
+    {
+      "address": "0x000d8580",
+      "size_bytes": 4,
+      "thumb": false,
+      "symbol": "InAppBilling_FillBillingAttArrayByName",
+      "source_symbol": "InAppBilling_FillBillingAttArrayByName",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED",
+      "scope": "Complete A32 wrapper code region after comparison-only placement and dependency resolution. Original source return types, result layout, exception metadata, real callees and game integration remain UNVERIFIED.",
+      "behavior": "Forward r0 output and r1 name pointers unchanged and transport dependency r0 result bits.",
+      "dependency": {
+        "original_address": "0x000d82f8",
+        "original_symbol": "_ZN12InAppBilling25fillBillingAttArrayByNameEPPPcPKc",
+        "reconstructed_interface": "nova3_billing_fill_billing_att_array_by_name",
+        "implementation_state": "NOT RECONSTRUCTED"
+      },
+      "original_differential_cases": 1024,
+      "assembly_comparison": {
+        "symbol": "InAppBilling_FillBillingAttArrayByName",
+        "address": "0xd8580",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "exact_bytes_after_placement": true
+      }
+    },
+    {
+      "address": "0x000d880c",
+      "size_bytes": 4,
+      "thumb": false,
+      "symbol": "InAppBilling_FillAttributeArrayByName",
+      "source_symbol": "InAppBilling_FillAttributeArrayByName",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED",
+      "scope": "Complete A32 wrapper code region after comparison-only placement and dependency resolution. Original source return types, result layout, exception metadata, real callees and game integration remain UNVERIFIED.",
+      "behavior": "Forward r0 output and r1 name pointers unchanged and transport dependency r0 result bits.",
+      "dependency": {
+        "original_address": "0x000d8584",
+        "original_symbol": "_ZN12InAppBilling24fillAttributeArrayByNameEPPPcPKc",
+        "reconstructed_interface": "nova3_billing_fill_attribute_array_by_name",
+        "implementation_state": "NOT RECONSTRUCTED"
+      },
+      "original_differential_cases": 1024,
+      "assembly_comparison": {
+        "symbol": "InAppBilling_FillAttributeArrayByName",
+        "address": "0xd880c",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "exact_bytes_after_placement": true
+      }
+    }
+  ],
+  "source_sha256": "964ed46eecfd77b24dfaf17bae6a84dc78280123f7f70bd8175ad2ac525a978d",
+  "source_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp": "964ed46eecfd77b24dfaf17bae6a84dc78280123f7f70bd8175ad2ac525a978d",
+    "reconstruction/recovered/libNOVA3_neon/block_000d80c0/billing_forwarders.hpp": "659528b75e06870488b18c0a10c7a024b3f544dd4357213c4e26caaa68de1154",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp": "ea00ef60ec3b010d0f137ce7c32ca03ff444ec4dd4549fd347fd526398879b14",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py": "84c1c3ae850cdb11a67d9c8bd4f3acc7fb3b508ac8835d1a71103344d9d8e097"
+  },
+  "supporting_file_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d80c0/README.md": "f8641c3ee067869982576d8c8d7a7b100d78b015934ae2e9b998bb445262422e",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/CMakeLists.txt": "0691fd6f7e5f8ef2e98213ebda4c645fef74163e724656786b48e4190f1ed916"
+  },
+  "toolchain": {
+    "g++": "g++ (GCC) 16.2.1 20260810",
+    "clang++": "clang version 23.1.3",
+    "ld.lld": "LLD 23.1.3 (compatible with GNU linkers)",
+    "unicorn": "2.1.4",
+    "pyelftools": "0.33",
+    "python": "3.14.8"
+  },
+  "verification": {
+    "command": "/home/jason/Projects/nova3_re/.venv/bin/python reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "exit_code": 0,
+    "checks": [
+      {
+        "command": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "-c",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+          "-o",
+          "/tmp/nova3-task70-k7sogk3z/host.o"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+          "-o",
+          "/tmp/nova3-task70-k7sogk3z/unit"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "/tmp/nova3-task70-k7sogk3z/unit"
+        ],
+        "exit_code": 0,
+        "stdout": "PASS: 547 forwarding cases; argument identity, result transport, output mutations and canaries",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "clang++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O1",
+          "-g",
+          "-fsanitize=address,undefined",
+          "-fno-omit-frame-pointer",
+          "-fno-pie",
+          "-no-pie",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+          "-o",
+          "/tmp/nova3-task70-k7sogk3z/sanitized"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "/tmp/nova3-task70-k7sogk3z/sanitized"
+        ],
+        "exit_code": 0,
+        "stdout": "PASS: 547 forwarding cases; argument identity, result transport, output mutations and canaries",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "clang++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "--target=armv7-none-eabi",
+          "-march=armv7-a",
+          "-marm",
+          "-mfloat-abi=soft",
+          "-O2",
+          "-fomit-frame-pointer",
+          "-fno-exceptions",
+          "-fno-unwind-tables",
+          "-fno-asynchronous-unwind-tables",
+          "-ffunction-sections",
+          "-c",
+          "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+          "-o",
+          "/tmp/nova3-task70-k7sogk3z/arm.o"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "ld.lld",
+          "-T",
+          "/tmp/nova3-task70-k7sogk3z/placement.ld",
+          "--entry=InAppBilling_FillIdArray",
+          "--defsym=nova3_billing_fill_id_array=0xd7e5c",
+          "--defsym=nova3_billing_get_headers=0xd80c4",
+          "--defsym=nova3_billing_fill_billing_att_array_by_name=0xd82f8",
+          "--defsym=nova3_billing_fill_attribute_array_by_name=0xd8584",
+          "/tmp/nova3-task70-k7sogk3z/arm.o",
+          "-o",
+          "/tmp/nova3-task70-k7sogk3z/placed.elf"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "cmake_checks": [
+      {
+        "command": [
+          "cmake",
+          "-S",
+          "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0",
+          "-B",
+          "/tmp/nova3-task70-build"
+        ],
+        "exit_code": 0,
+        "stdout": "-- Configuring done (0.0s)\n-- Generating done (0.0s)\n-- Build files have been written to: /tmp/nova3-task70-build",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "cmake",
+          "--build",
+          "/tmp/nova3-task70-build"
+        ],
+        "exit_code": 0,
+        "stdout": "[100%] Built target block_000d80c0_test",
+        "stderr": ""
+      },
+      {
+        "command": [
+          "ctest",
+          "--test-dir",
+          "/tmp/nova3-task70-build",
+          "--output-on-failure"
+        ],
+        "exit_code": 0,
+        "stdout": "Test project /tmp/nova3-task70-build\n    Start 1: task70_billing_forwarders\n1/1 Test #1: task70_billing_forwarders ........   Passed    0.01 sec\n\n100% tests passed out of 1\n\nTotal Test time (real) =   0.01 sec",
+        "stderr": ""
+      }
+    ],
+    "negative_reference_check": {
+      "command": [
+        "/home/jason/Projects/nova3_re/.venv/bin/python",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py",
+        "--reference",
+        "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp"
+      ],
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "Reference SHA256 mismatch; refusing oracle"
+    },
+    "oracle_scope": "Only the original and newly compiled wrappers; dependencies hooked. Compares call identity/arguments, return bits, output memory, r0-r12, restored SP, preserved r4-r11 and stack bounds. Real billing, result type/layout and JNI remain UNVERIFIED.",
+    "cases": "1024 deterministic cases per wrapper; seed 70. Null/opaque/aliased pointers, output alignments, ignored dependency return values, caller-saved register clobbers, output writes, memory canaries, callee-saved registers, SP restoration and bounded stack writes.",
+    "sanitizers": "547 host forwarding cases passed in GCC release and Clang ASan/UBSan builds. ASAN_OPTIONS=detect_leaks=0 only for the sanitized test subprocess; no leak-checking claim.",
+    "report": "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verification.json",
+    "report_sha256": "770bd8766fd3b692e0b5330e4f13c883f48022c895c665ef75cf9eba82e2efd8",
+    "session_note": "Initial verifier repeated symbol-table scans. Reused ELF table objects and added progress messages, then reran the full verifier successfully. Saved report comes from the optimized rerun; no assertion relies on the initial run."
+  },
+  "machine_code_comparison": {
+    "status": "MATCHED",
+    "method": "Compile human-readable C++ for A32, place only source-built sections at original wrapper virtual addresses, resolve declaration-only dependency symbols to observed target addresses, compare complete symbol byte regions without masking, normalization, reference instruction copying or inline assembly.",
+    "compiler": "clang version 23.1.3",
+    "linker": "LLD 23.1.3 (compatible with GNU linkers)",
+    "compiler_flags": [
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "--target=armv7-none-eabi",
+      "-march=armv7-a",
+      "-marm",
+      "-mfloat-abi=soft",
+      "-O2",
+      "-fomit-frame-pointer",
+      "-fno-exceptions",
+      "-fno-unwind-tables",
+      "-fno-asynchronous-unwind-tables",
+      "-ffunction-sections"
+    ],
+    "candidate_arm_object_sha256": "73a67c82a85a3b2165cee13698b7c5933164378a4b50c2dc5e1e09a438288420",
+    "candidate_placed_elf_sha256": "55a2da6bdc95d8aaa218d3712d8e987b7becffa1029aa58e7248d003420b71c5",
+    "assembly_comparisons": [
+      {
+        "symbol": "InAppBilling_FillIdArray",
+        "address": "0xd80c0",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+        "candidate_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+        "exact_bytes_after_placement": true
+      },
+      {
+        "symbol": "InAppBilling_GetHeaders",
+        "address": "0xd82e4",
+        "reference_size": 20,
+        "candidate_size": 20,
+        "reference_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+        "candidate_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+        "exact_bytes_after_placement": true
+      },
+      {
+        "symbol": "InAppBilling_FillBillingAttArrayByName",
+        "address": "0xd8580",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "exact_bytes_after_placement": true
+      },
+      {
+        "symbol": "InAppBilling_FillAttributeArrayByName",
+        "address": "0xd880c",
+        "reference_size": 4,
+        "candidate_size": 4,
+        "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+        "exact_bytes_after_placement": true
+      }
+    ],
+    "limitations": "Only the four code regions matched, not a complete ELF or APK. Original compiler identity, original high-level return types, result object layout, exceptions/unwind metadata, billing implementations and JNI remain UNVERIFIED."
+  },
+  "source_only": {
+    "production_build_requires_originals": false,
+    "ordinary_tests_require_originals": false,
+    "offline_research_verification_requires_local_reference": true,
+    "reference_code_linked_into_candidate": false,
+    "new_third_party_runtime_dependencies": [],
+    "test_only_dependencies": [
+      "Existing local pyelftools 0.33",
+      "Existing local Unicorn 2.1.4"
+    ],
+    "test_stubs_in_production_source": false,
+    "apk_build_or_certification": "NOT PERFORMED",
+    "network_access": false,
+    "host_configuration_changes": false
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d80c0/billing_forwarders.hpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d80c0/README.md",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/CMakeLists.txt",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verification.json",
+      "coordination/evidence/functions-cc73d4b062bb2e03ec0ba4.json"
+    ],
+    "reproduce_full_verification": "/home/jason/Projects/nova3_re/.venv/bin/python reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "reproduce_source_only_host_test": "g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp -o /tmp/nova3-task70-test && /tmp/nova3-task70-test",
+    "reproduce_cmake": [
+      "cmake -S reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0 -B /tmp/nova3-task70-build",
+      "cmake --build /tmp/nova3-task70-build",
+      "ctest --test-dir /tmp/nova3-task70-build --output-on-failure"
+    ],
+    "integration": "No shared CMake, public APIs, global docs or other unallocated files changed. Production source has four unresolved source-owned dependency seams, defined only as test doubles in the test translation unit. Compile-only production target and test executable both passed.",
+    "blockers": [
+      "Four underlying billing methods remain NOT RECONSTRUCTED.",
+      "Original return types, implicit instance/static signatures, opaque result size/layout/ownership, JNI and Android integration remain UNVERIFIED."
+    ],
+    "next_attempts": [
+      "Recover the four direct dependencies under separate allowed-path assignments.",
+      "Determine original result type and layout before replacing opaque storage/register transport with a high-level C++ interface.",
+      "Integrate source-owned dependencies and shared build targets only under separately authorized path allocation."
+    ],
+    "gameplay_status": "No billing operation or end-to-end gameplay exercised; four forwarding boundaries only."
+  }
+}
