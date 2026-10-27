@@ -48,6 +48,254 @@
   },
   "functions": [
     {
+      "address": "0x824",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x830",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x83c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x848",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x854",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x860",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x86c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x878",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x884",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x890",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x89c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8a8",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8b4",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8c0",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8cc",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8d8",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 12,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x8e4",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 60,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x920",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 4,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x924",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 116,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x9a0",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 46,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x9d0",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 282,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xaf8",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 76,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xb48",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 268,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xc60",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 190,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xd20",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 252,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xe2c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 164,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xedc",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 34,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0xf14",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 514,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x1128",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 98,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x118c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 176,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
+      "address": "0x123c",
+      "boundary_status": "tool_identified",
+      "reference_sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "size": 36,
+      "source": "headless Ghidra function boundary metadata",
+      "status": "pending"
+    },
+    {
       "address": 866800,
       "boundary_confidence": "elf_symbol_with_ghidra_mapping_report",
       "boundary_evidence": {
@@ -1900,8 +2148,13 @@
       "thumb": false
     }
   ],
-  "notes": "Tool-identified metadata only; Ghidra bounds may derive from ELF symbols. NOT MATCHED; no behavioural equivalence or complete function census claimed.",
+  "notes": "Tool-identified function boundaries only. No byte-match or game-completion percentage is claimed.",
   "references": [
+    {
+      "library": "libnativeinterface.so",
+      "sha256": "180b582cbb7e7004c94fe771f8c8013dad4c74a9317ee4baff08c542da4ff0da",
+      "source": "locally hashed original ELF (metadata only)"
+    },
     {
       "architecture": "ARM",
       "elf_class": 32,
