@@ -1,0 +1,344 @@
+{
+  "schema_version": 1,
+  "task": 66,
+  "task_key": "functions-8519d3e74f033827f04cab",
+  "round": 1,
+  "recorded_at_utc": "2026-10-27T06:32:12.538288+00:00",
+  "result": "Four source forwarding models compiled and boundary-tested; three scoped instruction matches; BuyItem NOT MATCHED.",
+  "matching": "PARTIAL: 3 of 4 wrappers matched after explicit address binding; 0x000d76cc NOT MATCHED. Original source return types UNVERIFIED for all four.",
+  "reference": {
+    "name": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available_locally": true,
+    "sha256_verified_before_and_after": true,
+    "original_file_modified": false,
+    "reference_use": "ELF symbol metadata, four ARM instruction decodes, in-memory single-wrapper Unicorn oracle; stop before unresolved dependencies.",
+    "reference_runtime_or_build_dependency": false,
+    "original_bytes_or_decompiler_bodies_published": false
+  },
+  "coverage": {
+    "requested_functions": 4,
+    "confirmed_local_elf_function_symbols": 4,
+    "disassembled_wrapper_boundaries": 4,
+    "decompiled_functions_this_session": 0,
+    "source_implemented_forwarding_models": 4,
+    "host_tested_forwarding_models": 4,
+    "differentially_tested_typed_arm_boundaries": 4,
+    "scoped_machine_code_matches": 3,
+    "reference_bytes_matched": 12,
+    "reference_bytes_in_all_assigned_functions": 16,
+    "full_original_source_signatures_verified": 0,
+    "reconstructed_billing_dependencies": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x000d751c",
+      "symbol": "_Z30InAppBilling_ShowPendingDialogv",
+      "destination": "0x000d737c",
+      "target_symbol": "_ZN12InAppBilling10showDialogEv",
+      "reference_symbol_size": 4,
+      "compiled_symbol_size": 4,
+      "comparison": "MATCHED: 4/4 bytes after explicit address binding",
+      "reference_code_sha256": "67c1ca2e76a626882979fe891ea200769f781825d16e928b5696726463f0f069",
+      "candidate_code_sha256": "67c1ca2e76a626882979fe891ea200769f781825d16e928b5696726463f0f069",
+      "ignored_caller_saved_registers": [],
+      "differential_boundary_cases": 512,
+      "architecture": "ARMv7 little-endian, ARM mode; local ELF $a mapping confirmed",
+      "state": "TESTED",
+      "verification_grade": "matching",
+      "verification_scope": "Forwarding boundary only. No billing/JNI dependency executed; original source return types UNVERIFIED.",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+      "parameter_evidence": "Destination C++ mangled name; original wrapper branches without argument adjustment.",
+      "return_type_evidence": "NOT RECOVERED: source Result models r0 transport, not a recovered success/result interpretation.",
+      "dependency_status": "NOT RECONSTRUCTED: destination method implementation remains undefined in production source."
+    },
+    {
+      "address": "0x000d76cc",
+      "symbol": "InAppBilling_BuyItem",
+      "destination": "0x000d7520",
+      "target_symbol": "_ZN12InAppBilling7buyItemEPKcyS1_",
+      "reference_symbol_size": 4,
+      "compiled_symbol_size": 12,
+      "comparison": "NOT MATCHED",
+      "reference_code_sha256": "a12533d3bc8e7f8a0a6753e642f7afc9c9e95b2367e5c2981cc3282d04fe245a",
+      "candidate_code_sha256": "4b9d49fe660e7be4d96781e47d7446d2c9bab96ebefb60ce34064cc6d3b5ad54",
+      "ignored_caller_saved_registers": [
+        "r1"
+      ],
+      "differential_boundary_cases": 512,
+      "architecture": "ARMv7 little-endian, ARM mode; local ELF $a mapping confirmed",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "verification_scope": "Forwarding boundary only. No billing/JNI dependency executed; original source return types UNVERIFIED.",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+      "parameter_evidence": "Destination C++ mangled name; original wrapper branches without argument adjustment.",
+      "return_type_evidence": "NOT RECOVERED: source Result models r0 transport, not a recovered success/result interpretation.",
+      "dependency_status": "NOT RECONSTRUCTED: destination method implementation remains undefined in production source."
+    },
+    {
+      "address": "0x000d7bf0",
+      "symbol": "InAppBilling_GetLastResults",
+      "destination": "0x000d79fc",
+      "target_symbol": "_ZN12InAppBilling14getLastResultsEPc",
+      "reference_symbol_size": 4,
+      "compiled_symbol_size": 4,
+      "comparison": "MATCHED: 4/4 bytes after explicit address binding",
+      "reference_code_sha256": "ba450ed02c033f1bfbbc36e6a444ed78ad775c415258ad112ad875608778dd45",
+      "candidate_code_sha256": "ba450ed02c033f1bfbbc36e6a444ed78ad775c415258ad112ad875608778dd45",
+      "ignored_caller_saved_registers": [],
+      "differential_boundary_cases": 512,
+      "architecture": "ARMv7 little-endian, ARM mode; local ELF $a mapping confirmed",
+      "state": "TESTED",
+      "verification_grade": "matching",
+      "verification_scope": "Forwarding boundary only. No billing/JNI dependency executed; original source return types UNVERIFIED.",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+      "parameter_evidence": "Destination C++ mangled name; original wrapper branches without argument adjustment.",
+      "return_type_evidence": "NOT RECOVERED: source Result models r0 transport, not a recovered success/result interpretation.",
+      "dependency_status": "NOT RECONSTRUCTED: destination method implementation remains undefined in production source."
+    },
+    {
+      "address": "0x000d7e58",
+      "symbol": "InAppBilling_FillTypeArray",
+      "destination": "0x000d7bf4",
+      "target_symbol": "_ZN12InAppBilling13fillTypeArrayEPPPc",
+      "reference_symbol_size": 4,
+      "compiled_symbol_size": 4,
+      "comparison": "MATCHED: 4/4 bytes after explicit address binding",
+      "reference_code_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "candidate_code_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "ignored_caller_saved_registers": [],
+      "differential_boundary_cases": 512,
+      "architecture": "ARMv7 little-endian, ARM mode; local ELF $a mapping confirmed",
+      "state": "TESTED",
+      "verification_grade": "matching",
+      "verification_scope": "Forwarding boundary only. No billing/JNI dependency executed; original source return types UNVERIFIED.",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+      "parameter_evidence": "Destination C++ mangled name; original wrapper branches without argument adjustment.",
+      "return_type_evidence": "NOT RECOVERED: source Result models r0 transport, not a recovered success/result interpretation.",
+      "dependency_status": "NOT RECONSTRUCTED: destination method implementation remains undefined in production source."
+    }
+  ],
+  "verification": {
+    "compiler": "clang version 23.1.3",
+    "linker": "LLD 23.1.3 (compatible with GNU linkers)",
+    "python_packages": {
+      "pyelftools": "0.33",
+      "capstone": "5.0.9",
+      "unicorn": "2.1.4"
+    },
+    "source_hashes_sha256": {
+      "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp": "6c1dc0b90e7e925dacb380d01001adb5a025965f5c37d8ecd8fb2ef8d1f445a2",
+      "reconstruction/recovered/libNOVA3_neon/block_000d751c/billing_forwarders.hpp": "a03e45312d65cafeb58b28b20a1e597876ef5b867aff1548a61b7d1df52aea51",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp": "14272f387d36478fef7d747078eb265489e2ac2e4b89a2722c44046f622029f3",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c/verify.py": "0ff37f69d3e4421d578ff96768f54d293314e060a1ccaa6cd534c211d32acff5"
+    },
+    "arm_compilation_flags": [
+      "--target=armv7a-linux-gnueabi",
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-O2",
+      "-marm",
+      "-march=armv7-a",
+      "-mfloat-abi=softfp",
+      "-fno-pic",
+      "-fno-pie",
+      "-ffunction-sections",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fno-unwind-tables",
+      "-fno-asynchronous-unwind-tables"
+    ],
+    "executed_commands": [
+      [
+        "clang++",
+        "--version"
+      ],
+      [
+        "ld.lld",
+        "--version"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp",
+        "-o",
+        "/tmp/nova3-task66/forwarders-test"
+      ],
+      [
+        "/tmp/nova3-task66/forwarders-test"
+      ],
+      [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp",
+        "-o",
+        "/tmp/nova3-task66/forwarders-sanitized"
+      ],
+      [
+        "/tmp/nova3-task66/forwarders-sanitized"
+      ],
+      [
+        "clang++",
+        "--target=armv7a-linux-gnueabi",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "-marm",
+        "-march=armv7-a",
+        "-mfloat-abi=softfp",
+        "-fno-pic",
+        "-fno-pie",
+        "-ffunction-sections",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+        "-o",
+        "/tmp/nova3-task66/forwarders-arm.o"
+      ],
+      [
+        "ld.lld",
+        "-m",
+        "armelf_linux_eabi",
+        "--build-id=none",
+        "--no-undefined",
+        "-e",
+        "_Z30InAppBilling_ShowPendingDialogv",
+        "-T",
+        "/tmp/nova3-task66/comparison-only.ld",
+        "/tmp/nova3-task66/forwarders-arm.o",
+        "-o",
+        "/tmp/nova3-task66/comparison-only.elf"
+      ]
+    ],
+    "clang_host_result": "PASS: 414 forwarding calls; argument identity, 64-bit values, result bits and output mutations",
+    "address_and_undefined_sanitizer_result": "PASS: 414 forwarding calls; argument identity, 64-bit values, result bits and output mutations",
+    "sanitizer_environment": {
+      "ASAN_OPTIONS": "detect_leaks=0"
+    },
+    "leak_sanitizer": "NOT RUN: sandbox process-tracing restriction; no host security settings changed.",
+    "additional_gcc_host": {
+      "compiler": "g++ (GCC) 16.2.1 20260810",
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp",
+        "-o",
+        "/tmp/nova3-task66/gcc-test"
+      ],
+      "execution": [
+        "/tmp/nova3-task66/gcc-test"
+      ],
+      "compile_exit_code": 0,
+      "test_exit_code": 0,
+      "result": "PASS: 414 forwarding calls; argument identity, 64-bit values, result bits and output mutations"
+    },
+    "differential_oracle": {
+      "seed": 66,
+      "cases_per_wrapper": 512,
+      "total_paired_cases": 2048,
+      "total_original_and_candidate_wrapper_executions": 4096,
+      "reference_checks": "All r0-r12, SP, LR, NZCV flags and caller stack preserved; expected destination reached.",
+      "candidate_checks": "Same checks, except BuyItem r1 excluded as an AAPCS argument-alignment hole. All argument registers, callee-preserved registers, SP/LR/flags and stack contents checked.",
+      "scope": "No dependency implementation executed. No billing response, allocation, JNI, buffer format, networking or device behaviour tested."
+    },
+    "machine_code_comparison": {
+      "method": "Compile this C++ with Clang; link source-only object using explicit wrapper locations and absolute destination symbols; compare complete symbol bytes in memory with original ELF.",
+      "original_code_linked_or_copied_to_candidate": false,
+      "comparison_link_script": "Generated by verify.py in the disposable /tmp build directory; never used as production build configuration.",
+      "result": "Three 4-byte functions match. BuyItem is 12 candidate bytes versus 4 reference bytes and is NOT MATCHED.",
+      "byte_match_does_not_establish": "Original compiler identity, source return types, static-member declarations, full application ABI, dependency reconstruction or end-to-end billing behaviour."
+    },
+    "negative_checks": [
+      {
+        "check": "--require-all-matched with final source/verifier",
+        "expected_exit_code": 1,
+        "actual_exit_code": 1,
+        "diagnostic": "NOT MATCHED: at least one wrapper differs in machine code",
+        "result": "PASS: mismatch is rejected, never silently graded matching"
+      },
+      {
+        "check": "--reference /usr/bin/true",
+        "expected_exit_code": 1,
+        "actual_exit_code": 1,
+        "diagnostic": "reference SHA-256 mismatch",
+        "result": "PASS: rejected before compilation"
+      }
+    ],
+    "reproduction": [
+      "Use an existing environment with the recorded packages, clang++ and ld.lld; do not install/download anything in this worker task.",
+      "Set NOVA3_REFERENCE_SO to your read-only local libNOVA3_neon.so with the recorded SHA-256.",
+      "python3 reconstruction/tests/recovered/libNOVA3_neon/block_000d751c/verify.py --reference \"$NOVA3_REFERENCE_SO\" --build-dir /tmp/nova3-task66",
+      "The default command tests forwarding and records all byte comparisons, including NOT MATCHED. It writes source-built artifacts and metadata only under /tmp/nova3-task66.",
+      "Add --require-all-matched to enforce an all-four byte match; expected current exit code is 1 because BuyItem differs.",
+      "Sanitizer reproduction uses a non-PIE test executable and ASAN_OPTIONS=detect_leaks=0. These are process-local settings."
+    ]
+  },
+  "attempts_and_limitations": [
+    "Initial sanitizer execution failed before tests because PIE placement overlapped ASan shadow memory; non-PIE fixed address/undefined instrumentation.",
+    "Non-PIE sanitizer execution ran all 414 cases but LeakSanitizer then failed because process tracing is unavailable; leak detection was disabled for the final passing ASan/UBSan run.",
+    "Initial all-four exact comparison failed on BuyItem symbol size 12 versus reference size 4. Final verifier reports this explicitly and offers a strict matching gate.",
+    "A disposable clang::musttail experiment and Clang 23 -Oz retained the BuyItem stack load/store; neither changed the checked-in source.",
+    "The already-installed Android NDK Clang 21.0.0 also emitted the BuyItem stack load/store at -O2. No package installation or network access occurred.",
+    "Original wrappers preserve every register at dependency entry. The C++ BuyItem candidate changes unused caller-saved r1 and performs a redundant stack load/store; equivalence is limited to the typed AAPCS boundary with normal readable/writable caller stack.",
+    "Result is a provisional 32-bit register-transport interface. Original void/integer/pointer return declarations, static method status and integration ABI require separate evidence.",
+    "Class and wrapper declarations are not a ready-to-link billing subsystem. Tests provide synthetic doubles; production dependency definitions remain absent.",
+    "No CMake/build-system changes were authorized. Reproduction is standalone and limited to allowed paths."
+  ],
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d751c/billing_forwarders.hpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c/verify.py",
+      "coordination/evidence/functions-8519d3e74f033827f04cab.json"
+    ],
+    "task_checkpoint": "Bounded forwarding slice complete with explicit partial machine match; full source signatures and destination implementations unresolved.",
+    "blockers": [
+      "0x000d76cc NOT MATCHED with tested Clang 23/21 code generation.",
+      "Original return types and static-method declarations are UNVERIFIED.",
+      "Four destination methods are NOT RECONSTRUCTED; no live billing or Android integration is possible from this slice."
+    ],
+    "next_attempts": [
+      "Resolve return declarations and static-method status using local callers, JNI method descriptors, or source/type metadata before production integration.",
+      "If exact BuyItem code matching is needed, test an already-available compatible ARM GCC compiler; do not substitute inline copied instructions or alter argument types merely to force a match.",
+      "Allocate separate tasks for the destination methods at 0x000d737c, 0x000d7520, 0x000d79fc and 0x000d7bf4, including their JNI dependencies."
+    ],
+    "docs_modified": false,
+    "existing_files_overwritten": false,
+    "network_packages_sudo_github_or_original_binary_changes": false,
+    "git_commit_created": false
+  }
+}
