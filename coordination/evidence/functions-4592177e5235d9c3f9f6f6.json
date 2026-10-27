@@ -1,0 +1,399 @@
+{
+  "schema_version": 1,
+  "task_id": 65,
+  "autotask_key": "functions-4592177e5235d9c3f9f6f6",
+  "round": 1,
+  "recorded_at_utc": "2026-10-27T06:18:20.240450+00:00",
+  "result": "Four source-owned functions implemented and tested; three tiny wrapper bodies exactly matched at reference placement; cleanup NOT MATCHED",
+  "matching_claim": "PARTIAL: 0x000d52fc, 0x000d57d8, 0x000d58b8 MATCHED function-body bytes; 0x000d5300 NOT MATCHED",
+  "full_behavioural_equivalence": "UNVERIFIED outside the documented wrapper/cleanup scope",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "size_bytes": 18696442,
+    "hash_verified_before_and_after": true,
+    "read_only": true,
+    "relative_path_in_canonical_project": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so"
+  },
+  "analysis_provenance": {
+    "method": "Bounded LLVM disassembly and ELF symbol table analysis; independent C++ authored from observed control flow; no decompiler text used",
+    "disassembler_version": "LLVM 23.1.3",
+    "addresses": "ELF virtual addresses, all A32; no Thumb bit or Ghidra address-base translation",
+    "type_uncertainty": [
+      "Cleanup char** inferred from adjacent named fill*Array(char***) methods and pointer/delete[] behavior, not recovered DWARF.",
+      "Opaque JNI handle types and void setter return declarations inferred; exact machine-code match does not recover source declarations."
+    ]
+  },
+  "counts": {
+    "inventoried": 4,
+    "disassembled": 4,
+    "decompiled": 0,
+    "implemented": 4,
+    "source_functions_tested": 4,
+    "scoped_reference_verified": 4,
+    "exact_function_body_matches": 3,
+    "not_matched": 1,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0xd52fc",
+      "symbol": "InAppBilling_getTotalItems",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_code_sha256": "46e0e0147eff8e11659cb4b171ae67e62cf0a2bcfb8340b1bd303f41e097da28",
+      "candidate_code_sha256": "46e0e0147eff8e11659cb4b171ae67e62cf0a2bcfb8340b1bd303f41e097da28",
+      "exact_bytes": true,
+      "status": "MATCHED",
+      "architecture": "ARM A32, little endian, not Thumb",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Complete function-body bytes at recorded research placement; dependency-call traces with intercepted callees",
+      "reference_cases": 262,
+      "rules": [
+        "Call the total-items dependency once and forward its signed 32-bit result without caching."
+      ]
+    },
+    {
+      "address": "0xd5300",
+      "symbol": "InAppBilling_FreeArrayMem",
+      "reference_size": 76,
+      "candidate_size": 80,
+      "reference_code_sha256": "b111eee77f3dc1d128d441a02e4222cbc910353b1bc7656f873a3774abe8f388",
+      "candidate_code_sha256": "554812dedb15974b2f46952f9b8b7cf9705bb4b452bf8f85b6cc0ec78098e620",
+      "exact_bytes": false,
+      "status": "NOT MATCHED",
+      "architecture": "ARM A32, little endian, not Thumb",
+      "state": "VERIFIED",
+      "verification_grade": "behavioural",
+      "verification_scope": "Dependency-call order/arguments and pointer reads on synthetic valid inputs; allocator and billing implementations intercepted",
+      "reference_cases": 2058,
+      "rules": [
+        "Capture the total-items result once before inspecting the outer array.",
+        "For signed count > 0, load pointer slots in ascending order and call operator delete[] only on non-null entries.",
+        "After the loop, delete a non-null outer array. Nonpositive counts skip entry reads.",
+        "Do not clear the original slots, validate counts, or special-case null outer arrays before the count query."
+      ]
+    },
+    {
+      "address": "0xd57d8",
+      "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeSetIABObject",
+      "reference_size": 8,
+      "candidate_size": 8,
+      "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "candidate_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "exact_bytes": true,
+      "status": "MATCHED",
+      "architecture": "ARM A32, little endian, not Thumb",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Complete function-body bytes at recorded research placement; dependency-call traces with intercepted callees",
+      "reference_cases": 152,
+      "rules": [
+        "Ignore the first two JNI arguments and forward the third argument once to setIABObject."
+      ]
+    },
+    {
+      "address": "0xd58b8",
+      "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeSetContext",
+      "reference_size": 8,
+      "candidate_size": 8,
+      "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "candidate_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "exact_bytes": true,
+      "status": "MATCHED",
+      "architecture": "ARM A32, little endian, not Thumb",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Complete function-body bytes at recorded research placement; dependency-call traces with intercepted callees",
+      "reference_cases": 152,
+      "rules": [
+        "Ignore the first two JNI arguments and forward the third argument once to setContext."
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "address": "0x000d52d8",
+      "symbol": "InAppBilling::getTotalItems()",
+      "source_seam": "nova3::recovered::block_000d52fc::dependencies::get_total_items",
+      "status": "EXTERNAL / NOT RECONSTRUCTED; test returns controlled count"
+    },
+    {
+      "address": "0x000d5700",
+      "symbol": "InAppBilling::setIABObject(_jobject*)",
+      "source_seam": "nova3::recovered::block_000d52fc::dependencies::set_iab_object",
+      "status": "EXTERNAL / NOT RECONSTRUCTED; test records forwarded handle"
+    },
+    {
+      "address": "0x000d57e0",
+      "symbol": "InAppBilling::setContext(_jobject*)",
+      "source_seam": "nova3::recovered::block_000d52fc::dependencies::set_context",
+      "status": "EXTERNAL / NOT RECONSTRUCTED; test records forwarded handle"
+    },
+    {
+      "address": "0x0069b7fc",
+      "symbol": "operator delete[](void*)",
+      "status": "Production uses the C++ array deallocator; original allocator internals are not reconstructed. Emulator intercepts calls, host tests replace new[]/delete[] to record and actually free fixture allocations."
+    }
+  ],
+  "verification": {
+    "schema_version": 1,
+    "source_sha256": "957f4b03f9d76b311f135f035225da26da1fd2330d793e38b4fa9e7a2c007f2c",
+    "header_sha256": "31ed4ba1f6621e8168ba0cad5515d3e9a95b313a96b4aa2c7b4a9e8acc31f27f",
+    "test_sha256": "4940f8cf1639c7b028d01ae14269298bc5b7284c0298f14c0c28038d7234cf09",
+    "verification_script_sha256": "2c3eb2ecbc496aaa4cc6cf78c77c104658bc19d9d71cb730639f591377a59fa3",
+    "host_compiler": "g++ (GCC) 16.2.1 20260810",
+    "commands": [
+      [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-pedantic",
+        "-O2",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+        "-o",
+        "/tmp/nova65-check/test"
+      ],
+      [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-pedantic",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+        "-o",
+        "/tmp/nova65-check/sanitized"
+      ],
+      [
+        "clang++",
+        "--target=armv7a-none-eabi",
+        "-std=c++17",
+        "-O2",
+        "-marm",
+        "-mcpu=cortex-a8",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-ffunction-sections",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "-o",
+        "/tmp/nova65-check/source.o"
+      ],
+      [
+        "ld.lld",
+        "-m",
+        "armelf",
+        "-T",
+        "/tmp/nova65-check/comparison.ld",
+        "/tmp/nova65-check/source.o",
+        "-o",
+        "/tmp/nova65-check/source.elf"
+      ]
+    ],
+    "host_result": "PASS: 6 count, 2056 cleanup, 6 JNI forwarding cases",
+    "host_exit_code": 0,
+    "sanitizer_result": "PASS: 6 count, 2056 cleanup, 6 JNI forwarding cases",
+    "sanitizer_exit_code": 0,
+    "sanitizer_environment": {
+      "ASAN_OPTIONS": "detect_leaks=0",
+      "UBSAN_OPTIONS": "halt_on_error=1"
+    },
+    "leak_check": "NOT RUN: LeakSanitizer cannot operate under session ptrace",
+    "machine_code_status": "Per-function comparison; see oracle.assembly_comparisons",
+    "arm_compiler": "clang version 23.1.3",
+    "arm_linker": "LLD 23.1.3 (compatible with GNU linkers)",
+    "arm_compile_exit_code": 0,
+    "arm_link_exit_code": 0,
+    "linker_script_sha256": "f66542ba97e512f39c1346a07774f26d950e1f3950ebe821abb1ad8471d8f962",
+    "arm_elf_sha256": "38a78344174f458f6f16954cb197ab381d6b3d2fe1ed7fd18082a16e6a7d782b",
+    "oracle": {
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "differential_cases": {
+        "count": 262,
+        "free": 2058,
+        "iab": 152,
+        "context": 152
+      },
+      "total_cases": 2624,
+      "input_sha256": "882ee5325dd1de5a501a6d60dec03016dce8523513bdc1a1321db88fe9cec5c1",
+      "trace_sha256": "463ea852a2fd9a5c12d2c5f8ceab720019b06f44971542229d1cad4d39ae2a80",
+      "method": "Original A32, compiled A32 and host C++ dependency traces; callees intercepted",
+      "assembly_comparisons": [
+        {
+          "address": "0xd52fc",
+          "symbol": "InAppBilling_getTotalItems",
+          "reference_size": 4,
+          "candidate_size": 4,
+          "reference_code_sha256": "46e0e0147eff8e11659cb4b171ae67e62cf0a2bcfb8340b1bd303f41e097da28",
+          "candidate_code_sha256": "46e0e0147eff8e11659cb4b171ae67e62cf0a2bcfb8340b1bd303f41e097da28",
+          "exact_bytes": true,
+          "status": "MATCHED"
+        },
+        {
+          "address": "0xd5300",
+          "symbol": "InAppBilling_FreeArrayMem",
+          "reference_size": 76,
+          "candidate_size": 80,
+          "reference_code_sha256": "b111eee77f3dc1d128d441a02e4222cbc910353b1bc7656f873a3774abe8f388",
+          "candidate_code_sha256": "554812dedb15974b2f46952f9b8b7cf9705bb4b452bf8f85b6cc0ec78098e620",
+          "exact_bytes": false,
+          "status": "NOT MATCHED"
+        },
+        {
+          "address": "0xd57d8",
+          "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeSetIABObject",
+          "reference_size": 8,
+          "candidate_size": 8,
+          "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+          "candidate_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+          "exact_bytes": true,
+          "status": "MATCHED"
+        },
+        {
+          "address": "0xd58b8",
+          "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeSetContext",
+          "reference_size": 8,
+          "candidate_size": 8,
+          "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+          "candidate_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+          "exact_bytes": true,
+          "status": "MATCHED"
+        }
+      ],
+      "packages": {
+        "unicorn": "2.1.4",
+        "pyelftools": "0.33"
+      },
+      "scope": "All external dependencies intercepted. Synthetic fixture allocations only; no service or original allocator internals verified.",
+      "placement": "Independently compiled functions linked to the original virtual addresses with observed dependency addresses, no original implementations linked."
+    },
+    "oracle_exit_code": 0
+  },
+  "comparison_limits": [
+    "Assembly comparisons use raw complete symbol ranges after source-only linking at original VAs and resolving dependency branches to their observed addresses. No relocation masking, opcode normalization, original code copying or inline assembly.",
+    "Only three forwarding function bodies match. ABI types, exception/unwind metadata, the billing service, allocator and final application are not established by this match.",
+    "Cleanup source is 80 bytes versus original 76 bytes. Registers/control flow differ: explicitly NOT MATCHED.",
+    "Differential tests intercept all external callees. Actual JNI global-reference management, item-count lookup and allocator internals are UNVERIFIED.",
+    "Cleanup domain: signed count <= 0 with null or allocated outer arrays; count 1..10 with every null mask; count 64 with four masks. Positive counts require readable live pointer slots and distinct compatible array allocations.",
+    "ARM tests verify ascending pointer reads, unchanged slots, call traces, restored stack and preserved r4-r11. Host tests additionally inspect child payload/outer slots at deletion, actually free owned fixtures and clean up out-of-count allocations.",
+    "JNI tests include arbitrary unmapped ignored environment/receiver handles and null/edge/random third arguments. These wrappers do not dereference handles. Void return register values are outside the behavioral assertion.",
+    "No Android integration, original real allocator execution, invalid ownership/double-free, exception-unwinding or gameplay tests."
+  ],
+  "failures_and_remedies": [
+    {
+      "command": "Initial GCC AddressSanitizer/UndefinedBehaviorSanitizer test with default leak detection",
+      "exit_code": 1,
+      "failure": "LeakSanitizer cannot operate under session ptrace",
+      "remedy": "Repeated with ASAN_OPTIONS=detect_leaks=0 and UBSAN_OPTIONS=halt_on_error=1; exit 0. Leak checking remains NOT RUN."
+    },
+    {
+      "command": "Initial offline reference comparison",
+      "exit_code": 134,
+      "failure": "Unicorn physical-section table assertion after individual-page mapping",
+      "remedy": "Changed the independently authored test loader to coalesce contiguous memory pages. Final oracle run exited 0."
+    }
+  ],
+  "reproduce": [
+    "python3 reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc/verify.py --build-dir /tmp/nova65-host",
+    "python3 reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc/verify.py --reference /path/to/lawfully-held/libNOVA3_neon.so --build-dir /tmp/nova65-check --report /tmp/nova65-report.json"
+  ],
+  "source_files": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp": "957f4b03f9d76b311f135f035225da26da1fd2330d793e38b4fa9e7a2c007f2c",
+    "reconstruction/recovered/libNOVA3_neon/block_000d52fc/api.h": "31ed4ba1f6621e8168ba0cad5515d3e9a95b313a96b4aa2c7b4a9e8acc31f27f",
+    "reconstruction/recovered/libNOVA3_neon/block_000d52fc/README.md": "adc305cb84ba7ef5cfa159f1181024d1daa42653e61a1a014d3076441e92aa25",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp": "4940f8cf1639c7b028d01ae14269298bc5b7284c0298f14c0c28038d7234cf09",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc/verify.py": "2c3eb2ecbc496aaa4cc6cf78c77c104658bc19d9d71cb730639f591377a59fa3"
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d52fc/api.h",
+      "reconstruction/recovered/libNOVA3_neon/block_000d52fc/README.md",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc/verify.py",
+      "coordination/evidence/functions-4592177e5235d9c3f9f6f6.json"
+    ],
+    "bounded_slice_complete": true,
+    "production_integration_complete": false,
+    "next_attempts": [
+      "Supply independently reconstructed count/JNI setter dependencies before runtime integration.",
+      "Confirm original Java/native source declarations locally, especially JNI void returns and cleanup element type.",
+      "If exact cleanup code matching is required, compare compatible legacy ARM compiler/code-generation settings. Preserve the behavioral implementation and tests; do not copy original instructions.",
+      "Allocate build integration paths before adding these source and test targets to broader builds."
+    ],
+    "blockers": [
+      "LeakSanitizer cannot run under session ptrace.",
+      "Original dependency internals and application integration remain outside this assigned slice."
+    ],
+    "docs_modified": false,
+    "committed": false,
+    "network_or_github_changes": false,
+    "original_binary_changes": false,
+    "packages_installed": false,
+    "sudo_used": false,
+    "nested_agents_used": false
+  },
+  "reference_free_verification": {
+    "schema_version": 1,
+    "source_sha256": "957f4b03f9d76b311f135f035225da26da1fd2330d793e38b4fa9e7a2c007f2c",
+    "header_sha256": "31ed4ba1f6621e8168ba0cad5515d3e9a95b313a96b4aa2c7b4a9e8acc31f27f",
+    "test_sha256": "4940f8cf1639c7b028d01ae14269298bc5b7284c0298f14c0c28038d7234cf09",
+    "verification_script_sha256": "2c3eb2ecbc496aaa4cc6cf78c77c104658bc19d9d71cb730639f591377a59fa3",
+    "host_compiler": "g++ (GCC) 16.2.1 20260810",
+    "commands": [
+      [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-pedantic",
+        "-O2",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+        "-o",
+        "/tmp/nova65-host/test"
+      ],
+      [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-pedantic",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+        "-o",
+        "/tmp/nova65-host/sanitized"
+      ]
+    ],
+    "host_result": "PASS: 6 count, 2056 cleanup, 6 JNI forwarding cases",
+    "host_exit_code": 0,
+    "sanitizer_result": "PASS: 6 count, 2056 cleanup, 6 JNI forwarding cases",
+    "sanitizer_exit_code": 0,
+    "sanitizer_environment": {
+      "ASAN_OPTIONS": "detect_leaks=0",
+      "UBSAN_OPTIONS": "halt_on_error=1"
+    },
+    "leak_check": "NOT RUN: LeakSanitizer cannot operate under session ptrace",
+    "machine_code_status": "UNVERIFIED (no reference argument)"
+  }
+}
