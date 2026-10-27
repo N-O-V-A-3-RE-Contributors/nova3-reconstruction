@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "task": 30,
+  "task_key": "functions-126828745455df69bf91e5",
+  "result": "PARTIAL: three portable implementations with scoped reference evidence; integer ZIP opener not reconstructed",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "expected_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "observed_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "availability": "Found a lawfully held local reference under the canonical project tree, outside the disposable checkout; read only. Not copied into this checkout.",
+    "architecture": "ARM32 little-endian, ARM mode for all four symbol addresses",
+    "provenance": "Local SQLite symbol index cross-checked against ELF .symtab; Capstone field/dataflow analysis; Unicorn execution from original PT_LOAD mappings. No decompiler text or original bytes included."
+  },
+  "source": {
+    "path": "reconstruction/recovered/libNOVA3_neon/block_00819878.cpp",
+    "sha256": "3a2c790469857bca737d490f6ab535269fd44a5da28dd72c03cc6b9e3bd25c74",
+    "interface": "Portable source-owned callback boundaries and ARM32 buffer tokens. Not a drop-in original C++ ABI implementation.",
+    "runtime_dependencies": "C++17 standard headers only; no original binary, decompiler runtime, emulator, or game asset dependency"
+  },
+  "tests": {
+    "path": "reconstruction/tests/recovered/libNOVA3_neon/block_00819878_test.cpp",
+    "sha256": "895cf87a2b9fd89c12c7ddbb290f7625638c91d0ab03ca8307ef9be91ad4bf6d",
+    "integration": "Standalone test includes the implementation. Existing CMake files were outside the allowed edit paths and were not changed.",
+    "reference_runner": "The test's --emit-oracle option emits an independently executable Python reference harness; it reads and hashes a caller-supplied local ELF. Unicorn and pyelftools are research-only dependencies."
+  },
+  "functions": [
+    {
+      "address": "0x00819878",
+      "size": 1632,
+      "symbol": "glitch::io::CZipReader::openFile(int)",
+      "reference_extent_sha256": "a0f2951c83e5ba3d9d1111cd2e8a299d7be0d4ed99661a1b84d04ac6fc5f2db8",
+      "status": "NOT RECONSTRUCTED",
+      "machine_code_match": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "reason": "Observed dependencies include CLimitReadFile::init, raw inflateInit2_/inflate/inflateEnd, allocation and intrusive pointer/vector operations. Existing engine ZIP payload code only covers a subset. Full stored/decompressed view ownership, caching, failure cleanup and exact surrounding class layout are unresolved; no guessed adapter or success stub was added.",
+      "next_attempt": "Recover entry/cache structures and helper contracts around CLimitReadFile::init at 0x0081943c, then separately test stored and deflate branches, cache reuse, inflater failures and reference ownership before supplying this implementation."
+    },
+    {
+      "address": "0x00819ed8",
+      "size": 76,
+      "symbol": "glitch::io::CZipReader::openFile(char const*)",
+      "reference_extent_sha256": "4860bfb4ec6d589fd0f1dc33cbd3113659dc1c95276d73c032b9e0593ed2597b",
+      "implementation": "open_zip_named",
+      "status": "TESTED",
+      "machine_code_match": "NOT MATCHED",
+      "whole_engine_equivalence": "UNVERIFIED",
+      "evidence": "Six compiled-source versus full original-wrapper cases: -1, 0, 4, -2, INT32_MIN, INT32_MAX. Exactly -1 constructs an empty handle; other results are forwarded to the index overload. Name/context pointer forwarding and call order checked.",
+      "scope": "findFile at 0x007fcec0, integer openFile at 0x00819878, and empty intrusive-pointer construction at 0x007f5718 are hooked contracts. Does not recover filename lookup or integer file opening. Original hidden return object is adapted to a portable opaque handle."
+    },
+    {
+      "address": "0x0081bd20",
+      "size": 160,
+      "symbol": "glitch::scene::{anonymous}::addStream",
+      "reference_extent_sha256": "900e09049728679f57eed7fb55f7dde28d63722d71cae104d8699d3de5046450",
+      "implementation": "add_stream",
+      "status": "TESTED",
+      "machine_code_match": "NOT MATCHED",
+      "whole_engine_equivalence": "UNVERIFIED",
+      "evidence": "128 compiled-source versus full original-function cases compare all 16 output bytes as fields, returned byte index, retain/release event order and reference balance. Both sides also check untouched records. Includes null/non-null buffers, four attributes, minima 0/1/914/UINT32_MAX, output indices 0/1/255, null output with index zero, 16-bit truncation, and 32-bit offset arithmetic wrap.",
+      "layout": "SMesh buffer +0x34; stride/offset/type/components array pointers +0x0c/+0x14/+0x1c/+0x24. Minimum vertex at SMeshBuffer+0x20. Output record: buffer +0, offset +4, type +8, uint16 components +12, uint16 stride +14, size 16.",
+      "scope": "Atomic increment at 0x00851bcc, intrusive buffer constructor at 0x00109ab0, and release at 0x000ec294 are hooked to synthetic reference contracts. Valid disjoint arrays and construction storage only; negative/invalid attributes, null base with nonzero index, callback-induced mutation, threading, actual GPU objects and helper internals are unverified. Driver/config arguments are unused by the observed routine."
+    },
+    {
+      "address": "0x008ca0c0",
+      "size": 48,
+      "symbol": "glf::AndroidUpdate()",
+      "reference_extent_sha256": "84dcae958ca2870af817d2a1658a5f3f656aa034fba7297ffb4a7a6ec9865826",
+      "implementation": "android_update",
+      "status": "TESTED",
+      "machine_code_match": "NOT MATCHED",
+      "whole_engine_equivalence": "UNVERIFIED",
+      "evidence": "Two compiled-source versus complete original dispatch cases: null app and non-null app. Original gApp resolves through GOT slot 0x00d83618 to symbol 0x00da44b0. Non-null path calls vtable offset 0x24 with the original object; a synthetic callback clears gApp and the routine returns normally.",
+      "scope": "Portable caller supplies the application snapshot and callback in place of the unknown original application class/global ABI. Only guarded dispatch is recovered; application update behavior, Android lifecycle, rendering and game loop are unverified."
+    }
+  ],
+  "tools": {
+    "host_target": "x86_64-pc-linux-gnu",
+    "gcc": "c++ (GCC) 16.2.1 20260810",
+    "clang": "clang version 23.1.3",
+    "python": "3.14.8",
+    "pyelftools": "0.33",
+    "capstone": "5.0.7",
+    "unicorn": "2.1.4"
+  },
+  "verification": [
+    {
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_00819878_test.cpp -o /tmp/nova30-test && /tmp/nova30-test",
+      "exit_code": 0,
+      "result": "PASS: source unit tests"
+    },
+    {
+      "command": "/tmp/nova30-test --emit-oracle | \"$NOVA_ORACLE_PYTHON\" - \"$REFERENCE_SO\" /tmp/nova30-test",
+      "parameters": "NOVA_ORACLE_PYTHON must name a Python with pyelftools/Unicorn; REFERENCE_SO must name the local hash-pinned library. Session used the existing canonical-project .venv and reference library without installing anything.",
+      "exit_code": 0,
+      "result": "PASS: 128 stream differential cases; 6 ZIP forwarding contract cases; 2 Android dispatch cases"
+    },
+    {
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_00819878.cpp -o /tmp/nova30-source.o",
+      "exit_code": 0,
+      "result": "Independent source object compilation passed"
+    },
+    {
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_00819878_test.cpp -o /tmp/nova30-sanitize-nopie",
+      "exit_code": 0,
+      "result": "Compilation passed; ASAN_OPTIONS=detect_leaks=0 runs of unit tests, --stream-vectors and --dispatch-vectors all exited 0. Both vector outputs byte-match GCC outputs via cmp. Leak checking disabled only for the tests; host security settings unchanged."
+    }
+  ],
+  "failed_attempts": [
+    "Initial PIE ASan executable could not initialize its shadow mapping on this host.",
+    "Non-PIE ASan executable completed assertions but LeakSanitizer failed because ptrace is restricted. Re-ran with ASAN_OPTIONS=detect_leaks=0; leak verification remains UNVERIFIED."
+  ],
+  "machine_code_comparison": {
+    "status": "NOT MATCHED",
+    "comparison_performed": false,
+    "reason": "Host-portable interfaces were compiled, not the original ARM ABI. No claim of exact instruction equality or original compiler recovery. Function extent hashes identify reference inputs only and are not match evidence."
+  },
+  "handoff": {
+    "implemented_functions": 3,
+    "unreconstructed_functions": 1,
+    "machine_code_matched_functions": 0,
+    "end_to_end_game_functionality_added": 0,
+    "next": "Review the portable dependency boundaries, then recover the integer ZIP opener's ownership/cache dependencies with separate original-reference tests. Exact ARM ABI/compiler matching and engine integration remain pending. No docs were changed because docs/worker-notes was not in the allowed paths."
+  }
+}
