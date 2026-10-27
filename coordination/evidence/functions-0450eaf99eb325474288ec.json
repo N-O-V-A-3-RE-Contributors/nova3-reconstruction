@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "task_id": 29,
+  "autotask_key": "functions-0450eaf99eb325474288ec",
+  "recorded_at_utc": "2026-10-26T21:25:25.322983+00:00",
+  "result": "PARTIAL",
+  "matching_claim": "NOT MATCHED",
+  "full_behavioural_equivalence": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_verified": true,
+    "size_bytes": 18696442,
+    "discovery": "Available read-only in the canonical project outside this disposable checkout; absent from checkout itself.",
+    "relative_path_in_canonical_project": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "elf_machine": "EM_ARM",
+    "elf_bits": 32,
+    "byte_order": "little",
+    "entry_mode": "ARM (not Thumb)",
+    "modified": false
+  },
+  "analysis_provenance": {
+    "method": "Reused existing local Ghidra exports and tested the original ARM bodies with Unicorn; no fresh Ghidra import.",
+    "ghidra_version": "12.1.2",
+    "ghidra_language": "ARM:LE:32:v8",
+    "ghidra_image_base": "0x00010000",
+    "address_rule": "JSON function address is ELF VA; subtract 0x10000 from exported instruction/call addresses.",
+    "analysis_scope": "ELF import plus selected disassembly; no global autoanalysis",
+    "exports_relative_to_canonical_project": "generated/ghidra/exports/84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "export_mapping_check": {
+      "result": "PASS",
+      "instructions_checked": 1018,
+      "method": "Compare every exported instruction byte sequence against the ELF PT_LOAD file mapping after removing the Ghidra base. No original bytes serialized here."
+    }
+  },
+  "counts": {
+    "inventoried_functions": 4,
+    "functions_with_reused_disassembly": 4,
+    "functions_with_reused_decompilation": 4,
+    "portable_source_units_implemented": 2,
+    "portable_units_tested_against_scoped_native_oracle": 2,
+    "fully_reconstructed_native_ABI_functions": 0,
+    "exact_machine_code_matches": 0,
+    "remaining_unreconstructed_functions": 2,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x002ad444",
+      "size_bytes": 984,
+      "symbol": "CCustomFileSystem::addScrambledZipFileArchive(char const*, bool, bool, unsigned int)",
+      "stage": "DECOMPILED",
+      "reconstruction_status": "NOT RECONSTRUCTED",
+      "verification_grade": "hypothesis",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "portable_source_entry": null,
+      "export_sha256": "9e45dc42e373e82a7060522bf80c4e3daad3b6df4df4eb845f154a87da9aa02b",
+      "reference_region_sha256": "f2d060899240910a7ab5f3c5357176773fdd17554861a4ee6d27369f51d7d905",
+      "basic_blocks": 41,
+      "exported_instructions": 242,
+      "direct_call_sites": 32,
+      "remaining": [
+        "Recover archive path decisions and multipart dispatch.",
+        "Map CScrambledZipReader construction/validity, intrusive ownership, vector insertion and lock/unlock behaviour.",
+        "Build independent archive registration traces including failure and allocation paths."
+      ]
+    },
+    {
+      "address": "0x002ad998",
+      "size_bytes": 2188,
+      "symbol": "CCustomFileSystem::createAndOpenFile(char const*)",
+      "stage": "DECOMPILED",
+      "reconstruction_status": "NOT RECONSTRUCTED",
+      "verification_grade": "hypothesis",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "portable_source_entry": null,
+      "export_sha256": "d662120e6250b565dfe5336429260d00942092b3968211a4ad469230aa63e33a",
+      "reference_region_sha256": "85f7d78aa76f0e9e7e36cbf95ea3ba112bd2d751e0b3030ead05f02151d00707",
+      "basic_blocks": 89,
+      "exported_instructions": 505,
+      "direct_call_sites": 67,
+      "remaining": [
+        "Map all ordered filename rewrites, device/global quality gates, normal-map suppression and fallbacks.",
+        "Recover customCreateAndOpenFile result/ownership contracts and underlying filesystem behaviour.",
+        "Existing engine texture_path code covers only a subset; do not promote it to a reconstruction of this whole function."
+      ]
+    },
+    {
+      "address": "0x002af114",
+      "size_bytes": 408,
+      "symbol": "CCustomResFactory::GetHashName(custom string const&, custom string&)",
+      "stage": "TESTED",
+      "reconstruction_status": "PORTABLE STRING TRANSFORMATION IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "SCOPED PASS; full native ABI UNVERIFIED",
+      "portable_source_entry": "nova3::recovered::libnova3_neon::get_hash_name",
+      "export_sha256": "c0e997e49414b97cc3e75851671cc224366c8eff77cb9be4aa68bf0d376b0613",
+      "reference_region_sha256": "f9234df080b2aa7cac91bf2daf1398d31c4cba83ad5df81b61373c11d219f9a2",
+      "basic_blocks": 24,
+      "exported_instructions": 102,
+      "direct_call_sites": 9,
+      "established": [
+        "Take the basename after the last slash or backslash.",
+        "Remove the final dot and suffix if that dot is in the basename; a dot in a directory does not truncate the basename.",
+        "Fold only ASCII A-Z; preserve all other bytes, including embedded NULs in length-delimited strings."
+      ],
+      "oracle_cases": 3110,
+      "oracle_transcript_sha256": "56f85d87def29ab2e759a72a00d2cea8340a335dd59a388f7429ec3b8bde95d7",
+      "exclusions": [
+        "Original custom allocator, 32-bit string representation, COW storage, aliasing/ownership and exception behaviour.",
+        "No original calling convention, binary interface or machine-code match is claimed."
+      ]
+    },
+    {
+      "address": "0x002af2ac",
+      "size_bytes": 792,
+      "symbol": "CCustomResFactory::getTexture(char const*, bool)",
+      "stage": "TESTED",
+      "reconstruction_status": "PORTABLE LOOKUP/FILTER POLICY IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "SCOPED PASS; full engine method UNVERIFIED",
+      "portable_source_entry": "nova3::recovered::libnova3_neon::get_texture",
+      "export_sha256": "840596df1b0129c21004c71eb89a69cfed34e9bbb873610e32dcdc66cf4a9af4",
+      "reference_region_sha256": "6e28f2252fe3ec1e5a5c8fde2f84c5d4f96aba2c94b49b3801815b03d77799b7",
+      "basic_blocks": 27,
+      "exported_instructions": 169,
+      "direct_call_sites": 23,
+      "established": [
+        "Input name follows const char* NUL termination; key is produced by GetHashName.",
+        "Only when the boolean argument AND g_UseOneTex are true, request HeatDistort.tga while retaining the original cache key.",
+        "A null texture result or false boolean argument skips all filtering.",
+        "For nonzero CLevel::s_TexTests, set mag=0, then when descriptor byte >1 set anisotropy=0 before min=2; otherwise min=1.",
+        "With tests disabled, set mag=1. With g_UseAnisotropy and descriptor byte >1, set min=4 then anisotropy=4; with byte <=1 set min=1 only.",
+        "With both tests and g_UseAnisotropy disabled, set min=2 for byte >1 or min=1 otherwise, then set anisotropy from signed DeviceOptions word +0x38 converted to float."
+      ],
+      "inferred": [
+        "The unsigned descriptor byte at texture->0x10->0x2f appears to count mip levels; its semantic name is not proven.",
+        "The source parameter name configure describes observed use; its original parameter name is unknown."
+      ],
+      "oracle_cases": 13352,
+      "oracle_transcript_sha256": "878f212585a6153f38701bde9b0d18da29a383d2fbabb9d7b959d2283fe8ae0f",
+      "exclusions": [
+        "Real texture manager/cache, asset decoding, graphics state and rendering.",
+        "Original intrusive ownership, custom string ABI, native layouts and exception behaviour.",
+        "The source uses shared_ptr and a source-owned abstract manager/texture interface. It is not binary ABI compatible.",
+        "Globals/options are supplied as a stable snapshot. Reentrant or concurrent mutation of those policies is not covered."
+      ]
+    }
+  ],
+  "build_provenance": {
+    "compiler": "/usr/bin/c++",
+    "compiler_version": "c++ (GCC) 16.2.1 20260810",
+    "target": "x86_64-pc-linux-gnu",
+    "flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "source_path": "reconstruction/recovered/libNOVA3_neon/block_002ad444.cpp",
+    "source_sha256": "4a50f7a660c510b19f1463ab131fc4334ca0cb903b06361ac1a88687da1aeaf0",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_002ad444_test.cpp",
+    "test_sha256": "d9c29ff2c2915391bed5abbf4d80b203f5d11d9984d5779cdabbdc2a4544c0d7",
+    "test_structure": "Standalone test includes implementation because headers and CMake are outside allowed edit paths. Do not additionally link the implementation into this test.",
+    "production_dependencies": [
+      "C++17 standard library; no original library or Unicorn dependency"
+    ],
+    "machine_code_comparison": {
+      "performed": false,
+      "result": "NOT MATCHED",
+      "reason": "The candidate builds are portable x86_64 source with different interfaces/ownership; no comparable ARM candidate or original compiler/settings were established."
+    }
+  },
+  "tests": [
+    {
+      "name": "standalone_source_compilation",
+      "command": "c++ -std=c++17 -O2 -DNDEBUG -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_002ad444.cpp -o /tmp/nova29-source.o",
+      "exit_code": 0
+    },
+    {
+      "name": "optimized_explicit_vectors",
+      "build_command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_002ad444_test.cpp -o /tmp/nova29-test",
+      "command": "/tmp/nova29-test",
+      "exit_code": 0,
+      "output": [
+        "PASS: 21 explicit filename vectors",
+        "PASS: 11 explicit texture policy/lookup vectors"
+      ]
+    },
+    {
+      "name": "release_NDEBUG_explicit_vectors",
+      "build_command": "c++ -std=c++17 -O2 -DNDEBUG -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_002ad444_test.cpp -o /tmp/nova29-release",
+      "command": "/tmp/nova29-release",
+      "exit_code": 0,
+      "output": [
+        "PASS: 21 explicit filename vectors",
+        "PASS: 11 explicit texture policy/lookup vectors"
+      ]
+    },
+    {
+      "name": "scoped_reference_differential",
+      "command": "set -o pipefail; /tmp/nova29-test --oracle-script | \"$NOVA3_PYTHON\" - \"$NOVA3_REFERENCE\" /tmp/nova29-test",
+      "exit_code": 0,
+      "filename_cases": 3110,
+      "texture_cases": 13352,
+      "unicorn_version": "2.1.4",
+      "pyelftools_version": "0.33",
+      "scope": "Normal entry-to-return executions from actual reference ARM code, with explicit external helper models. Does not establish every exceptional path, ABI, renderer or engine parity.",
+      "filename_corpus": "21 standalone explicit vectors; differential corpus has fixed edges, all strings of length 0..4 over seven selected bytes, 300 seeded arbitrary-byte strings, embedded NULs, all byte values and a 4096-character basename.",
+      "texture_corpus": "Boolean/descriptor matrix over all 256 descriptor bytes and modes 0/1/255; additional cases cover every test-mode byte, signed conversion boundaries, long names, mixed separators, embedded NULs, null loads and asset substitution.",
+      "texture_external_helper_calls": {
+        "0x10b900": 13352,
+        "0x7b1dec": 13352,
+        "0xbe3900": 7204,
+        "0x2b2a58": 1075,
+        "0x10918c": 26704,
+        "0x77db74": 4130,
+        "0x77db24": 4130,
+        "0x77dc00": 3599
+      }
+    },
+    {
+      "name": "ASan_UBSan_explicit_vectors",
+      "compiler": "clang version 23.1.3",
+      "target": "x86_64-pc-linux-gnu",
+      "build_command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_002ad444_test.cpp -o /tmp/nova29-sanitize-nopie",
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova29-sanitize-nopie",
+      "exit_code": 0,
+      "output": [
+        "PASS: 21 explicit filename vectors",
+        "PASS: 11 explicit texture policy/lookup vectors"
+      ],
+      "leak_detection": "NOT RUN: sandbox ptrace restrictions prevent LeakSanitizer. No host security settings changed."
+    }
+  ],
+  "oracle_models": {
+    "shared_string_helpers": {
+      "0x10b900": "const char* constructor",
+      "0x000ed2a0": "string assignment",
+      "0x002beec0": "substring with unsigned count/clamping",
+      "0x0020f4dc": "COW leak helper; private synthetic storage has no sharing",
+      "0x000eca5c": "disposal; synthetic arena reset between inputs"
+    },
+    "texture_helpers": {
+      "0x007b1dec": "texture-manager lookup records path/key and supplies texture or null",
+      "0x00be3900": "single-threaded __sync_add_and_fetch_4",
+      "0x002b2a58": "DeviceOptions::Instance supplies synthetic options",
+      "0x0010918c": "temporary intrusive_ptr destruction",
+      "0x0077db74": "record setMagFilter argument",
+      "0x0077db24": "record setMinFilter argument",
+      "0x0077dc00": "record setAnisotropy float bits"
+    },
+    "synthetic_globals": {
+      "0x00d9b960": "g_device and its driver/manager data pointers",
+      "0x00d9b331": "g_UseOneTex",
+      "0x00d9b330": "g_UseAnisotropy",
+      "0x00d9b821": "CLevel::s_TexTests"
+    },
+    "limitations": "All helper implementations and dependency objects are test models. The original string, atomic, manager, option and setter callees are not executed. Original instruction bytes are never patched; only synthetic data/globals are initialized. Unknown control transfers and instruction-limit exhaustion fail the oracle."
+  },
+  "failures_and_corrections": [
+    {
+      "attempt": "Initial texture oracle run",
+      "result": "FAIL: case 3072 requested no configuration plus single-texture mode; source incorrectly substituted asset.",
+      "correction": "Confirmed all four boolean combinations in the native body; gated substitution with configure && use_one_texture and added explicit regression. Final 13352 cases pass."
+    },
+    {
+      "attempt": "Default PIE clang ASan/UBSan executable",
+      "result": "ASan aborted before tests: shadow memory overlaps sandbox mapping.",
+      "correction": "Built a non-PIE executable; no sandbox or host settings changed."
+    },
+    {
+      "attempt": "Non-PIE executable with default leak detection",
+      "exit_code": 1,
+      "result": "Explicit tests passed, then LeakSanitizer aborted because ptrace is restricted.",
+      "correction": "Reran with ASAN_OPTIONS=detect_leaks=0; ASan/UBSan execution exited 0. Leak checking remains unavailable."
+    }
+  ],
+  "handoff": {
+    "preserved_existing_work": "Inspected and retained the untracked get_hash_name implementation and existing vectors/oracle before extending the same two allowed files.",
+    "required_environment": {
+      "NOVA3_REFERENCE": "Absolute local path to the lawfully held hash-pinned library; optional oracle only.",
+      "NOVA3_PYTHON": "Python interpreter with Unicorn 2.1.4 and pyelftools 0.33 already installed."
+    },
+    "resume": [
+      "Reproduce standalone compile/explicit vectors; no local game files are required for these.",
+      "Set NOVA3_REFERENCE and NOVA3_PYTHON, then run the differential command. The script verifies the reference SHA256 before execution.",
+      "Prioritize archive registration at 0x002ad444: map preflight path decisions, reader ownership and vector/locking semantics before implementing.",
+      "Then recover all device/global/name-policy branches of 0x002ad998 and the filesystem dispatch contracts.",
+      "Keep match status NOT MATCHED until an ARM candidate and reproducible machine-code comparison are available."
+    ],
+    "blockers": [
+      "Two filesystem methods remain unreconstructed; dependencies and ownership need further evidence, not placeholder returns.",
+      "No comparable ARM build, native ABI reconstruction, renderer, real texture manager, filesystem integration or Android test was produced.",
+      "CMake/build registration and documentation edits are outside the three assigned paths."
+    ],
+    "scope_compliance": "Only assigned source, test and evidence paths changed in repository. No agents, network, package installs, sudo, GitHub changes, original file modifications or original content copies. Temporary source-built test artifacts reside under /tmp."
+  }
+}
