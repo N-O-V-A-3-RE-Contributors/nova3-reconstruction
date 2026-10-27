@@ -1,0 +1,204 @@
+{
+  "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+  "toolchain": {
+    "g++": "g++ (GCC) 16.2.1 20260810",
+    "clang++": "clang version 23.1.3",
+    "ld.lld": "LLD 23.1.3 (compatible with GNU linkers)",
+    "unicorn": "2.1.4",
+    "pyelftools": "0.33",
+    "python": "3.14.8"
+  },
+  "source_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp": "964ed46eecfd77b24dfaf17bae6a84dc78280123f7f70bd8175ad2ac525a978d",
+    "reconstruction/recovered/libNOVA3_neon/block_000d80c0/billing_forwarders.hpp": "659528b75e06870488b18c0a10c7a024b3f544dd4357213c4e26caaa68de1154",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp": "ea00ef60ec3b010d0f137ce7c32ca03ff444ec4dd4549fd347fd526398879b14",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0/verify.py": "84c1c3ae850cdb11a67d9c8bd4f3acc7fb3b508ac8835d1a71103344d9d8e097"
+  },
+  "arm_flags": [
+    "-std=c++17",
+    "-Wall",
+    "-Wextra",
+    "-Wpedantic",
+    "-Werror",
+    "--target=armv7-none-eabi",
+    "-march=armv7-a",
+    "-marm",
+    "-mfloat-abi=soft",
+    "-O2",
+    "-fomit-frame-pointer",
+    "-fno-exceptions",
+    "-fno-unwind-tables",
+    "-fno-asynchronous-unwind-tables",
+    "-ffunction-sections"
+  ],
+  "candidate_arm_object_sha256": "73a67c82a85a3b2165cee13698b7c5933164378a4b50c2dc5e1e09a438288420",
+  "candidate_placed_elf_sha256": "55a2da6bdc95d8aaa218d3712d8e987b7becffa1029aa58e7248d003420b71c5",
+  "checks": [
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "-c",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+        "-o",
+        "/tmp/nova3-task70-k7sogk3z/host.o"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+        "-o",
+        "/tmp/nova3-task70-k7sogk3z/unit"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/tmp/nova3-task70-k7sogk3z/unit"
+      ],
+      "exit_code": 0,
+      "stdout": "PASS: 547 forwarding cases; argument identity, result transport, output mutations and canaries",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+        "-o",
+        "/tmp/nova3-task70-k7sogk3z/sanitized"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "/tmp/nova3-task70-k7sogk3z/sanitized"
+      ],
+      "exit_code": 0,
+      "stdout": "PASS: 547 forwarding cases; argument identity, result transport, output mutations and canaries",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "--target=armv7-none-eabi",
+        "-march=armv7-a",
+        "-marm",
+        "-mfloat-abi=soft",
+        "-O2",
+        "-fomit-frame-pointer",
+        "-fno-exceptions",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-ffunction-sections",
+        "-c",
+        "/home/jason/.cache/nova3-team/N-O-V-A-3-RE-Contributors_nova3-reconstruction/70-3d6f1e/reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+        "-o",
+        "/tmp/nova3-task70-k7sogk3z/arm.o"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ld.lld",
+        "-T",
+        "/tmp/nova3-task70-k7sogk3z/placement.ld",
+        "--entry=InAppBilling_FillIdArray",
+        "--defsym=nova3_billing_fill_id_array=0xd7e5c",
+        "--defsym=nova3_billing_get_headers=0xd80c4",
+        "--defsym=nova3_billing_fill_billing_att_array_by_name=0xd82f8",
+        "--defsym=nova3_billing_fill_attribute_array_by_name=0xd8584",
+        "/tmp/nova3-task70-k7sogk3z/arm.o",
+        "-o",
+        "/tmp/nova3-task70-k7sogk3z/placed.elf"
+      ],
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "assembly_comparisons": [
+    {
+      "symbol": "InAppBilling_FillIdArray",
+      "address": "0xd80c0",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "candidate_region_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "exact_bytes_after_placement": true
+    },
+    {
+      "symbol": "InAppBilling_GetHeaders",
+      "address": "0xd82e4",
+      "reference_size": 20,
+      "candidate_size": 20,
+      "reference_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+      "candidate_region_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+      "exact_bytes_after_placement": true
+    },
+    {
+      "symbol": "InAppBilling_FillBillingAttArrayByName",
+      "address": "0xd8580",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "exact_bytes_after_placement": true
+    },
+    {
+      "symbol": "InAppBilling_FillAttributeArrayByName",
+      "address": "0xd880c",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "candidate_region_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "exact_bytes_after_placement": true
+    }
+  ],
+  "original_vs_rebuilt_arm_cases": {
+    "InAppBilling_FillIdArray": 1024,
+    "InAppBilling_GetHeaders": 1024,
+    "InAppBilling_FillBillingAttArrayByName": 1024,
+    "InAppBilling_FillAttributeArrayByName": 1024
+  },
+  "matching_scope": "Full four A32 wrapper symbol regions after analysis-only placement and dependency resolution; no byte masking or inline assembly.",
+  "oracle_scope": "Only the original and newly compiled wrappers; dependencies hooked. Compares call identity/arguments, return bits, output memory, r0-r12, restored SP, preserved r4-r11 and stack bounds. Real billing, result type/layout and JNI remain UNVERIFIED."
+}
