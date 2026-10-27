@@ -1,0 +1,342 @@
+{
+  "schema_version": 1,
+  "task": 43,
+  "task_key": "functions-e7f289ca2ec298df27e4be",
+  "cluster_status": "TESTED",
+  "matching": "NOT MATCHED",
+  "verification_grade": "behavioural",
+  "whole_cluster_equivalence": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available": true,
+    "path": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "hash_independently_checked": true,
+    "access": "Read-only local analysis and test oracle; no copies or original bytes in deliverables.",
+    "task_size_notation": "Hexadecimal: 18=24 bytes; 8=8 bytes; 60=96 bytes."
+  },
+  "counts": {
+    "task_functions": 4,
+    "inventoried": 4,
+    "disassembled": 4,
+    "existing_local_ghidra_exports": 4,
+    "new_decompilations": 0,
+    "source_implemented": 4,
+    "source_tested": 4,
+    "byte_matching_function_bodies": 1,
+    "not_matched_function_bodies": 3,
+    "whole_cpp_abi_verified": 0,
+    "reference_execution_cases": 194,
+    "gameplay_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x00710368",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getGeometryEi",
+      "size_bytes": 24,
+      "ghidra_version": "12.1.2",
+      "export_sha256": "244aac4010ae1c1d2c51f16dfcfa8b173cb71650875fdb760d1c527c6dd0ed98",
+      "instruction_count": 6,
+      "bytes_compared": 24,
+      "state": "TESTED",
+      "mode": "ARM (A32)",
+      "matching": "NOT MATCHED",
+      "whole_function_cpp_abi_equivalence": "UNVERIFIED",
+      "observed_semantics": [
+        "Follow database+0 -> file+0x10 -> header+0x20 -> root+0x88.",
+        "Return geometry base + index*16 modulo 2^32 on ARM32; no count check or element read."
+      ],
+      "implementation": "ColladaDatabase::getGeometry(int32_t)",
+      "verification_scope": "Local synthetic original-ARM vs host-source oracle; lookup strcmp dependency modeled; no full-engine/asset integration or byte match."
+    },
+    {
+      "address": "0x00710700",
+      "symbol": "_ZN6glitch7collada15CResFileManager12checkVersionERKN5boost13intrusive_ptrINS_2io9IReadFileEEE",
+      "size_bytes": 8,
+      "ghidra_version": "12.1.2",
+      "export_sha256": "bc70d7d116e23d67f805c6d063eff441ba9d5f84ff0d60af97f59ef694c4094f",
+      "instruction_count": 2,
+      "bytes_compared": 8,
+      "state": "TESTED",
+      "mode": "ARM (A32)",
+      "matching": "MATCHED",
+      "whole_function_cpp_abi_equivalence": "UNVERIFIED",
+      "observed_semantics": [
+        "Return register r0 = 0; neither argument slot is read or dereferenced.",
+        "Source adapter exposes raw result bits; declared original return type and static/member distinction remain unknown."
+      ],
+      "implementation": "checkVersion(const void*, const void*)",
+      "verification_scope": "Exact 8-byte executable body; no symbol-name, class-layout or declared-return-type equivalence claim."
+    },
+    {
+      "address": "0x007146ac",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getMaterialEPKc",
+      "size_bytes": 96,
+      "ghidra_version": "12.1.2",
+      "export_sha256": "2c2e6b551f27688f2e4dd3ed4dbace530bfdeb68370335f78558872052c81a4d",
+      "instruction_count": 24,
+      "bytes_compared": 96,
+      "state": "TESTED",
+      "mode": "ARM (A32)",
+      "matching": "NOT MATCHED",
+      "whole_function_cpp_abi_equivalence": "UNVERIFIED",
+      "observed_semantics": [
+        "Signed material count at root+0x78; records pointer at root+0x7c; stride 36, ID pointer at record+0.",
+        "Count <= 0 returns null before reading records/names. Otherwise scan in order using strcmp; first equal ID returns that record, exhaustion returns null."
+      ],
+      "implementation": "ColladaDatabase::getMaterial(const char*)",
+      "verification_scope": "Local synthetic original-ARM vs host-source oracle; lookup strcmp dependency modeled; no full-engine/asset integration or byte match."
+    },
+    {
+      "address": "0x0071476c",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase8getImageEPKc",
+      "size_bytes": 96,
+      "ghidra_version": "12.1.2",
+      "export_sha256": "d28c02eaf7c263125fd2dae49b104cd37718f4221b6cd6cab525b3f55f31b86d",
+      "instruction_count": 24,
+      "bytes_compared": 96,
+      "state": "TESTED",
+      "mode": "ARM (A32)",
+      "matching": "NOT MATCHED",
+      "whole_function_cpp_abi_equivalence": "UNVERIFIED",
+      "observed_semantics": [
+        "Signed image count at root+0x68; records pointer at root+0x6c; stride 16, ID pointer at record+0.",
+        "Count <= 0 returns null before reading records/names. Otherwise scan in order using strcmp; first equal ID returns that record, exhaustion returns null."
+      ],
+      "implementation": "ColladaDatabase::getImage(const char*)",
+      "verification_scope": "Local synthetic original-ARM vs host-source oracle; lookup strcmp dependency modeled; no full-engine/asset integration or byte match."
+    }
+  ],
+  "analysis_provenance": {
+    "tools": {
+      "pyelftools": "0.33",
+      "capstone": "5.0.9",
+      "unicorn": "2.1.4",
+      "existing_ghidra_exports": "12.1.2"
+    },
+    "ghidra_export_directory": "/home/jason/Projects/nova3_re/generated/ghidra/exports/84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "export_validation": "All 56 exported instructions (224 bytes) independently compared to reference PT_LOAD file bytes after subtracting Ghidra image base 0x10000. All equal. No pseudocode/binary excerpts retained.",
+    "analysis_method": "ELF symbol names/sizes and direct Capstone A32 disassembly of only these four functions; existing export metadata used for provenance. No Ghidra reimport or new decompilation.",
+    "dependency": "Direct BL target 0x000d24fc is strcmp: validated ARM PLT slot (20-byte header, 12-byte entries) against .rel.plt relocation and dynamic symbol strcmp."
+  },
+  "source_inputs": [
+    {
+      "path": "reconstruction/recovered/libNOVA3_neon/block_00710368.cpp",
+      "sha256": "c1df34bf3f98836b1d170d7d28cab95567e91d13e309bcd36e7b1104b2ff8a4d"
+    },
+    {
+      "path": "reconstruction/tests/recovered/libNOVA3_neon/block_00710368_test.cpp",
+      "sha256": "9e7663c13062de0d5bb1d00dc70b1eaa493bd0a29738037700fd7cedb1c8d73b"
+    }
+  ],
+  "builds": [
+    {
+      "kind": "host-release",
+      "compiler": "/usr/bin/c++",
+      "compiler_version": "c++ (GCC) 16.2.1 20260810",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_00710368_test.cpp -o /tmp/nova43-test",
+      "compile_exit_code": 0,
+      "test_command": "/tmp/nova43-test",
+      "test_exit_code": 0,
+      "test_output": "PASS: 275 checks (synthetic fixtures; host semantics)",
+      "output_sha256": "b900de5ddb1f80f191f4c3c269bbc5076aaf47c08bb685a0d7c1ff53d01eff38"
+    },
+    {
+      "kind": "host-ASan-UBSan",
+      "compiler": "/usr/bin/clang++",
+      "compiler_version": "clang version 23.1.3",
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_00710368_test.cpp -o /tmp/nova43-sanitized",
+      "compile_exit_code": 0,
+      "test_command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova43-sanitized",
+      "test_exit_code": 0,
+      "test_output": "PASS: 275 checks (synthetic fixtures; host semantics)",
+      "output_sha256": "64aabe72d19ee4bcc36f94d0f25163a180425ba622fcdfdfd1a2b845b6a24ce4",
+      "scope": "AddressSanitizer and UndefinedBehaviorSanitizer; LeakSanitizer disabled, no leak verification claimed."
+    },
+    {
+      "kind": "ARMv7-independent-translation-unit",
+      "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++",
+      "compiler_version": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)",
+      "target": "armv7a-unknown-linux-android21",
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fomit-frame-pointer"
+      ],
+      "command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -marm -march=armv7-a -mfpu=neon -mfloat-abi=softfp -fno-exceptions -fno-rtti -fomit-frame-pointer -c reconstruction/recovered/libNOVA3_neon/block_00710368.cpp -o /tmp/nova43-no-fp.arm.o",
+      "compile_exit_code": 0,
+      "output_sha256": "efe85c84f7f31b0b36390904ab3a178dd7efd28038f3a3366efa3eebcd09397a",
+      "source_sha256": "c1df34bf3f98836b1d170d7d28cab95567e91d13e309bcd36e7b1104b2ff8a4d",
+      "execution": "Not executed on an ARM device. Target layout static_assert checks passed. Original ARM instructions are executed separately in the local oracle."
+    }
+  ],
+  "oracle": {
+    "command": "/tmp/nova43-test --emit-oracle | /home/jason/Projects/nova3_re/.venv/bin/python - /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so /tmp/nova43-test /tmp/nova43-no-fp.arm.o",
+    "exit_code": 0,
+    "result": {
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "cases": {
+        "lookup": 144,
+        "geometry": 28,
+        "version": 16,
+        "null_nonpositive_lookup": 6
+      },
+      "strcmp_calls": 272,
+      "host_vectors_sha256": "23a1de3befe245066692df9cf3fdea70c931e1b8b260dba71f458582ecc13371",
+      "scope": "Original ARM control flow vs host candidate; strcmp modeled by Python byte-string comparison. Synthetic data only. No engine/asset integration.",
+      "arm_object_sha256": "efe85c84f7f31b0b36390904ab3a178dd7efd28038f3a3366efa3eebcd09397a",
+      "raw_symbol_comparison": [
+        {
+          "address": "0x710368",
+          "reference_size": 24,
+          "candidate_size": 24,
+          "reference_code_sha256": "ef2a93febcd23a37bd81192cc36a653e98c2921cf06b9f05dd85259e9f6bae72",
+          "candidate_code_sha256": "3f0ef4b0d5a021ff8cee8527cd33dab19574eca36c38fc41df4def34bea01c92",
+          "candidate_relocations_in_section": [],
+          "matching": "NOT MATCHED"
+        },
+        {
+          "address": "0x710700",
+          "reference_size": 8,
+          "candidate_size": 8,
+          "reference_code_sha256": "6dcd5e75586fe6683156c0d559d4827b73bd48d501fa5781a1c6099aacd7c877",
+          "candidate_code_sha256": "6dcd5e75586fe6683156c0d559d4827b73bd48d501fa5781a1c6099aacd7c877",
+          "candidate_relocations_in_section": [],
+          "matching": "MATCHED"
+        },
+        {
+          "address": "0x7146ac",
+          "reference_size": 96,
+          "candidate_size": 92,
+          "reference_code_sha256": "77f4fe5dfa90ee36b921f512846a6f0e9b51b663a44cb91cd1c2293a8f82a430",
+          "candidate_code_sha256": "eb8ab4db38cefb0338163daa89368f1e7a7e84bf3f28c332eb32137637441aac",
+          "candidate_relocations_in_section": [
+            80
+          ],
+          "matching": "NOT MATCHED"
+        },
+        {
+          "address": "0x71476c",
+          "reference_size": 96,
+          "candidate_size": 92,
+          "reference_code_sha256": "09711356cac4f5b6317e0c22160537f80677b5e993c94b3bd7e24d7617cf9b94",
+          "candidate_code_sha256": "67c5921a13502feaf3e83102370ed03fd9f9dbbde0a69cb09a89e85911f2fbce",
+          "candidate_relocations_in_section": [
+            172
+          ],
+          "matching": "NOT MATCHED"
+        }
+      ]
+    },
+    "method": "Reference ELF mapped into Unicorn only for offline comparative testing. Candidate host executable emits deterministic fixture results; Python checks original return values and lookup comparison traces against them.",
+    "additional_checks": [
+      "Original functions preserve r4-r11 and SP; no non-stack writes accepted.",
+      "Lookups leave the complete synthetic 64-KiB data arena unchanged.",
+      "272 strcmp calls: exact ID/query pointer arguments and order checked, including stopping at the first duplicate.",
+      "Host test snapshots all fixture object bytes; no mutation allowed.",
+      "Negative and zero counts avoid null names/arrays; case distinctions, empty names, prefixes and a high-bit byte are exercised.",
+      "Geometry addresses include zero/high-bit bases and INT32_MIN/INT32_MAX indices; invalid return addresses are never dereferenced."
+    ],
+    "scope_limits": [
+      "strcmp is modeled with Python byte-string ordering, not original libc execution.",
+      "Synthetic layouts only; no real assets, Android lifecycle, allocation/ownership or gameplay integration.",
+      "64-bit host image/material layouts adapt to native pointers; exact ARM32 offsets/strides are enforced by target static_asserts.",
+      "All four original function control flows are exercised; full original C++ types, complete classes and ABI interoperability remain UNVERIFIED."
+    ]
+  },
+  "matching_evidence": {
+    "method": "Extract each complete candidate STT_FUNC byte range from ARM ET_REL .text and compare directly with its reference ELF PT_LOAD bytes. Require identical lengths/bytes and no candidate relocation in the matched range. No normalization.",
+    "source_sha256": "c1df34bf3f98836b1d170d7d28cab95567e91d13e309bcd36e7b1104b2ff8a4d",
+    "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "compiler_and_flags": "See ARMv7-independent-translation-unit build above.",
+    "matched_scope": "Only 0x00710700: all eight bytes identical, no relocations; executable body only. Other three remain NOT MATCHED.",
+    "comparison": [
+      {
+        "address": "0x710368",
+        "reference_size": 24,
+        "candidate_size": 24,
+        "reference_code_sha256": "ef2a93febcd23a37bd81192cc36a653e98c2921cf06b9f05dd85259e9f6bae72",
+        "candidate_code_sha256": "3f0ef4b0d5a021ff8cee8527cd33dab19574eca36c38fc41df4def34bea01c92",
+        "candidate_relocations_in_section": [],
+        "matching": "NOT MATCHED"
+      },
+      {
+        "address": "0x710700",
+        "reference_size": 8,
+        "candidate_size": 8,
+        "reference_code_sha256": "6dcd5e75586fe6683156c0d559d4827b73bd48d501fa5781a1c6099aacd7c877",
+        "candidate_code_sha256": "6dcd5e75586fe6683156c0d559d4827b73bd48d501fa5781a1c6099aacd7c877",
+        "candidate_relocations_in_section": [],
+        "matching": "MATCHED"
+      },
+      {
+        "address": "0x7146ac",
+        "reference_size": 96,
+        "candidate_size": 92,
+        "reference_code_sha256": "77f4fe5dfa90ee36b921f512846a6f0e9b51b663a44cb91cd1c2293a8f82a430",
+        "candidate_code_sha256": "eb8ab4db38cefb0338163daa89368f1e7a7e84bf3f28c332eb32137637441aac",
+        "candidate_relocations_in_section": [
+          80
+        ],
+        "matching": "NOT MATCHED"
+      },
+      {
+        "address": "0x71476c",
+        "reference_size": 96,
+        "candidate_size": 92,
+        "reference_code_sha256": "09711356cac4f5b6317e0c22160537f80677b5e993c94b3bd7e24d7617cf9b94",
+        "candidate_code_sha256": "67c5921a13502feaf3e83102370ed03fd9f9dbbde0a69cb09a89e85911f2fbce",
+        "candidate_relocations_in_section": [
+          172
+        ],
+        "matching": "NOT MATCHED"
+      }
+    ]
+  },
+  "integration": {
+    "standalone": true,
+    "cmake_modified": false,
+    "reason": "Build-system/header edits outside allowed paths.",
+    "production_requires_original_library": false,
+    "new_third_party_dependencies": [],
+    "invalid_inputs": "Lookup count > 0 requires valid arrays and NUL-terminated ID/query strings; native code has no checks. Source preserves these preconditions. No invented error/success stubs."
+  },
+  "attempts_and_failures": [
+    "Initial GCC -Werror host build rejected a null-name test after inlining unreachable strcmp; changed only the fixture to read null from a volatile pointer. Final GCC and Clang builds pass with warnings as errors.",
+    "Initial ARM build used NDK default frame pointers and matched none. Explicit -fomit-frame-pointer removes leaf prologues and produces the exact eight-byte checkVersion body. Other functions still differ in register allocation/control flow.",
+    "Initial private export checker treated hex address strings as integers; corrected conversion and reran all 56 instruction comparisons successfully."
+  ],
+  "handoff": {
+    "result": "Four source-owned operations and standalone tests added. One eight-byte body matched; three NOT MATCHED. No original data committed and no runtime original dependency.",
+    "next_attempts": [
+      "Review declared checkVersion return type/static-member status using local callers/type evidence before introducing a native C++ class ABI.",
+      "For remaining byte matches recover the original compiler/code-generation conditions; current Clang output differs. Do not treat behavior tests as machine-code matches.",
+      "Integrate partial Collada layouts with neighboring recovered modules only under a task permitting shared header/build changes; retain ARM32 offset checks.",
+      "Extend independent fixtures or device-level tests before claiming complete database/asset/game equivalence."
+    ],
+    "blockers": [
+      "Original complete class/payload types and checkVersion declared signature are not recovered.",
+      "No ARM device execution or end-to-end game verification performed."
+    ]
+  },
+  "constraints": {
+    "edited_only_three_allowed_repository_paths": true,
+    "network_access": false,
+    "packages_installed": false,
+    "child_agents": false,
+    "originals_modified": false,
+    "github_state_modified": false,
+    "commits_created": false,
+    "original_bytes_or_decompiler_dumps_in_deliverables": false
+  }
+}
