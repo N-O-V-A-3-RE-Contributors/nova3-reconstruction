@@ -1,0 +1,326 @@
+{
+  "schema_version": 1,
+  "task_id": 42,
+  "autotask_key": "functions-d6f72b681eb3f205d2a352",
+  "recorded_at_utc": "2026-10-27T01:55:22.771475+00:00",
+  "result": "SCOPED BEHAVIOURAL PASS; FULL NATIVE RECONSTRUCTION INCOMPLETE",
+  "matching_claim": "NOT MATCHED",
+  "full_behavioural_equivalence": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_verified_before_and_after": true,
+    "size_bytes": 18696442,
+    "architecture": "32-bit little-endian ARM; all four entries ARM, not Thumb",
+    "input_availability": "Absent from disposable checkout; matching read-only local reference discovered at canonical project path.",
+    "relative_path_in_canonical_project": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "modified": false
+  },
+  "analysis_provenance": {
+    "method": "Reused existing local Ghidra instruction metadata, cross-checked target ELF symbols and bounded ARM operand analysis; no fresh Ghidra import or decompilation.",
+    "ghidra_version": "12.1.2",
+    "ghidra_language": "ARM:LE:32:v8",
+    "ghidra_image_base": "0x00010000",
+    "address_rule": "Task and evidence addresses are ELF virtual addresses; subtract image base 0x10000 from Ghidra instruction addresses.",
+    "exports_relative_to_canonical_project": "generated/ghidra/exports/84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "export_mapping_validation": {
+      "result": "PASS",
+      "functions": 4,
+      "instruction_records": 61,
+      "method": "Compared every exported instruction byte sequence with the matching ELF PT_LOAD mapping; no original bytes serialized in this evidence."
+    },
+    "decompiler_text_used": false,
+    "capstone_version": "5.0.7"
+  },
+  "counts": {
+    "inventoried_functions": 4,
+    "functions_with_validated_disassembly": 4,
+    "newly_decompiled_functions": 0,
+    "portable_wrapper_functions_implemented": 4,
+    "portable_wrapper_functions_tested_against_scoped_native_oracle": 4,
+    "fully_reconstructed_native_ABI_functions": 0,
+    "exact_machine_code_matches": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x008ca0f0",
+      "size_bytes": 4,
+      "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_GL2JNILib_step",
+      "rules": [
+        "Delegate once to glf::AndroidUpdate at 0x008ca0c0; no additional wrapper calls."
+      ],
+      "portable_source_entry": "nova3::recovered::android::step",
+      "validated_export_instruction_records": 1,
+      "reference_region_sha256": "d960570c3ddcdd25cb68945417ba54c3f237712328418b76db7c9c72e0337269",
+      "local_export_sha256": "5872a6540dba760f1b96a0ae95a3e5be8ab37cb768a7b185bc3aff54e4819c05",
+      "state": "TESTED",
+      "reconstruction_status": "PORTABLE WRAPPER ORCHESTRATION IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "full_native_equivalence": "UNVERIFIED",
+      "reference_cases": 256,
+      "thumb": false
+    },
+    {
+      "address": "0x008cd7f4",
+      "size_bytes": 140,
+      "symbol": "glf::AndroidSetPaths(char const*, char const*, char const*)",
+      "rules": [
+        "Print three path messages before any filesystem access.",
+        "Fetch the current application and call App::GetFs separately before each directory setter.",
+        "Set data, home and temporary directories in that order; forward the original pointers without normalization or validation."
+      ],
+      "portable_source_entry": "nova3::recovered::android::set_paths",
+      "validated_export_instruction_records": 31,
+      "reference_region_sha256": "36bf4d0b54265e827488753e32672fa1aab9cc2a5ce3b647e50764e10827eee4",
+      "local_export_sha256": "edf951bd77fb000ec89bf9d2601c7a364931df032e91251cc3648bbb62c4874e",
+      "state": "TESTED",
+      "reconstruction_status": "PORTABLE WRAPPER ORCHESTRATION IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "full_native_equivalence": "UNVERIFIED",
+      "reference_cases": 256,
+      "thumb": false
+    },
+    {
+      "address": "0x008cfaf8",
+      "size_bytes": 76,
+      "symbol": "glf::AndroidCreateView()",
+      "rules": [
+        "Call JavaVM GetEnv through slot 6 with JNI version 0x00010002 and a stack output slot.",
+        "Ignore the returned status and use the written environment.",
+        "Load cached class and method after GetEnv; invoke CallStaticVoidMethod with no Java method arguments."
+      ],
+      "portable_source_entry": "nova3::recovered::android::create_view",
+      "validated_export_instruction_records": 18,
+      "reference_region_sha256": "f8b3d7966da6c8706a7771ac7208dc90ca46c929922e626cd707bd9e33fad609",
+      "local_export_sha256": "67687789e40b765dde13352cfbb157d8b2735168a26b29c644cbab657da172ec",
+      "state": "TESTED",
+      "reconstruction_status": "PORTABLE WRAPPER ORCHESTRATION IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "full_native_equivalence": "UNVERIFIED",
+      "reference_cases": 256,
+      "thumb": false
+    },
+    {
+      "address": "0x008cfb44",
+      "size_bytes": 52,
+      "symbol": "glf::AndroidInit()",
+      "rules": [
+        "Print the first message, enable debug output, print the second message, then delegate to AndroidCreateView.",
+        "No once-only guard in this wrapper."
+      ],
+      "portable_source_entry": "nova3::recovered::android::init",
+      "validated_export_instruction_records": 11,
+      "reference_region_sha256": "f5c50b08343c00834e0dbee2d6393b2a45325ab002c582a6d6dccdd07ab27622",
+      "local_export_sha256": "7ce7b16d4cafe610cd5fec913d35477677be05d05959953a2592828dc6ce6d45",
+      "state": "TESTED",
+      "reconstruction_status": "PORTABLE WRAPPER ORCHESTRATION IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "full_native_equivalence": "UNVERIFIED",
+      "reference_cases": 256,
+      "thumb": false
+    }
+  ],
+  "dependencies": [
+    {
+      "address": "0x008ca0c0",
+      "symbol": "glf::AndroidUpdate()",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008da5f8",
+      "symbol": "glf::Console::Println(char const*, ...)",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008d6d48",
+      "symbol": "glf::Console::SetOutputDebugString(bool)",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008ca584",
+      "symbol": "glf::App::GetFs()",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008d853c",
+      "symbol": "glf::Fs::SetDataDir(char const*)",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008d86c0",
+      "symbol": "glf::Fs::SetHomeDir(char const*)",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x008d8528",
+      "symbol": "glf::Fs::SetTempDir(char const*)",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "0x000dcd50",
+      "symbol": "JNIEnv::CallStaticVoidMethod wrapper",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    },
+    {
+      "address": "JavaVM vtable slot 6",
+      "symbol": "JavaVM::GetEnv",
+      "status": "EXTERNAL; test spy only, not reconstructed in this slice"
+    }
+  ],
+  "oracle": {
+    "method": "Unicorn executes unchanged original wrapper instructions at their ELF VAs; hooks replace only listed external dependencies. Global-state fixtures live only in emulator memory. Test executable is built solely from new source.",
+    "cases_per_entry": 256,
+    "cases_total": 1024,
+    "case_count_caveat": "256 variants per entry; some variants repeat equivalent behavior, particularly the one-call step delegate. Counts do not imply coverage of the external dependencies.",
+    "compared": [
+      "Exact dependency-call order and arguments, including input pointer identity.",
+      "Null/alias path forwarding to modeled dependencies only; original real console/filesystem null handling is not tested.",
+      "App-global changes during logging, GetFs and setters; verifies each fresh app lookup.",
+      "JNI version and valid written environment even when GetEnv returns nonzero.",
+      "Class/method/VM cache mutation during GetEnv, proving subsequent cache read order.",
+      "Final modeled globals and path-input immutability.",
+      "Original wrapper return, restored stack and callee-saved registers."
+    ],
+    "transcript_sha256": "8d0612d077e3e3022353a544517b30346f7a46b77db642f3bb3276b82a4720c4",
+    "gcc_and_clang_transcripts_identical": true,
+    "source_only_extra_case": "Repeated init repeats the complete sequence; not a separate original-ARM repeated-invocation test.",
+    "reproducible_driver": "Embedded Python harness in reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp; use --oracle PYTHON LOCAL_ELF. --emit-cases emits synthetic source traces only.",
+    "incorrect_reference_result": "Exit 1: Reference SHA256 mismatch; refusing oracle"
+  },
+  "scope_exclusions": [
+    "Original JNI/exported C++ ABI, class layouts, loader/linker initialization and native return-register accidents.",
+    "Actual engine update, filesystem mutation, file ownership, console formatting/output and Android VM/UI execution.",
+    "Exact console strings are represented by source-owned Message tags keyed to observed format addresses; no original text is embedded.",
+    "GetEnv must write a usable environment. Failure that leaves the original output uninitialized is outside supported source contract.",
+    "Original thread races, exceptions, unwinding and dependency failure behavior.",
+    "No Android build, device run, gameplay or renderer is demonstrated."
+  ],
+  "source_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_008ca0f0.cpp": "9f3aa076bdbafe23bc127ea5ca4472fb46efb3300ee8eaf1f7c071fe90b26bce",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp": "7209113b10be8fc75cef2245be502ad34d1ed99956cc108d0037e2552dbad25f"
+  },
+  "toolchain": {
+    "compiler_version": "c++ (GCC) 16.2.1 20260810",
+    "target": "x86_64-pc-linux-gnu",
+    "flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "sanitizer_compiler_version": "clang version 23.1.3",
+    "sanitizer_flags": [
+      "-std=c++17",
+      "-O1",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-fno-pie",
+      "-no-pie"
+    ],
+    "sanitizer_environment": "ASAN_OPTIONS=detect_leaks=0; tracing restrictions documented by prior local tasks; leak checking is not claimed.",
+    "python_version": "3.14.8",
+    "unicorn_version": "2.1.4",
+    "pyelftools_version": "0.33",
+    "oracle_python": "/home/jason/Projects/nova3_re/.venv/bin/python"
+  },
+  "checks": [
+    {
+      "name": "independent production translation unit",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_008ca0f0.cpp -o /tmp/nova3-task42-block.o",
+      "exit_code": 0
+    },
+    {
+      "name": "GCC test build",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp -o /tmp/nova3-task42-test",
+      "exit_code": 0
+    },
+    {
+      "name": "GCC synthetic tests",
+      "command": "/tmp/nova3-task42-test",
+      "exit_code": 0
+    },
+    {
+      "name": "GCC original ARM boundary comparisons",
+      "command": "/tmp/nova3-task42-test --oracle /home/jason/Projects/nova3_re/.venv/bin/python /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "exit_code": 0
+    },
+    {
+      "name": "Clang ASan/UBSan build",
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp -o /tmp/nova3-task42-sanitize",
+      "exit_code": 0
+    },
+    {
+      "name": "Clang ASan/UBSan synthetic tests",
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task42-sanitize",
+      "exit_code": 0
+    },
+    {
+      "name": "Clang ASan/UBSan original ARM boundary comparisons",
+      "command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task42-sanitize --oracle /home/jason/Projects/nova3_re/.venv/bin/python /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "exit_code": 0
+    },
+    {
+      "name": "wrong-reference rejection",
+      "command": "/tmp/nova3-task42-test --oracle /home/jason/Projects/nova3_re/.venv/bin/python /tmp/nova3-task42-test",
+      "exit_code": 1,
+      "expected_exit_code": 1
+    },
+    {
+      "name": "whitespace check",
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "machine_code_comparison": {
+    "status": "NOT MATCHED",
+    "performed": false,
+    "evidence": null,
+    "reason": "Portable host interfaces replace the original object/JNI ABI. No target ARM compiler output was compared with the original machine code. Boundary trace equality does not establish an instruction match."
+  },
+  "source_only": {
+    "production_build_requires_originals": false,
+    "ordinary_tests_require_originals": false,
+    "optional_oracle_requires_local_reference": true,
+    "original_code_or_assets_embedded": false,
+    "new_third_party_runtime_dependencies": [],
+    "analysis_only_dependencies": [
+      "pyelftools 0.33",
+      "Unicorn 2.1.4"
+    ],
+    "network_access": false,
+    "host_configuration_changes": false,
+    "original_binary_files_written": false,
+    "final_apk_certification": "NOT PERFORMED"
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_008ca0f0.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp",
+      "coordination/evidence/functions-d6f72b681eb3f205d2a352.json"
+    ],
+    "integration": "Standalone test includes implementation because public-header and CMake edits are not allowed. Production translation unit also compiled independently. Existing source/tests unchanged.",
+    "blockers": [
+      "Full native ABI and actual external dependencies remain unimplemented in this slice.",
+      "Runtime JNI integration and console-text reproduction are outside the allowed paths.",
+      "No machine-code match established."
+    ],
+    "next_attempts": [
+      "Authorize header/CMake integration for these portable wrappers.",
+      "Recover AndroidUpdate at 0x008ca0c0 and its frame-loop dependencies under a separate bounded task.",
+      "Recover filesystem/console/JNI adapters before claiming native Android equivalence."
+    ],
+    "gameplay_status": "No end-to-end game functionality produced by this slice."
+  }
+}
