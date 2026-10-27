@@ -1,0 +1,34 @@
+name: NOVA3 evolving roadmap queue
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23,53 * * * *'
+  push:
+    branches: [main]
+    paths:
+      - coordination/project_roadmap.json
+      - nova3_team/roadmap_queue.py
+      - coordination/feature_plans/**
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+concurrency:
+  group: nova3-autofeed-serial
+  cancel-in-progress: false
+jobs:
+  roadmap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Publish bounded phase tasks to existing AI queue
+        run: python -m nova3_team.roadmap_queue --repo "$GITHUB_REPOSITORY" --root .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
