@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "mode": "local-headless-ghidra",
+  "scan_interval_minutes": 30,
+  "source_root_relative": "analysis",
+  "function_metadata_only": true,
+  "task_batch_limit": 8,
+  "description": "Local reference owners expand coordination/function_ledger.json automatically. GitHub Actions schedules tasks. No proprietary binary or raw decompilation is published."
+}

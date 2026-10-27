@@ -108,7 +108,29 @@ def generate_from_manifest(data):
     return tasks
 
 
-def generate_from_ledger(data):
+# NOVA3_AUTODISCOVERY_COVERAGE_V1
+# Existing issue content is the durable ownership ledger for identified
+# addresses. Never requeue addresses whose functions were already assigned,
+# even when the source ledger grows and chunk boundaries change.
+def covered_function_addresses(issues):
+    covered=set()
+    for issue in issues:
+        body=issue.get('body') or ''
+        if not key_of(issue) or not key_of(issue).startswith('functions-'):
+            continue
+        sha=re.search(r'(?im)^Reference SHA256: [`]?([0-9a-f]{64})[`]?\s*$',body)
+        row=re.search(r'(?im)^Addresses/sizes: (.+)$',body)
+        if not sha or not row:
+            continue
+        # Require proper address:size tokens; no Python evaluation of GitHub text.
+        pairs=re.findall(r"['\"]([0-9a-f]{4,16}):([0-9a-f]{1,8})['\"]",row.group(1))
+        for addr,size in pairs[:128]:
+            if 0 < int(size,16) <= 1048576:
+                covered.add((sha.group(1),int(addr,16)))
+    return covered
+
+
+def generate_from_ledger(data, covered=None):
     """Only functions with identified boundaries AND an original reference hash.
 
     Identified != verified equivalent; a Ghidra/SYMTAB function is NOT a byte match.
@@ -143,7 +165,7 @@ def generate_from_ledger(data):
         if addr < 0 or size <= 0 or size > 1024 * 1024:
             continue
         ident = (digest, addr)
-        if ident in seen:
+        if ident in seen or (covered and ident in covered):
             continue
         seen.add(ident)
         groups[digest].append((addr,size))
@@ -182,7 +204,7 @@ def generate_from_ledger(data):
     return tasks
 
 
-def load_tasks(root):
+def load_tasks(root, covered=None):
     root=Path(root)
     for rel in MANIFESTS:
         p=root/rel
@@ -198,7 +220,7 @@ def load_tasks(root):
     if p.is_file():
         try:
             obj=json.loads(p.read_text(encoding='utf-8'))
-            return generate_from_ledger(obj),LEDGER
+            return generate_from_ledger(obj,covered=covered),LEDGER
         except (ValueError,TypeError) as exc:
             print(f'WARNING: function ledger {LEDGER} cannot be used: {exc}')
             return [], f'invalid {LEDGER}: {exc}'
@@ -349,19 +371,42 @@ def create_expansion(gh, issues, root, origin):
     gh.post('issues',{'title':task['title'],'body':task_body(task),'labels':[QUEUE]})
     return 'Created one evidence expansion task; never equate manifest exhaustion with game completion'
 
+# NOVA3_SOLO_DISCOVERY_PIPELINE_V1
+# No Codex expansion jobs while an actual local discovery system exists.
+# Failing analysis or missing RAM must be visible, not converted into AI work.
+def discovery_or_expansion(gh, issues, root, origin):
+    root=Path(root)
+    if ((root/'nova3_team/discovery.py').is_file() or
+            (root/'coordination/discovery_config.json').is_file()):
+        return ('WAITING_FOR_DISCOVERY: known functions already assigned; '
+                'local Ghidra discovery will publish fresh metadata when resources permit')
+    return create_expansion(gh,issues,root,origin)
+
+
 def reconcile_and_feed(gh, root, *, batch=BATCH_LIMIT, cap=READY_LIMIT):
     if not 1 <= batch <= 20 or not 1 <= cap <= 100:
         raise ValueError('Task creation limits out of range')
     issues=all_issues(gh)
     prs=all_prs(gh)
     reconciled=reconcile(gh,issues,prs)
-    tasks,origin=load_tasks(root)
+    tasks,origin=load_tasks(root,covered=covered_function_addresses(issues))
     active=sum(i.get('state')=='open' and bool({QUEUE, CLAIMED, REVIEW} & set(label_names(i))) for i in issues)
     before=active
     created=[]
     note=''
     known={key_of(i) for i in issues if key_of(i)}
-    if not tasks:
+    if not tasks and origin == LEDGER:
+        if (Path(root)/'coordination/discovery_config.json').is_file():
+            note='No uncovered function addresses in the checked-in ledger; awaiting local headless Ghidra discovery (NO byte-match claim)'
+        else:
+            # Legacy installations still use the evidence-expansion fallback.
+            ledger_keys={key_of(i) for i in issues if key_of(i) and key_of(i).startswith('functions-')}
+            pending=[i['number'] for i in issues if i.get('state')=='open' and key_of(i) in ledger_keys
+                and bool({QUEUE,CLAIMED,REVIEW} & set(label_names(i)))]
+            note=('Waiting for pending function tasks: '+', '.join(map(str,pending[:12]))) if pending else create_expansion(gh,issues,root,origin)
+            if note == 'Existing evidence expansion still tracked':
+                note += '; waiting for in-flight expansion to integrate'
+    elif not tasks:
         note=create_intake(gh, issues)
     else:
         slots=max(0,min(batch,cap-active))
@@ -394,7 +439,10 @@ def reconcile_and_feed(gh, root, *, batch=BATCH_LIMIT, cap=READY_LIMIT):
                 note=('Function tasks remain unissued but cannot yet be queued '
                       '(capacity or dependencies); no evidence task duplicated')
             else:
-                note=create_expansion(gh,issues,root,origin)
+                if (Path(root)/'coordination/discovery_config.json').is_file() and origin == LEDGER:
+                    note='All known function addresses assigned; waiting for local Ghidra discovery service to publish more metadata'
+                else:
+                    note=discovery_or_expansion(gh,issues,root,origin)
                 if note == 'Existing evidence expansion still tracked':
                     note += '; waiting for in-flight expansion to integrate'
     return {'reconciled_merged':reconciled,'origin':origin,

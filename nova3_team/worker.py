@@ -17,6 +17,11 @@ def run(cmd, cwd=None, timeout=90, capture=True, check=True):
 
 def note(s):
     print(f'[{datetime.now().strftime("%H:%M:%S")}] {s}', flush=True)
+    # NOVA3_WORKER_PRESENCE_V1: nonblocking best-effort status; never logs credentials.
+    reporter = globals().get('_nova_presence')
+    if reporter is not None:
+        try: reporter.signal_from_log(s)
+        except Exception: pass
 
 
 def git(cwd,*args,check=True):
@@ -367,6 +372,56 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
         return pause_failed_task(gh,root,n,token,provider,user,e)
 
 
+# NOVA3_SOLO_WORKER_COMPAT_V2
+# Inventory discovery is performed by the local sidecar, not an AI coding job.
+# Exclude *only* queued, generated expansion jobs. Preserve other issue states
+# and all ordinary source-reconstruction tasks.
+def _solo_eligible_issues(issues):
+    return [issue for issue in issues if not (
+        'nova:queued' in label_names(issue) and
+        (issue.get('title') or '').startswith('Expand verified ARM ELF function inventory') and
+        '<!-- NOVA3_AUTOTASK_KEY: expand-evidence-' in (issue.get('body') or ''))]
+
+
+def _kick_local_discovery_if_due():
+    # An idle coding queue is the best time to run optional Ghidra. The
+    # systemd service runs its own RAM/swap/PSI guard and never runs Codex.
+    if not sys.platform.startswith('linux') or not shutil.which('systemctl'):
+        return False
+    if not (pathlib.Path.home()/'.config/systemd/user/nova3-discovery.service').is_file():
+        return False
+    # Respect explicit user choices to disable scanning (e.g. after OOM).
+    # Do not silently restart a service the contributor intentionally disabled.
+    try:
+        enabled=subprocess.run(['systemctl','--user','is-enabled','nova3-discovery.timer'],
+                               capture_output=True,text=True,timeout=10,check=False)
+        if enabled.returncode or enabled.stdout.strip() not in ('enabled','enabled-runtime'):
+            return False
+    except (OSError,subprocess.TimeoutExpired):
+        return False
+    stamp=pathlib.Path.home()/'.cache/nova3-team/discovery-idle-kick.txt'
+    try:
+        last=float(stamp.read_text()) if stamp.is_file() else 0.0
+        if time.time()-last < 30*60:
+            return False
+    except (OSError,ValueError):
+        pass
+    try:
+        stamp.parent.mkdir(parents=True,exist_ok=True)
+        # Write before requesting to prevent repeated service activations.
+        stamp.write_text(str(time.time()))
+        cp=subprocess.run(['systemctl','--user','start','--no-block','nova3-discovery.service'],
+                          capture_output=True,text=True,timeout=15,check=False)
+        if cp.returncode==0:
+            note('Requested background function discovery; resource guard controls whether it scans.')
+            return True
+        note('Discovery service unavailable; timer will retry (coding tasks unaffected).')
+    except (OSError,subprocess.TimeoutExpired):
+        note('Discovery activation deferred; coding tasks unaffected.')
+    return False
+
+
+
 def main():
     p=argparse.ArgumentParser(description='Contribute continuously using your own installed AI CLI and GitHub account')
     p.add_argument('command',choices=('run','status'))
@@ -383,10 +438,32 @@ def main():
     upstream=get_repo(args.repo)
     gh=GitHub(upstream);user=gh.me()
     note(f'Repo={upstream} account={user} provider={args.provider}')
+    # NOVA3_WORKER_PRESENCE_V1: one editable GitHub comment per machine.
+    global _nova_presence
+    try:
+        from .presence import Reporter as _NOVA3PresenceReporter
+        _nova_presence = _NOVA3PresenceReporter(upstream, user, args.provider)
+        _nova_presence.start()
+    except Exception:
+        _nova_presence = None  # Reporting is optional; never block reconstruction.
     if args.command=='status':
-        issues=gh.issues()
+        issues=_solo_eligible_issues(gh.issues())
         counts={x:sum(x in label_names(i) for i in issues) for x in ('nova:queued','nova:claimed','nova:review')}
         print(json.dumps(counts,indent=2));return
+    # NOVA3_AUTO_REFERENCE_OWNER_V1
+    # Task-specific binary matching requires a locally held original reference.
+    # Never upload, fetch or auto-acquire game binaries. Paths remain local.
+    if not args.binary_root:
+        candidate=pathlib.Path(os.environ.get('NOVA3_REFERENCE_ROOT') or (pathlib.Path.cwd()/'analysis')).expanduser()
+        if candidate.is_dir():
+            try:
+                from .discovery import find_elfs
+                has_elf=bool(find_elfs(pathlib.Path.cwd(), candidate))
+                if has_elf:
+                    args.binary_root=str(candidate.resolve())
+                    note('Local private ELF references detected; available to matching tasks (never uploaded)')
+            except OSError:
+                pass
     root=pathlib.Path.home()/'.cache'/'nova3-team'/upstream.replace('/','_')
     attempt=0
     consecutive_failures=0
@@ -395,7 +472,7 @@ def main():
     while True:
         try:
             issues=[]
-            for i in gh.issues():
+            for i in _solo_eligible_issues(gh.issues()):
                 labels=label_names(i)
                 if 'nova:queued' in labels: issues.append(i)
                 elif 'nova:claimed' in labels:
@@ -406,8 +483,17 @@ def main():
                             and lease.get('token')==previous.get('token')):
                         issues.append(i)
             issues=[i for i in issues if float(recovery.load(root,i['number']).get('retry_after',0))<=time.time()]
+            # Only machines holding local originals can meaningfully reconstruct
+            # function-address tasks. Everyone can still contribute other code.
+            if not args.binary_root:
+                needs_ref=[i for i in issues if 'Reference SHA256:' in (i.get('body') or '')]
+                if needs_ref:
+                    note(f'Skipping {len(needs_ref)} reference-only tasks: no local original ELF; other contributors may claim them')
+                    issues=[i for i in issues if i not in needs_ref]
             issues.sort(key=lambda i:(0 if 'nova:claimed' in label_names(i) else 1,-int(next((line.split(':',1)[1].strip() for line in i.get('body','').splitlines() if line.startswith('Priority:')),'50')),i['number']))
-            if not issues:note('No queued tasks. Polling again.')
+            if not issues:
+                note('No queued tasks. Polling again.')
+                _kick_local_discovery_if_due()
             else:
                 for issue in issues[:8]:
                     note(f'Trying #{issue["number"]}: {issue["title"]}')
