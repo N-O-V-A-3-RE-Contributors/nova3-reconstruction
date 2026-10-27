@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "task": 39,
+  "autotask_key": "functions-b37ae3933301edae6bf2fa",
+  "round": 1,
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "sha256_checked": true,
+    "architecture": "ARM EABI, 32-bit little-endian",
+    "mode": "ARM",
+    "local_reference_available": true,
+    "discovery": "Read-only local file found at the project path specified by AGENTS.md. No binary content included in this record."
+  },
+  "matching": "NOT MATCHED",
+  "machine_code_comparison": {
+    "result": "NOT MATCHED",
+    "performed": false,
+    "reason": "Portable host reconstruction with a numeric-format API and an added bounds exception. No original compiler, ABI, or byte identity claimed."
+  },
+  "totals": {
+    "assigned": 4,
+    "symbol_boundaries_confirmed": 4,
+    "disassembled_for_metadata": 4,
+    "decompiler_exports_used": 0,
+    "source_implemented": 2,
+    "host_tested": 2,
+    "native_oracle_compared": 2,
+    "machine_code_matched": 0,
+    "end_to_end_game_functionality": false,
+    "verified_in_recorded_scope": 2
+  },
+  "functions": [
+    {
+      "address": "0x0074b248",
+      "size_bytes": 2176,
+      "size_hex": "0x880",
+      "symbol": "glitch::collada::CResFileManager::postLoadProcess",
+      "state": "DISASSEMBLED",
+      "reconstruction": "NOT RECONSTRUCTED",
+      "verification_grade": "unmapped",
+      "matching": "NOT MATCHED",
+      "evidence": "ELF local STT_FUNC symbol and bounded static call-target inventory. No behavioural reconstruction claimed.",
+      "blockers": [
+        "Collada database object layouts, animation/node/effect mutation semantics, ownership and exception paths are unresolved.",
+        "Calls database constructors/destructors, getAnimationTrackEx, getNode, getEffect, logging, allocation and intrusive_ptr vector push_back."
+      ],
+      "next_attempt": "Recover interfaces and object layouts around direct dependencies 0x0071d31c, 0x00711e44, 0x0071a908, 0x0071470c and intrusive_ptr vector push_back at 0x007693b8; use synthetic database fixtures before implementing the post-load chain."
+    },
+    {
+      "address": "0x0076c3f4",
+      "size_bytes": 128,
+      "size_hex": "0x80",
+      "symbol": "glitch::res::File::Init(void*)",
+      "state": "DISASSEMBLED",
+      "reconstruction": "NOT RECONSTRUCTED",
+      "verification_grade": "unmapped",
+      "matching": "NOT MATCHED",
+      "direct_dependencies": [
+        {
+          "address": "0x0069c6f0",
+          "symbol": "glitch::res::File::Init()"
+        },
+        {
+          "address": "0x0076c0e0",
+          "symbol": "glitch::res::File::operator=(glitch::res::File const&)"
+        },
+        {
+          "address": "0x007597c4",
+          "symbol": "glitch::res::File::~File()"
+        }
+      ],
+      "evidence": "Static direct-call inventory and two exploratory synthetic-header executions. Not enough evidence for a complete ownership contract.",
+      "blockers": [
+        "Temporary File initialization, assignment, prior destination ownership, destruction and failure-side effects require recovery.",
+        "Existing reconstruction/engine/bres.cpp implements only a separate contiguous-buffer branch and cannot replace this wrapper."
+      ],
+      "next_attempt": "Recover File layout and assignment/destructor ownership semantics; characterize valid and failed header initialization on already-populated objects. Do not substitute relocate_bres32 as the complete Init(void*) implementation."
+    },
+    {
+      "address": "0x0077d37c",
+      "size_bytes": 80,
+      "size_hex": "0x50",
+      "symbol": "glitch::video::pixel_format::computePitch(E_PIXEL_FORMAT,unsigned int)",
+      "portable_api": "nova3::recovered::block_0074b248::compute_pitch(uint32_t,uint32_t)",
+      "state": "VERIFIED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "scope": "Format IDs 0..49. Unsigned 32-bit intermediate arithmetic; block row round-up, packed bit-count truncation. Out-of-range IDs throw under added source policy.",
+      "verified_scope": "Scalar return values for 105250 input triples (all 50 valid format IDs; edge grid and seeded uint32 dimensions) agree with original ARM execution under Unicorn 2.1.4. No universal equivalence, original ABI or machine-code identity claimed.",
+      "verification_evidence": "verification.oracle.observed and the reproducible verification.oracle.driver_python in this file"
+    },
+    {
+      "address": "0x0077d3cc",
+      "size_bytes": 112,
+      "size_hex": "0x70",
+      "symbol": "glitch::video::pixel_format::computeSizeInBytes(E_PIXEL_FORMAT,unsigned int,unsigned int)",
+      "portable_api": "nova3::recovered::block_0074b248::compute_size_in_bytes(uint32_t,uint32_t,uint32_t)",
+      "state": "VERIFIED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "scope": "Format IDs 0..49. Calls pitch logic, rounds block row count with wrapping addition, wraps byte product, then clamps to format minimum. Out-of-range IDs throw under added source policy.",
+      "verified_scope": "Scalar return values for 105250 input triples (all 50 valid format IDs; edge grid and seeded uint32 dimensions) agree with original ARM execution under Unicorn 2.1.4. No universal equivalence, original ABI or machine-code identity claimed.",
+      "verification_evidence": "verification.oracle.observed and the reproducible verification.oracle.driver_python in this file"
+    }
+  ],
+  "source_provenance": {
+    "method": "Independent C++ written from local symbol/metadata observations and synthetic input/output oracle experiments. No original machine code, pseudocode export, or full original table copied. Sizing-only properties represented as grouped records.",
+    "table_metadata": {
+      "address": "0x00c7ff50",
+      "record_stride_bytes": 40,
+      "record_count": 50,
+      "observed_field_offsets": {
+        "bytes_per_block": 21,
+        "bits_per_pixel": 22,
+        "block_width": 36,
+        "block_height": 37,
+        "minimum_bytes": 39
+      }
+    },
+    "files": {
+      "reconstruction/recovered/libNOVA3_neon/block_0074b248.cpp": "1e0541e22cd87fbe323e737f350927c880770df79ab814720da71fdd7e539467",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_0074b248_test.cpp": "3d9815a53af6b7c41f10e3b93827612d23e6cff5688269d82ed0cac72ffc8117"
+    }
+  },
+  "verification": {
+    "host": {
+      "compiler": "c++ (GCC) 16.2.1 20260810",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -pedantic",
+      "command": "c++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic reconstruction/recovered/libNOVA3_neon/block_0074b248.cpp reconstruction/tests/recovered/libNOVA3_neon/block_0074b248_test.cpp -o /tmp/nova3-task39-test && /tmp/nova3-task39-test",
+      "exit_code": 0,
+      "result": "PASS: 139 pixel sizing checks",
+      "scope": "100 scalar native-observed golden results plus partial-byte, block, minimum, wrap and added format bounds policy regressions."
+    },
+    "sanitizer": {
+      "compiler": "clang version 23.1.3",
+      "flags": "-std=c++17 -O1 -g -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie",
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/recovered/libNOVA3_neon/block_0074b248.cpp reconstruction/tests/recovered/libNOVA3_neon/block_0074b248_test.cpp -o /tmp/nova3-task39-sanitized && ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task39-sanitized",
+      "exit_code": 0,
+      "result": "PASS: 139 pixel sizing checks",
+      "limitations": "LeakSanitizer disabled because this sandbox is traced; initial PIE ASan startup also failed due to shadow-memory overlap. Non-PIE ASan/UBSan succeeded without host changes."
+    },
+    "failures_resolved": [
+      {
+        "stage": "initial GCC compilation",
+        "exit_code": 1,
+        "cause": "Backslash continuation in // build-command comment triggered -Werror=comment. Replaced with block comment."
+      },
+      {
+        "stage": "initial sanitizer execution",
+        "exit_code": 1,
+        "cause": "LeakSanitizer unsupported under tracing; then PIE shadow mapping overlap. Rebuilt non-PIE and disabled leak detection for successful ASan/UBSan run."
+      }
+    ],
+    "oracle": {
+      "result": "PASS",
+      "driver_python": "import hashlib, importlib.metadata, json, pathlib, random, struct, subprocess, sys\nfrom elftools.elf.elffile import ELFFile\nfrom unicorn import Uc, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_MEM_WRITE\nfrom unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_PC\nreference, executable = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]).resolve()\nexpected_hash = \"84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf\"\nif hashlib.sha256(reference.read_bytes()).hexdigest() != expected_hash:\n    raise RuntimeError(\"reference SHA256 mismatch\")\nu = Uc(UC_ARCH_ARM, UC_MODE_ARM)\nwith reference.open(\"rb\") as stream:\n    elf = ELFFile(stream)\n    if elf.get_machine_arch() != \"ARM\" or elf.elfclass != 32 or not elf.little_endian:\n        raise RuntimeError(\"reference architecture mismatch\")\n    for segment in elf.iter_segments():\n        if segment[\"p_type\"] == \"PT_LOAD\":\n            low = segment[\"p_vaddr\"] & ~4095\n            high = (segment[\"p_vaddr\"] + segment[\"p_memsz\"] + 4095) & ~4095\n            u.mem_map(low, high-low)\n            u.mem_write(segment[\"p_vaddr\"], segment.data())\nstack_low, stack_size, stack, stop = 0x03000000, 0x20000, 0x03008000, 0x0300fffc\nu.mem_map(stack_low, stack_size)\n# Observe writes only. No instruction replacement, import hooks, or patching.\ndef observe_write(machine, access, address, size, value, user):\n    if not (stack_low <= address and address+size <= stack_low+stack_size):\n        raise RuntimeError(\"unexpected reference write outside scratch stack\")\nu.hook_add(UC_HOOK_MEM_WRITE, observe_write)\ndef invoke(entry, fmt, width, height):\n    for register, value in ((UC_ARM_REG_R0,fmt), (UC_ARM_REG_R1,width),\n                            (UC_ARM_REG_R2,height), (UC_ARM_REG_SP,stack),\n                            (UC_ARM_REG_LR,stop)):\n        u.reg_write(register, value)\n    u.emu_start(entry, stop, count=10000)\n    if u.reg_read(UC_ARM_REG_PC) != stop:\n        raise RuntimeError(\"native instruction budget exhausted\")\n    return u.reg_read(UC_ARM_REG_R0)\nedges = list(range(18)) + [31,32,33,63,64,65,127,128,129,255,256,257,\n    65535,65536,65537,0x1fffffff,0x20000000,0x40000000,0x7fffffff,\n    0x80000000,0xffffff00,0xfffffffc,0xfffffffd,0xfffffffe,0xffffffff]\nrng = random.Random(0x39b37ae3)\ncases = []\nfor fmt in range(50):\n    cases.extend((fmt,w,h) for w in edges for h in edges)\n    cases.extend((fmt,rng.getrandbits(32),rng.getrandbits(32)) for _ in range(256))\ntext_input = \"\".join(f\"{f} {w} {h}\\n\" for f,w,h in cases)\nprocess = subprocess.run([str(executable),\"--query\"], input=text_input,\n                         text=True, capture_output=True, check=True)\noutputs = process.stdout.splitlines()\nif len(outputs) != len(cases):\n    raise RuntimeError(\"source output count mismatch\")\ntranscript = hashlib.sha256()\nfor (fmt,width,height), line in zip(cases, outputs):\n    actual = tuple(map(int,line.split()))\n    expected = (invoke(0x0077d37c,fmt,width,height),\n                invoke(0x0077d3cc,fmt,width,height))\n    if actual != expected:\n        raise RuntimeError(f\"mismatch: {(fmt,width,height)} source={actual} reference={expected}\")\n    transcript.update(struct.pack(\"<5I\",fmt,width,height,*expected))\nprint(json.dumps({\"result\":\"PASS\", \"case_count\":len(cases),\n    \"native_invocations\":2*len(cases), \"formats\":50,\n    \"edge_count\":len(edges), \"random_cases_per_format\":256,\n    \"seed\":\"0x39b37ae3\", \"transcript_sha256\":transcript.hexdigest(),\n    \"transcript_encoding\":\"concatenated little-endian uint32(format,width,height,pitch,size)\",\n    \"reference_sha256\":expected_hash,\n    \"unicorn\":importlib.metadata.version(\"unicorn\"),\n    \"pyelftools\":importlib.metadata.version(\"pyelftools\"),\n    \"python\":sys.version.split()[0], \"code_hooks\":[],\n    \"helper_substitutions\":[], \"elf_relocations_applied\":False,\n    \"reference_writes\":\"scratch stack only; checked by memory-write observer\",\n    \"scope\":\"All 50 table IDs; deterministic edge Cartesian grid and seeded 32-bit random dimensions. Emulator evidence, not real-device or universal equivalence proof.\"},sort_keys=True))\n",
+      "reproduction": "After compiling the standalone test, run the following from repository root with a local Python containing Unicorn 2.1.4 and pyelftools 0.33. Supply the local reference path and test executable as argv[1:3]. No network or original binary copy is needed.",
+      "command": "/home/jason/Projects/nova3_re/.venv/bin/python -c 'import json; exec(json.load(open(\"coordination/evidence/functions-b37ae3933301edae6bf2fa.json\"))[\"verification\"][\"oracle\"][\"driver_python\"])' /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so /tmp/nova3-task39-test",
+      "exit_code": 0,
+      "observed": {
+        "case_count": 105250,
+        "code_hooks": [],
+        "edge_count": 43,
+        "elf_relocations_applied": false,
+        "formats": 50,
+        "helper_substitutions": [],
+        "native_invocations": 210500,
+        "pyelftools": "0.33",
+        "python": "3.14.8",
+        "random_cases_per_format": 256,
+        "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+        "reference_writes": "scratch stack only; checked by memory-write observer",
+        "result": "PASS",
+        "scope": "All 50 table IDs; deterministic edge Cartesian grid and seeded 32-bit random dimensions. Emulator evidence, not real-device or universal equivalence proof.",
+        "seed": "0x39b37ae3",
+        "transcript_encoding": "concatenated little-endian uint32(format,width,height,pitch,size)",
+        "transcript_sha256": "cfeef7d2bcb9e77a8115d9c43af3c59d3a95671f798aeb9bca66126570a37f67",
+        "unicorn": "2.1.4"
+      },
+      "local_test_executable_is_source_only": true
+    }
+  },
+  "limitations": [
+    "Only two of four assigned functions are source implemented.",
+    "No ABI, target-machine-code match, Android build or device test.",
+    "No real assets, levels, renderer or gameplay exercised.",
+    "Invalid format behavior is deliberately checked in source; reference invalid table indexes are outside comparison scope.",
+    "No top-level build changes were allowed; tests use explicit standalone compiler commands."
+  ],
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_0074b248.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_0074b248_test.cpp",
+      "coordination/evidence/functions-b37ae3933301edae6bf2fa.json"
+    ],
+    "next_attempts": [
+      "Use the stored oracle driver to reproduce the two pixel-function comparisons against the required SHA256.",
+      "Recover the File assignment/destructor contract before reconstructing 0x0076c3f4.",
+      "Recover Collada layouts and independent dependency fixtures before reconstructing 0x0074b248.",
+      "Integrate the standalone source/test into the build only in a task permitting CMake edits."
+    ],
+    "policy": "Only the three task-allowed files edited; no package installs, sudo, network, nested agents, GitHub changes, original patches or original uploads."
+  }
+}
