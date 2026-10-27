@@ -1,0 +1,314 @@
+{
+  "schema_version": 1,
+  "task_id": 38,
+  "task_key": "functions-abd3c02d6508d789e2de46",
+  "round": 1,
+  "result": "PARTIAL: one wrapper callback contract reconstructed; three bodies remain NOT RECONSTRUCTED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "expected_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "observed_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available": true,
+    "discovery": "Reference was absent from the disposable checkout but found read-only in the existing primary local project. No download or installation was required.",
+    "architecture": "ELF32 ARM little-endian",
+    "unchanged_hash_rechecked_after_tests": true
+  },
+  "counts": {
+    "assigned_functions": 4,
+    "symbol_boundaries_corroborated": 4,
+    "existing_scoped_ghidra_exports_found": 4,
+    "new_ghidra_runs": 0,
+    "new_decompilations": 0,
+    "source_implemented_wrappers": 1,
+    "wrappers_with_scoped_behavioural_evidence": 1,
+    "complete_functions_verified_including_dependencies": 0,
+    "machine_code_matches": 0,
+    "end_to_end_game_tests": 0
+  },
+  "provenance": {
+    "existing_metadata": "Local SQLite function index and four scoped Ghidra 12.1.2 exports; exports report byte_mapping_validated=true and image base +0x10000. No decompiler dump is included in this change.",
+    "fresh_evidence": "Reference file hash, ELF architecture/symbol/segment metadata, base factory vtable target and bounded original ARM execution were independently checked this session. Addresses in this record are ELF VAs unless stated otherwise.",
+    "base_factory_vtable": {
+      "symbol": "vtable for glitch::collada::CColladaFactory",
+      "symbol_address": "0xd58a50",
+      "size": 236,
+      "address_point_offset": 8,
+      "dispatch_offset": "0x34",
+      "stored_target": "0x006cad1c",
+      "target_symbol": "CColladaFactory::createMaterialRenderer(database, driver, SEffect*, const char*, const char*, root)"
+    }
+  },
+  "source": {
+    "path": "reconstruction/recovered/libNOVA3_neon/block_006a790c.cpp",
+    "sha256": "301208cf1e5d998111e3a0b650682c81cd581d737af24fd09a27cd928b44c436",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_006a790c_test.cpp",
+    "test_sha256": "ff8d87e95ddc2b6d248ddddf90535c121757f9e962308184a17e1cb265100703",
+    "api": "Portable views of 32-bit address values and abstract dependency callbacks; no host-pointer dereferences of target addresses, no original ABI/linkage compatibility claimed.",
+    "field_mapping": {
+      "SMaterial+0x00": "material ID passed to root lookup",
+      "SMaterial+0x08": "second const-char* argument to renderer creation; precise semantic role unresolved",
+      "SMaterial+0x0c": "first const-char* argument after adding one modulo 2^32; no contents or null guard assumed",
+      "SMaterial+0x18": "SEffect* argument to renderer creation",
+      "CColladaDatabase+0x04": "factory used for virtual dispatch"
+    },
+    "safety_and_scope": "Output is fresh return storage. Callbacks are nonthrowing and must fill outputs and implement their own ownership semantics. Word-prefix adapter consumes already decoded words; it is not a file parser or a full SMaterial layout. No runtime code loader, original executable or new third-party dependency is introduced."
+  },
+  "functions": [
+    {
+      "address": "0x006a790c",
+      "size": 2872,
+      "file_offset": 6977804,
+      "reference_function_sha256": "5346fdfda371fe5caec39b145397c9e173aebc9daedf7bc47ebd61c7ae2449bb",
+      "symbol": "glitch::collada::createMaterial",
+      "state": "INVENTORIED",
+      "source_status": "NOT RECONSTRUCTED",
+      "verification_grade": "unmapped",
+      "machine_code_match": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "blocker": "Material instantiation, parameter dispatch, driver virtual methods and renderer state are not reconstructed. The wrapper oracle hooks this function and provides no evidence for its internals.",
+      "boundary_evidence": "Matching STT_FUNC value and size in the hash-validated reference .symtab; PT_LOAD mapping confirmed the file offset.",
+      "instruction_mode": "ARM (even symbol entry, existing scoped Ghidra metadata thumb=0)"
+    },
+    {
+      "address": "0x006a8444",
+      "size": 212,
+      "file_offset": 6980676,
+      "reference_function_sha256": "93e6a41134ee19f9ca568a180da6a748e250c891676ff32ea54781b1714babaf",
+      "symbol": "glitch::collada::CColladaFactory::createMaterial",
+      "state": "TESTED",
+      "source_status": "IMPLEMENTED: portable wrapper orchestration with explicit dependency interface",
+      "verification_grade": "behavioural",
+      "verification_scope": "Normal-return call order, selected field mapping, arguments, empty/nonempty handles, output initialization and return-storage identity under hooked dependencies. This grade does not cover dependency implementations, reference counts or ABI compatibility.",
+      "source_symbol": "nova3::recovered::libnova3_neon::factory_create_material_006a8444",
+      "machine_code_match": "NOT MATCHED",
+      "whole_function_equivalence": "UNVERIFIED",
+      "dependencies": [
+        {
+          "address": "0x0071421c",
+          "role": "root material lookup; hooked"
+        },
+        {
+          "dispatch": "database factory vtable slot +0x34",
+          "base_factory_target": "0x006cad1c",
+          "role": "createMaterialRenderer; hooked"
+        },
+        {
+          "address": "0x006a790c",
+          "role": "material construction; hooked"
+        },
+        {
+          "address": "0x00109c4c",
+          "role": "intrusive material assignment; hooked"
+        },
+        {
+          "address": "0x00109bf4",
+          "role": "intrusive material temporary destruction; hooked"
+        },
+        {
+          "address": "0x00109f94",
+          "role": "intrusive renderer temporary destruction; hooked"
+        }
+      ],
+      "boundary_evidence": "Matching STT_FUNC value and size in the hash-validated reference .symtab; PT_LOAD mapping confirmed the file offset.",
+      "instruction_mode": "ARM (even symbol entry, existing scoped Ghidra metadata thumb=0)"
+    },
+    {
+      "address": "0x006b0928",
+      "size": 372,
+      "file_offset": 7014696,
+      "reference_function_sha256": "2dd77e4fe980c8ff6da394a7f3df642670ea06dcaa78566e9ceb9986792f0502",
+      "symbol": "glitch::collada::CColladaFactory::createImage",
+      "state": "INVENTORIED",
+      "source_status": "NOT RECONSTRUCTED",
+      "verification_grade": "unmapped",
+      "machine_code_match": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "blocker": "Generic image construction has unreconstructed string, resource-path and texture-manager dependencies. No source body or behavioural claim supplied. Game-specific overrides must be distinguished from this generic factory.",
+      "boundary_evidence": "Matching STT_FUNC value and size in the hash-validated reference .symtab; PT_LOAD mapping confirmed the file offset.",
+      "instruction_mode": "ARM (even symbol entry, existing scoped Ghidra metadata thumb=0)"
+    },
+    {
+      "address": "0x006c1d80",
+      "size": 1924,
+      "file_offset": 7085440,
+      "reference_function_sha256": "46221c85146299cbe900fb2c56229739e57fd4504e6aea85a7a0eb68172f2047",
+      "symbol": "glitch::res::File::Init(FileReader*)",
+      "state": "INVENTORIED",
+      "source_status": "NOT RECONSTRUCTED",
+      "verification_grade": "unmapped",
+      "machine_code_match": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "blocker": "FileReader virtual IO, allocation, split-buffer ownership and full resource initialization dependencies remain unreconstructed. Existing contiguous BRES source covers a different entry point; it is not proof for this overload.",
+      "boundary_evidence": "Matching STT_FUNC value and size in the hash-validated reference .symtab; PT_LOAD mapping confirmed the file offset.",
+      "instruction_mode": "ARM (even symbol entry, existing scoped Ghidra metadata thumb=0)"
+    }
+  ],
+  "compilation": [
+    {
+      "compiler_path": "/usr/bin/c++",
+      "version": "c++ (GCC) 16.2.1 20260810",
+      "target": "x86_64-pc-linux-gnu",
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror"
+      ],
+      "source_sha256": "301208cf1e5d998111e3a0b650682c81cd581d737af24fd09a27cd928b44c436",
+      "standalone_object_compilation_exit_code": 0,
+      "test_compilation_exit_code": 0
+    },
+    {
+      "compiler_path": "/usr/bin/clang++",
+      "version": "clang version 23.1.3",
+      "target": "x86_64-pc-linux-gnu",
+      "flags": [
+        "-std=c++17",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie"
+      ],
+      "source_sha256": "301208cf1e5d998111e3a0b650682c81cd581d737af24fd09a27cd928b44c436",
+      "test_compilation_exit_code": 0,
+      "test_environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      }
+    }
+  ],
+  "tests": [
+    {
+      "name": "GCC standalone host tests",
+      "cases": 6,
+      "exit_code": 0,
+      "scope": "cache hit, absent root/renderer failure, construction and cleanup order, empty material and pointer wrap, zero URI, material word mapping"
+    },
+    {
+      "name": "Clang ASan/UBSan standalone host tests",
+      "cases": 6,
+      "exit_code": 0,
+      "leak_detection": "DISABLED: sandbox ptrace restriction; no leak-check success claimed"
+    },
+    {
+      "name": "Original ARM callback-contract differential",
+      "exit_code": 0,
+      "report": {
+        "result": "PASS",
+        "scope": "0x006a8444 callback contract only",
+        "cases": 160,
+        "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+        "entry_elf_va": "0x6a8444",
+        "reference_function_size": 212,
+        "reference_function_sha256": "93e6a41134ee19f9ca568a180da6a748e250c891676ff32ea54781b1714babaf",
+        "oracle": "Unicorn 2.1.4",
+        "elf_reader": "pyelftools 0.33",
+        "mode": "ARM little-endian",
+        "elf_relocations_applied": false,
+        "unique_wrapper_instruction_addresses_executed": 53,
+        "hooked_dependencies": [
+          "0x109bf4",
+          "0x109c4c",
+          "0x109f94",
+          "0x6a790c",
+          "0x71421c",
+          "0x201ffe0"
+        ],
+        "executable_bytes_modified": false,
+        "transcript_sha256": "7a8e574a102b30a9fafee5826d1de80b499c24a64d13aee72ea3682059568c63",
+        "machine_code_match": "NOT MATCHED",
+        "excluded": [
+          "dependency implementations",
+          "intrusive reference counts",
+          "original C++ ABI",
+          "exceptions",
+          "invalid memory inputs",
+          "other three assigned functions",
+          "engine integration"
+        ]
+      }
+    },
+    {
+      "name": "Wrong reference hash guard",
+      "observed_exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "PASS: rejected a source file as reference before emulation"
+    }
+  ],
+  "machine_code_comparison": {
+    "status": "NOT MATCHED",
+    "performed": false,
+    "reason": "Candidate is an x86_64 portable dependency boundary, not the original ARM C++ ABI. No target compiler, assembly identity or byte-for-byte match is claimed. Reference function digests identify inputs only."
+  },
+  "failures_and_corrections": [
+    {
+      "step": "First oracle memory mapping",
+      "exit_code": 134,
+      "reason": "Unicorn phys_section_add assertion after separately mapping thousands of pages",
+      "correction": "Merged PT_LOAD page ranges before mapping; final oracle completed."
+    },
+    {
+      "step": "First oracle comparison after mapping correction",
+      "exit_code": 1,
+      "reason": "Distinct field values exposed reversal of effect (+0x18) and name (+0x08) in the initial semantic fixture/comments",
+      "correction": "Corrected field mapping; added source word-prefix adapter and regression check; final 160-case differential passed."
+    },
+    {
+      "step": "First sanitizer run",
+      "exit_code": 1,
+      "reason": "LeakSanitizer cannot perform its ptrace-dependent check in this sandbox; host assertions had passed",
+      "correction": "Reran ASan/UBSan with ASAN_OPTIONS=detect_leaks=0; no host security settings were changed."
+    }
+  ],
+  "reproduce": {
+    "preconditions": "C++17 compilers; Python 3 with locally available Unicorn 2.1.4 and pyelftools 0.33 for the optional oracle. Set NOVA3_REFERENCE to the local reference .so; the driver refuses a different hash. Host source compilation/tests require no original files.",
+    "commands": [
+      "mkdir -p /tmp/nova3-task38",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_006a790c.cpp -o /tmp/nova3-task38/block_006a790c.o",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_006a790c_test.cpp -o /tmp/nova3-task38/block_006a790c_test",
+      "/tmp/nova3-task38/block_006a790c_test",
+      "/tmp/nova3-task38/block_006a790c_test --print-oracle > /tmp/nova3-task38/oracle.py",
+      "python3 /tmp/nova3-task38/oracle.py --reference \"$NOVA3_REFERENCE\" --candidate /tmp/nova3-task38/block_006a790c_test",
+      "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_006a790c_test.cpp -o /tmp/nova3-task38/block_006a790c_sanitize",
+      "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task38/block_006a790c_sanitize"
+    ]
+  },
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_006a790c.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_006a790c_test.cpp",
+      "coordination/evidence/functions-abd3c02d6508d789e2de46.json"
+    ],
+    "build_integration": "Standalone commands only; CMake and documentation are outside the allowed paths. The test includes the source translation unit; do not also link its standalone object into that test.",
+    "blockers": [
+      "Three assigned function bodies remain unreconstructed.",
+      "Actual renderer/material/cache and intrusive ownership dependencies are not supplied by this wrapper.",
+      "Original ABI, exception/aliasing behavior and full engine integration remain UNVERIFIED."
+    ],
+    "next_attempts": [
+      "Recover 0x006a790c material parameter dispatch and its driver/renderer dependencies, keeping this wrapper oracle as a regression.",
+      "For 0x006b0928, recover the generic database path/string/texture-manager contract and separately check the game override.",
+      "For 0x006c1d80, recover FileReader IO/ownership and split-buffer paths before extending the existing contiguous BRES implementation.",
+      "Implement production source adapters and ABI glue only after dependency semantics and ownership are independently tested."
+    ]
+  },
+  "constraints": {
+    "repository_edits_limited_to_allowed_paths": true,
+    "original_executables_modified": false,
+    "original_bytes_or_decompiler_dumps_embedded": false,
+    "original_executable_used_by_production_source": false,
+    "network_access": false,
+    "package_installs": false,
+    "sudo": false,
+    "child_ai_agents": false,
+    "github_state_changed": false,
+    "commits_created": false
+  }
+}
