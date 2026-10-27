@@ -1,4 +1,47 @@
 {
+  "expansions": [
+    {
+      "added_boundaries": 32,
+      "collector": {
+        "ghidra_version": "12.1.2",
+        "jdk": "OpenJDK 21; /usr/lib/jvm/java-21-openjdk",
+        "name": "nova3_team.local_index.collect_program",
+        "pyghidra_version": "3.2.0",
+        "python_version": "3.14.8",
+        "source_sha256": "13e03fdc8eefff444603cfdad87f782303ab535c90b55a94a6594d5907a1c9ba"
+      },
+      "independent_boundary_check": "GNU readelf 2.47 --wide --symbols; all 32 address/size/raw Thumb tuples agree",
+      "independent_reference_slice_hash_check": "GNU readelf 2.47 --wide --program-headers; all 32 PT_LOAD-mapped slice hashes agree",
+      "previous_boundaries": 62,
+      "project_preservation_check": "Recursive project file names, sizes and nanosecond mtimes unchanged; read-only open, transaction rolled back, no save",
+      "reference_and_project_unchanged": true,
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "statistics": {
+        "boundaries_extracted": 32,
+        "elf_function_count": 39092,
+        "excluded": {
+          "conflicting_sizes": 2,
+          "missing_ghidra": 39029,
+          "overlapping_extents": 16,
+          "unknown_size": 13
+        },
+        "functions_with_ghidra_exports": 32,
+        "inventory_complete": false,
+        "project_scan": {
+          "candidate_limit": 32,
+          "candidates_checked": 32,
+          "disassembly_attempts": 63,
+          "discovery": "bounded transient disassembly; transaction rolled back",
+          "excluded_existing_addresses": 62,
+          "skipped": {
+            "incomplete_instruction_coverage": 31,
+            "outside_small_disassembly_scope": 39
+          }
+        }
+      },
+      "total_boundaries": 94
+    }
+  ],
   "exporter": {
     "name": "nova3_team.indexer",
     "version": "2"
@@ -18,6 +61,742 @@
       "matching": "NOT MATCHED",
       "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
       "size": 80,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 867536,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "ed2664f65a22271418c7edbbdd8cc6c74a87bb496c52f68cf7f50aaabca28a9d",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 867596,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "80e8c386f1b8ec1cef325215a090753955bb09df0585b1c162cf13e9edb2e57a",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 12,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 871636,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "abc7c7bd1cc389d235e7ee83288226e5532c2c5c1c2d6abc5ed7c789e34115bb",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 871640,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "379bec29dccd0a93c94826144d7ef6e42fab64ef195a3b8313a16926f66f388f",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 871868,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "e928253e755014d7e2f633e4473ca99936c4edd9a6006f5dc0db1fbeeca6248f",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 871908,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "30f836c65e7a20dfa8288bb65007cfaaee9927889edcb4e1eeffbe56dd82bc86",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 172,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 872308,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "0303295b252b73dcf2b1496eb2b85cc60b6c9e1533b371f1fb08b3291b415ef0",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 80,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 872996,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "c23828df9bd56cae75f9be5d2affa69b69729f3ee95f49403ce411dd09a82a0d",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 873212,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "46e0e0147eff8e11659cb4b171ae67e62cf0a2bcfb8340b1bd303f41e097da28",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 873216,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "b111eee77f3dc1d128d441a02e4222cbc910353b1bc7656f873a3774abe8f388",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 76,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 874456,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 874680,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "83b1cb4bf2bcc7b109d93b71111155a7ff9416ead48aadac721524b0addb65d7",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 876752,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "6681331aa283a0abeaba01ad4f1cf452a0546bbfcb8304be620ac178618b0603",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 12,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 879560,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "b529e9f5a6d1ccba285cf6b5496cc5f29ae3c552bb206752d3a306a42e822617",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 880176,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 880520,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 881948,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "67c1ca2e76a626882979fe891ea200769f781825d16e928b5696726463f0f069",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 882380,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "a12533d3bc8e7f8a0a6753e642f7afc9c9e95b2367e5c2981cc3282d04fe245a",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 883696,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "ba450ed02c033f1bfbbc36e6a444ed78ad775c415258ad112ad875608778dd45",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 884312,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 884928,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "21db813cde8a556213bd15372eea07eb11dcee0edba64358d216eee945721ae8",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 885476,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "d7719515266de40ae0502ef429d76320aed8156bc25aac6687b34d3c97840548",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 886144,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 886796,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "e04416409b5d10d20145f2021917175781e9094a64b1e8d9b83334f661397b14",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 887380,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "4fa6b07dcfaa1c2a1eca278d789e98e6fe74e42a83c4a456daf4f342a20febfd",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 887980,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "4fa6b07dcfaa1c2a1eca278d789e98e6fe74e42a83c4a456daf4f342a20febfd",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 888616,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "a945277813a6684a3df54ce5e0d8cf91f4233fb6bcf8e153d399aac0d24a3139",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 889252,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "a945277813a6684a3df54ce5e0d8cf91f4233fb6bcf8e153d399aac0d24a3139",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 20,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 891240,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "cb347da7a0d3d3b3c35a50702816de01c607f3f670eba6b45ee9c94ed83efb7f",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 8,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 895460,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "6d67302bb9b32a055ada19f2acdafea5070097b81176b143477bf34a62047dde",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 895464,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "decca1e98cac70f86fb3239408cc50da838bcda957f0f28ec4751e4800b79ffd",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 4,
+      "state": "INVENTORIED",
+      "status": "pending",
+      "thumb": false
+    },
+    {
+      "address": 895468,
+      "boundary_confidence": "elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check",
+      "boundary_evidence": {
+        "analysis": "bounded_disassembly_rolled_back",
+        "byte_mapping": "full_extent_compared",
+        "elf_symbol_type": "STT_FUNC",
+        "entry_instruction": "present",
+        "ghidra_versions": [
+          "12.1.2"
+        ],
+        "instruction_coverage": "complete_symbol_extent",
+        "mode": "elf_symbol_thumb_bit"
+      },
+      "boundary_status": "tool_identified",
+      "matching": "NOT MATCHED",
+      "reference_code_sha256": "9a28c2ca8409c111ddd2cbd33853af472a496f7262d495eee0eea11c8067bb01",
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "size": 52,
       "state": "INVENTORIED",
       "status": "pending",
       "thumb": false

@@ -34,6 +34,85 @@ The initial checked-in ledger contains 62 such Premium boundaries, cross-checked
 
 If all currently identified function tasks are integrated, the feeder creates **one** evidence-expansion issue per ledger revision, so the project cannot mistake an empty queue for complete source recovery. The issue can only succeed if someone can provide additional real function evidence locally. If neither metadata source exists, the feeder creates **one** prerequisite issue (not infinite fabricated work). If that issue is closed without the necessary metadata, it reopens **blocked** instead of endlessly rerunning the same task. When real reference metadata becomes available, new function tasks can be generated. Contributors doing byte matching need their own lawfully available local reference files; GitHub cannot automatically supply private APKs that are not checked in.
 
+### Inspect additional functions without changing a saved Ghidra project
+
+`nova3_team.local_index.collect_program` is an optional PyGhidra API for a locally
+opened **read-only** `Program`. It verifies the program's executable SHA-256,
+architecture and image base against separately read ELF bytes. Its default mode
+accepts existing contiguous bodies equal to the ELF symbol extent. With
+`disassemble=True`, it instead attempts bounded disassembly of small symbol
+extents in a transaction that is rolled back even on failure. It attempts at
+most `limit * 4` candidates, each at most 256 bytes; `limit` is 1–256 and defaults
+to 32. It disables follow-up code analysis and requires complete instruction
+coverage, agreement on ARM/Thumb mode and full-extent byte comparison. It never
+calls the decompiler, executes game code or saves the program.
+
+Example, using the locally installed PyGhidra environment and explicit local
+paths (the output is allowlisted metadata only):
+
+```python
+import json
+import tempfile
+from pathlib import Path
+from pyghidra.launcher import HeadlessPyGhidraLauncher
+from nova3_team.local_index import collect_program
+
+# Set these to local installations/references; no downloads are performed.
+reference = Path(REFERENCE_ELF)
+baseline = json.loads(Path("coordination/function_ledger.json").read_text())
+with tempfile.TemporaryDirectory(prefix="nova-inventory-") as scratch:
+    launcher = HeadlessPyGhidraLauncher(install_dir=Path(GHIDRA_INSTALL_DIR))
+    launcher.java_home = Path(JDK_HOME)
+    launcher.vm_args.extend([
+        "-Duser.home=" + scratch,
+        "-Dapplication.settingsdir=" + scratch + "/settings",
+        "-Dapplication.cachedir=" + scratch + "/cache",
+        "-Dapplication.tempdir=" + scratch + "/temp",
+    ])
+    launcher.start()
+    from ghidra.framework import Application
+    from ghidra.framework.data import DefaultProjectData
+    from ghidra.framework.model import ProjectLocator
+    from ghidra.util.task import TaskMonitor
+    from java.lang import Object
+
+    project = DefaultProjectData(
+        ProjectLocator(GHIDRA_PROJECT_DIR, GHIDRA_PROJECT_NAME), False, False)
+    consumer, program = Object(), None
+    try:
+        program = project.getFile("/" + reference.name).getReadOnlyDomainObject(
+            consumer, -1, TaskMonitor.DUMMY)
+        delta = collect_program(
+            reference.read_bytes(), program, library=reference.name,
+            ghidra_version=str(Application.getApplicationVersion()),
+            excluded_addresses=[f["address"] for f in baseline["functions"]
+                                if f["reference_sha256"] == str(program.getExecutableSHA256())],
+            limit=32, disassemble=True)
+    finally:
+        if program is not None:
+            program.release(consumer)
+        project.close()
+print(json.dumps(delta, indent=2))
+```
+
+New records include `reference_code_sha256`, calculated over the exact ELF
+symbol extent. This is an original-byte inventory hash, **not** a comparison
+against compiled replacement source. Bounds still originate from ELF symbols;
+complete disassembly does not independently prove the function's semantics or
+its true extent. Every record remains `INVENTORIED` / **NOT MATCHED**. An empty
+result supplies no new tasks. Recheck tuples with `readelf --wide --symbols` and
+check reference/project files remain unchanged before installing metadata.
+
+When adding boundaries before existing addresses, first freeze the existing
+fallback task keys in `coordination/tasks.json`, then append tasks generated
+from the new rows separately. The four-function fallback groups sorted
+addresses, so regenerating it from a combined ledger could reassign existing
+work to new keys. Preserve all old function records and task descriptions,
+scopes and keys. Keep initial inventory statistics as the original snapshot;
+record each additional scan's counts and exclusions in `expansions` rather
+than treating separate scans as a complete census. This workflow makes no
+dependency-completeness claim.
+
 ## Correctness and security
 
 - One serial Actions workflow arbitrates creation; stable task keys ensure reruns do not duplicate old issues, including already closed work.

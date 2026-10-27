@@ -1,0 +1,366 @@
+{
+  "notes": "Frozen baseline task keys plus additional tool-identified local-reference inventory; NOT MATCHED. No dependency completeness or source equivalence claimed.",
+  "schema_version": 1,
+  "tasks": [
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d39f0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d39f0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0",
+        "coordination/evidence/functions-9640046aea52336f97cfcc.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d39f0, 0x000de2cc, 0x0029e7b0, 0x002a4398\nAddresses/sizes: ['000d39f0:50', '000de2cc:54', '0029e7b0:c', '002a4398:2b0']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-9640046aea52336f97cfcc",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d39f0, 0x000de2cc, 0x0029e7b0, 0x002a4398"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_002ad444.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_002ad444",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_002ad444_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_002ad444",
+        "coordination/evidence/functions-0450eaf99eb325474288ec.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x002ad444, 0x002ad998, 0x002af114, 0x002af2ac\nAddresses/sizes: ['002ad444:3d8', '002ad998:88c', '002af114:198', '002af2ac:318']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-0450eaf99eb325474288ec",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x002ad444, 0x002ad998, 0x002af114, 0x002af2ac"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_002af5c4.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_002af5c4",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_002af5c4_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_002af5c4",
+        "coordination/evidence/functions-980b2b9fe621bdce6c3e75.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x002af5c4, 0x002af8b8, 0x00411518, 0x00411610\nAddresses/sizes: ['002af5c4:2f4', '002af8b8:1c', '00411518:ac', '00411610:54']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-980b2b9fe621bdce6c3e75",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x002af5c4, 0x002af8b8, 0x00411518, 0x00411610"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_0041198c.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_0041198c",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0041198c_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0041198c",
+        "coordination/evidence/functions-47c9103100e968d1cdb6ec.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x0041198c, 0x00411fc0, 0x00412730, 0x0069c6f0\nAddresses/sizes: ['0041198c:260', '00411fc0:770', '00412730:590', '0069c6f0:68c']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-47c9103100e968d1cdb6ec",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x0041198c, 0x00411fc0, 0x00412730, 0x0069c6f0"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_006a790c.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_006a790c",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_006a790c_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_006a790c",
+        "coordination/evidence/functions-abd3c02d6508d789e2de46.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x006a790c, 0x006a8444, 0x006b0928, 0x006c1d80\nAddresses/sizes: ['006a790c:b38', '006a8444:d4', '006b0928:174', '006c1d80:784']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-abd3c02d6508d789e2de46",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x006a790c, 0x006a8444, 0x006b0928, 0x006c1d80"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_006ca8a0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_006ca8a0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_006ca8a0",
+        "coordination/evidence/functions-c9e13b3c562667c083cda1.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x006ca8a0, 0x006cad1c, 0x006d7f60, 0x006d8888\nAddresses/sizes: ['006ca8a0:47c', '006cad1c:2b4', '006d7f60:474', '006d8888:564']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-c9e13b3c562667c083cda1",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x006ca8a0, 0x006cad1c, 0x006d7f60, 0x006d8888"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_00710160.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_00710160",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00710160_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00710160",
+        "coordination/evidence/functions-26c663650e19206f2d88d6.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x00710160, 0x0071017c, 0x00710318, 0x0071034c\nAddresses/sizes: ['00710160:1c', '0071017c:14', '00710318:18', '0071034c:1c']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-26c663650e19206f2d88d6",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x00710160, 0x0071017c, 0x00710318, 0x0071034c"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_00710368.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_00710368",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00710368_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00710368",
+        "coordination/evidence/functions-e7f289ca2ec298df27e4be.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x00710368, 0x00710700, 0x007146ac, 0x0071476c\nAddresses/sizes: ['00710368:18', '00710700:8', '007146ac:60', '0071476c:60']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-e7f289ca2ec298df27e4be",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x00710368, 0x00710700, 0x007146ac, 0x0071476c"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_0071e468",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0071e468",
+        "coordination/evidence/functions-c7fde538e6cd0dd0b16c40.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x0071e468, 0x0072490c, 0x0073f804, 0x00747828\nAddresses/sizes: ['0071e468:44', '0072490c:240', '0073f804:94', '00747828:174']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-c7fde538e6cd0dd0b16c40",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x0071e468, 0x0072490c, 0x0073f804, 0x00747828"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_0074b248.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_0074b248",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0074b248_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_0074b248",
+        "coordination/evidence/functions-b37ae3933301edae6bf2fa.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x0074b248, 0x0076c3f4, 0x0077d37c, 0x0077d3cc\nAddresses/sizes: ['0074b248:880', '0076c3f4:80', '0077d37c:50', '0077d3cc:70']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-b37ae3933301edae6bf2fa",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x0074b248, 0x0076c3f4, 0x0077d37c, 0x0077d3cc"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_00781c78.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_00781c78",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00781c78_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00781c78",
+        "coordination/evidence/functions-465f3cbc6540ff3947c1cc.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x00781c78, 0x00781e08, 0x007914a4, 0x007a5088\nAddresses/sizes: ['00781c78:190', '00781e08:470', '007914a4:496c', '007a5088:124']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-465f3cbc6540ff3947c1cc",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x00781c78, 0x00781e08, 0x007914a4, 0x007a5088"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_007b13e0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_007b13e0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0",
+        "coordination/evidence/functions-eed05e04010ae8033d1f1b.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x007b13e0, 0x007b1dec, 0x007b8974, 0x007b8984\nAddresses/sizes: ['007b13e0:780', '007b1dec:14c', '007b8974:8', '007b8984:8']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-eed05e04010ae8033d1f1b",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x007b13e0, 0x007b1dec, 0x007b8974, 0x007b8984"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_007fcec0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_007fcec0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_007fcec0",
+        "coordination/evidence/functions-8708f94a70699ac28c6d23.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x007fcec0, 0x007fd2d4, 0x007fd420, 0x00810d84\nAddresses/sizes: ['007fcec0:1bc', '007fd2d4:14c', '007fd420:424', '00810d84:448']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-8708f94a70699ac28c6d23",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x007fcec0, 0x007fd2d4, 0x007fd420, 0x00810d84"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_00819878.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_00819878",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00819878_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_00819878",
+        "coordination/evidence/functions-126828745455df69bf91e5.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x00819878, 0x00819ed8, 0x0081bd20, 0x008ca0c0\nAddresses/sizes: ['00819878:660', '00819ed8:4c', '0081bd20:a0', '008ca0c0:30']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-126828745455df69bf91e5",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x00819878, 0x00819ed8, 0x0081bd20, 0x008ca0c0"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_008ca0f0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_008ca0f0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_008ca0f0",
+        "coordination/evidence/functions-d6f72b681eb3f205d2a352.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x008ca0f0, 0x008cd7f4, 0x008cfaf8, 0x008cfb44\nAddresses/sizes: ['008ca0f0:4', '008cd7f4:8c', '008cfaf8:4c', '008cfb44:34']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-d6f72b681eb3f205d2a352",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x008ca0f0, 0x008cd7f4, 0x008cfaf8, 0x008cfb44"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_008cfb78.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_008cfb78",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_008cfb78",
+        "coordination/evidence/functions-3bf9bf965c33d8a5985d2e.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x008cfb78, 0x008d890c\nAddresses/sizes: ['008cfb78:934', '008d890c:18']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-3bf9bf965c33d8a5985d2e",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x008cfb78, 0x008d890c"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d3cd0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d3cd0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d3cd0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d3cd0",
+        "coordination/evidence/functions-d3bea957f63bce872aae71.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d3cd0, 0x000d3d0c, 0x000d4cd4, 0x000d4cd8\nAddresses/sizes: ['000d3cd0:4', '000d3d0c:c', '000d4cd4:4', '000d4cd8:4']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-d3bea957f63bce872aae71",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d3cd0, 0x000d3d0c, 0x000d4cd4, 0x000d4cd8"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d4dbc",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc",
+        "coordination/evidence/functions-be7f8ec1c46c9e9168d276.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d4dbc, 0x000d4de4, 0x000d4f74, 0x000d5224\nAddresses/sizes: ['000d4dbc:4', '000d4de4:ac', '000d4f74:50', '000d5224:4']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-be7f8ec1c46c9e9168d276",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d4dbc, 0x000d4de4, 0x000d4f74, 0x000d5224"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d52fc",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d52fc",
+        "coordination/evidence/functions-4592177e5235d9c3f9f6f6.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d52fc, 0x000d5300, 0x000d57d8, 0x000d58b8\nAddresses/sizes: ['000d52fc:4', '000d5300:4c', '000d57d8:8', '000d58b8:8']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-4592177e5235d9c3f9f6f6",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d52fc, 0x000d5300, 0x000d57d8, 0x000d58b8"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0",
+        "coordination/evidence/functions-2243f3be0ab59188729029.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d60d0, 0x000d6bc8, 0x000d6e30, 0x000d6f88\nAddresses/sizes: ['000d60d0:c', '000d6bc8:4', '000d6e30:4', '000d6f88:4']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-2243f3be0ab59188729029",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d60d0, 0x000d6bc8, 0x000d6e30, 0x000d6f88"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d751c",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d751c",
+        "coordination/evidence/functions-8519d3e74f033827f04cab.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d751c, 0x000d76cc, 0x000d7bf0, 0x000d7e58\nAddresses/sizes: ['000d751c:4', '000d76cc:4', '000d7bf0:4', '000d7e58:4']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-8519d3e74f033827f04cab",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d751c, 0x000d76cc, 0x000d7bf0, 0x000d7e58"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d80c0.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d80c0",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d80c0",
+        "coordination/evidence/functions-cc73d4b062bb2e03ec0ba4.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d80c0, 0x000d82e4, 0x000d8580, 0x000d880c\nAddresses/sizes: ['000d80c0:4', '000d82e4:14', '000d8580:4', '000d880c:4']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-cc73d4b062bb2e03ec0ba4",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d80c0, 0x000d82e4, 0x000d8580, 0x000d880c"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d8a54.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d8a54",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d8a54_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d8a54",
+        "coordination/evidence/functions-93916bfc4f472629a0240d.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d8a54, 0x000d8cac, 0x000d8f28, 0x000d91a4\nAddresses/sizes: ['000d8a54:14', '000d8cac:14', '000d8f28:14', '000d91a4:14']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-93916bfc4f472629a0240d",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d8a54, 0x000d8cac, 0x000d8f28, 0x000d91a4"
+    },
+    {
+      "allowed_paths": [
+        "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+        "reconstruction/recovered/libNOVA3_neon/block_000d9968",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968",
+        "coordination/evidence/functions-9fab331f9f3c4d2c18b537.json"
+      ],
+      "description": "Reference library: libNOVA3_neon.so\nReference SHA256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`\nFunction boundaries (tool-identified only): 0x000d9968, 0x000da9e4, 0x000da9e8, 0x000da9ec\nAddresses/sizes: ['000d9968:8', '000da9e4:4', '000da9e8:4', '000da9ec:34']\n\nReconstruct this cluster into human-readable C++ using only lawfully held local references. Source files beyond the named block file must go inside that block-specific directory. Do not patch the APK or library. Verify with reproducible compilation, assembly comparison and/or behavioural tests. When reference machine-code comparison is unavailable, record NOT MATCHED / UNVERIFIED explicitly; never fabricate a match. Preserve existing source and tests. Original binaries and extensive decompiler exports must never be committed. This issue requires local reference files for meaningful source matching.",
+      "id": "functions-9fab331f9f3c4d2c18b537",
+      "priority": 65,
+      "publish": true,
+      "status": "pending",
+      "title": "Reconstruct libNOVA3_neon.so functions 0x000d9968, 0x000da9e4, 0x000da9e8, 0x000da9ec"
+    }
+  ]
+}
