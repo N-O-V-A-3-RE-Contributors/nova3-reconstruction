@@ -1,0 +1,372 @@
+{
+  "schema_version": 1,
+  "task": 68,
+  "task_key": "functions-9fab331f9f3c4d2c18b537",
+  "round": 1,
+  "result": "Four source-owned adapters implemented and scoped tests pass. Three comparison-linked ARM wrappers MATCHED; JNI variadic adapter NOT MATCHED, behaviourally compared.",
+  "matching": "PARTIAL: 3 of 4 function instruction extents MATCHED; full original ABI and game integration UNVERIFIED",
+  "base_commit": "37eee6ab4e78f31d1149b5e026efb5c780d49671",
+  "reference": {
+    "name": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available_locally": true,
+    "sha256_verified_before_and_after_oracle": true,
+    "original_file_modified": false,
+    "published_original_bytes_or_decompiler_text": false,
+    "execution_scope": "Local Unicorn test oracle only; PT_LOAD data stays in memory. No original code linked into host or ARM candidates or required by production source."
+  },
+  "inventory_and_coverage": {
+    "requested_function_boundaries": 4,
+    "local_elf_symbols_confirmed": 4,
+    "locally_inspected_disassembled_functions": 4,
+    "new_ghidra_decompilations": 0,
+    "source_owned_adapters_implemented": 4,
+    "scoped_behaviourally_compared_adapters": 4,
+    "machine_code_matched_functions": 3,
+    "full_original_abi_implementations_verified": 0,
+    "billing_dependencies_reconstructed": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "boundary_correction": {
+    "address": "0x000da9ec",
+    "task_size_decimal": 34,
+    "elf_symbol_size_decimal": 52,
+    "elf_symbol_size_hex": "0x34",
+    "extent": "[0x000da9ec,0x000daa20)",
+    "evidence": "Both .dynsym and .symtab give size 52. ARM epilogue returns before next function at 0x000daa20. The listed decimal 34 cuts an instruction; radix transcription is INFERRED."
+  },
+  "provenance": {
+    "metadata": "Local read-only ELF .symtab/.dynsym and bounded instruction inspection; no binary excerpts or decompiler exports stored.",
+    "disassembler": "llvm-objdump LLVM 23.1.3 --no-show-raw-insn -d with bounded start/stop addresses",
+    "python_packages": {
+      "unicorn": "2.1.4",
+      "pyelftools": "0.33"
+    },
+    "semantic_evidence": "Read-only reference and independently compiled ARM adapters execute with identical synthetic ARM32 inputs and modeled dependencies; results compared to independently compiled host C++."
+  },
+  "functions": [
+    {
+      "address": "0xd9968",
+      "reference_symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeSendData",
+      "candidate_symbol": "nova3_000d9968",
+      "reference_size": 8,
+      "candidate_size": 8,
+      "reference_code_sha256": "cb347da7a0d3d3b3c35a50702816de01c607f3f670eba6b45ee9c94ed83efb7f",
+      "candidate_code_sha256": "cb347da7a0d3d3b3c35a50702816de01c607f3f670eba6b45ee9c94ed83efb7f",
+      "result": "MATCHED",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Instruction bytes of source-owned adapter at comparison-link addresses; dependency implementation and original C++ return type not recovered.",
+      "architecture": "ARMv7 little-endian, ARM mode (even symbol value and $a mapping)",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+      "observed_behavior": "Ignores JNI environment and receiver; forwards third ARM argument r2 as r0 to InAppBilling::nativeSendData at 0x000d91b8. Tail branch preserves the dependency result.",
+      "original_arm_fixture_comparisons": 69
+    },
+    {
+      "address": "0xda9e4",
+      "reference_symbol": "InAppBilling_GetItemInfoArray",
+      "candidate_symbol": "nova3_000da9e4",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_code_sha256": "6d67302bb9b32a055ada19f2acdafea5070097b81176b143477bf34a62047dde",
+      "candidate_code_sha256": "6d67302bb9b32a055ada19f2acdafea5070097b81176b143477bf34a62047dde",
+      "result": "MATCHED",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Instruction bytes of source-owned adapter at comparison-link addresses; dependency implementation and original C++ return type not recovered.",
+      "architecture": "ARMv7 little-endian, ARM mode (even symbol value and $a mapping)",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+      "observed_behavior": "Tail-forwards to InAppBilling::getItemInfoArray at 0x000da6f8 without changing argument registers.",
+      "original_arm_fixture_comparisons": 69
+    },
+    {
+      "address": "0xda9e8",
+      "reference_symbol": "InAppBilling_GetItemInfoByID",
+      "candidate_symbol": "nova3_000da9e8",
+      "reference_size": 4,
+      "candidate_size": 4,
+      "reference_code_sha256": "decca1e98cac70f86fb3239408cc50da838bcda957f0f28ec4751e4800b79ffd",
+      "candidate_code_sha256": "decca1e98cac70f86fb3239408cc50da838bcda957f0f28ec4751e4800b79ffd",
+      "result": "MATCHED",
+      "state": "VERIFIED",
+      "verification_grade": "matching",
+      "verification_scope": "Instruction bytes of source-owned adapter at comparison-link addresses; dependency implementation and original C++ return type not recovered.",
+      "architecture": "ARMv7 little-endian, ARM mode (even symbol value and $a mapping)",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+      "observed_behavior": "Tail-forwards const char* and IAB_STORE_ITEM& to InAppBilling::getItemInfoByID at 0x000d9970 without changing argument registers.",
+      "original_arm_fixture_comparisons": 69
+    },
+    {
+      "address": "0xda9ec",
+      "reference_symbol": "_ZN7_JNIEnv16CallObjectMethodEP8_jobjectP10_jmethodIDz",
+      "candidate_symbol": "_ZN5nova39recovered14block_000d996811Environment18call_object_methodEPvS3_z",
+      "reference_size": 52,
+      "candidate_size": 52,
+      "reference_code_sha256": "9a28c2ca8409c111ddd2cbd33853af472a496f7262d495eee0eea11c8067bb01",
+      "candidate_code_sha256": "70a904817ef3aed735a97b79f6131e179a919fea06a2e2b5228004f3c40a0b9c",
+      "result": "NOT MATCHED",
+      "state": "VERIFIED",
+      "verification_grade": "behavioural",
+      "verification_scope": "Bounded normal-return adapter behavior with modeled JNI V callback; machine code NOT MATCHED.",
+      "architecture": "ARMv7 little-endian, ARM mode (even symbol value and $a mapping)",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+      "observed_behavior": "Forms a va_list for the arguments after object and method; dispatches via environment function table slot 35 (ARM32 offset 0x8c) to CallObjectMethodV; returns object result and restores stack.",
+      "original_arm_fixture_comparisons": 483
+    }
+  ],
+  "build_provenance": {
+    "compiler": "clang version 23.1.3",
+    "host_compiler": "g++ (GCC) 16.2.1 20260810",
+    "linker": "LLD 23.1.3 (compatible with GNU linkers)",
+    "arm_target": "armv7-none-eabi",
+    "arm_flags": [
+      "--target=armv7-none-eabi",
+      "-march=armv7-a",
+      "-marm",
+      "-mfloat-abi=softfp",
+      "-mfpu=neon",
+      "-std=c++17",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-Os",
+      "-ffreestanding",
+      "-ffunction-sections",
+      "-fomit-frame-pointer",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-fno-unwind-tables",
+      "-fno-asynchronous-unwind-tables"
+    ],
+    "source_path": "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+    "source_sha256": "bc08cd6c4148e1341c97001f2469d12e3dd8fcc512d90c878579397c32b3099b",
+    "interface_path": "reconstruction/recovered/libNOVA3_neon/block_000d9968/interface.h",
+    "interface_sha256": "1a4322221029aba416913ace2776f9d48cadb863a08bc703658c7d6a79b1e26f",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+    "test_sha256": "ef9a79061e5126b1b068da634827d7630ec086dad62723045111437df9f2982f",
+    "verification_script_path": "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968/verify.py",
+    "verification_script_sha256": "ba0d4541a117e17be4da010580f78b9f4646933d9ef65f973c155ada822da32a",
+    "production_dependencies": [
+      "C/C++ compiler-provided stdint.h, stddef.h and stdarg.h",
+      "Three required source-owned billing callee implementations; unresolved in this slice",
+      "Caller-supplied JNI-compatible V callback/table view"
+    ],
+    "test_structure": "Standalone test includes implementation. Do not additionally link the implementation into that test.",
+    "comparison_method": "Compile C++ with -ffunction-sections. Link only newly compiled object at original function VAs, assign external dependency symbols their observed absolute target VAs, then compare full function bytes using ELF symbol sizes. No reference ELF is a linker input; no masking, copied instructions or opcode substitutions.",
+    "comparison_linker_script": "nova3_iab_send_data_dependency = 0xd91b8;\nnova3_iab_item_array_dependency = 0xda6f8;\nnova3_iab_item_by_id_dependency = 0xd9970;\nSECTIONS {\n .function0 0xd9968 : { *(.text.nova3_000d9968) }\n .function1 0xda9e4 : { *(.text.nova3_000da9e4) }\n .function2 0xda9e8 : { *(.text.nova3_000da9e8) }\n .function3 0xda9ec : { *(.text._ZN5nova39recovered14block_000d996811Environment18call_object_methodEPvS3_z) }\n /DISCARD/ : { *(.ARM.exidx*) *(.ARM.extab*) }\n}\n",
+    "comparison_link_limit": "Test-only address assignment is required for PC-relative branch byte equality. The linked comparison artifact is not a production executable and cannot provide the missing billing implementations. Original compiler version/options and original source types remain unknown."
+  },
+  "tests": {
+    "reproduction": "python3 reconstruction/tests/recovered/libNOVA3_neon/block_000d9968/verify.py --reference \"$NOVA3_REFERENCE\" --build-dir /tmp/nova3-task68/final",
+    "commands": [
+      {
+        "argv": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "-c",
+          "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+          "-o",
+          "/tmp/nova3-task68/final/host.o"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+          "-o",
+          "/tmp/nova3-task68/final/test"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/tmp/nova3-task68/final/test"
+        ],
+        "exit_code": 0,
+        "stdout": "PASS: 75 forwarding and 35 variadic cases",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "-DNDEBUG",
+          "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+          "-o",
+          "/tmp/nova3-task68/final/release-test"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "/tmp/nova3-task68/final/release-test"
+        ],
+        "exit_code": 0,
+        "stdout": "PASS: 75 forwarding and 35 variadic cases",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "g++",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-O2",
+          "-fPIC",
+          "-shared",
+          "-DNOVA3_SHARED_TEST",
+          "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+          "-o",
+          "/tmp/nova3-task68/final/test.so"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "clang++",
+          "--target=armv7-none-eabi",
+          "-march=armv7-a",
+          "-marm",
+          "-mfloat-abi=softfp",
+          "-mfpu=neon",
+          "-std=c++17",
+          "-Wall",
+          "-Wextra",
+          "-Wpedantic",
+          "-Werror",
+          "-Os",
+          "-ffreestanding",
+          "-ffunction-sections",
+          "-fomit-frame-pointer",
+          "-fno-exceptions",
+          "-fno-rtti",
+          "-fno-unwind-tables",
+          "-fno-asynchronous-unwind-tables",
+          "-c",
+          "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+          "-o",
+          "/tmp/nova3-task68/final/arm.o"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "argv": [
+          "ld.lld",
+          "-T",
+          "/tmp/nova3-task68/final/compare.ld",
+          "--entry=nova3_000d9968",
+          "/tmp/nova3-task68/final/arm.o",
+          "-o",
+          "/tmp/nova3-task68/final/arm.elf"
+        ],
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      }
+    ],
+    "final_reproduction_exit_code": 0,
+    "standalone_cases": {
+      "forwarding": 75,
+      "variadic": 35,
+      "release_NDEBUG_also_passed": true
+    },
+    "differential": {
+      "forwarding_cases": 207,
+      "variadic_cases": 483,
+      "backends": [
+        "reference ARM",
+        "newly compiled ARM",
+        "newly compiled host"
+      ],
+      "transcript_sha256": "cc0488af40031d4ebe427a4fe6c9d0bf7b237887e3957da52f6f6e4566884971",
+      "scope": "Adapters only; billing targets and JNI V callback are modeled. Checks argument/result bits, call count, reference mutation, restored stack and ARM callee-saved registers. No JVM, billing implementation, exceptions or game integration."
+    },
+    "sanitizers": {
+      "compiler": "clang version 23.1.3",
+      "build_command": "clang++ -std=c++17 -O1 -g -fno-pie -no-pie -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp -o /tmp/nova3-task68/final-sanitize",
+      "run_command": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova3-task68/final-sanitize",
+      "exit_code": 0,
+      "output": "PASS: 75 forwarding and 35 variadic cases",
+      "leak_detection": "NOT RUN; disabled for sandbox-compatible ASan/UBSan execution."
+    },
+    "negative_checks": [
+      {
+        "input": "Source text supplied as reference",
+        "expected_exit": 1,
+        "result": "PASS: reference hash mismatch rejected"
+      },
+      {
+        "input": "Python -O invocation",
+        "expected_exit": 1,
+        "result": "PASS: disabled assertions rejected before verification"
+      }
+    ]
+  },
+  "uncertainties_and_exclusions": [
+    "Original return types of three billing callees are not encoded in these mangled names or tail branches. Word preserves ARM32 r0 bits; no claim of original bool, pointer, enum or void type. Additional return registers are not modeled.",
+    "IAB_STORE_ITEM layout is opaque. The source uses a reference, and only test-local StoreItem storage is defined. No billing, allocation, ownership or item-format implementation is supplied.",
+    "Environment/NativeInterface are source-owned minimal JNI views. Full jni.h type identity, original C++ symbols, Android registration and application integration remain UNVERIFIED.",
+    "Variadic cases require signature-correct promoted arguments. Corpus covers no args, int, pointer, double, signed 64-bit, mixed alignment/stack args and twelve ints with 69 seeds per signature. It is bounded evidence, not an exhaustive JNI proof.",
+    "JNI exception propagation, VM behavior, real billing state, malformed tables, mismatched variadic types and concurrent calls are not tested. No success stubs replace missing game logic.",
+    "JNI adapter code uses a different compiler prologue/call sequence; explicitly NOT MATCHED despite passing differential cases."
+  ],
+  "failures_and_corrections": [
+    {
+      "attempt": "Initial reference oracle mapping",
+      "exit_code": 134,
+      "result": "Unicorn/QEMU memory-section assertion when one mapping was created for every ELF page.",
+      "correction": "Coalesced adjacent ELF pages into ranges. Final complete reproduction passed twice with 690 differential cases and identical transcript hash."
+    }
+  ],
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_000d9968.cpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d9968/interface.h",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d9968/verify.py",
+      "coordination/evidence/functions-9fab331f9f3c4d2c18b537.json"
+    ],
+    "required_environment": "Existing g++, clang++, ld.lld, Python with pyelftools 0.33 and Unicorn 2.1.4. Set NOVA3_REFERENCE to the lawfully held hash-pinned local ELF only for optional oracle/matching checks.",
+    "standalone_test": "g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_000d9968_test.cpp -o /tmp/nova3-task68-test && /tmp/nova3-task68-test",
+    "next_attempts": [
+      "Recover and type the three billing callees in separately allocated tasks; then replace raw-word adaptation with supported source APIs.",
+      "Integrate the recovered JNI adapter with source-owned Android JNI glue in a separately authorized path.",
+      "If exact fourth-function code matching is needed, investigate a lawfully available original-compatible ARM compiler; keep status NOT MATCHED until bytes actually agree."
+    ],
+    "blockers": [
+      "Billing dependency definitions and original return types remain unresolved.",
+      "Full JNI/Android integration and project build registration lie outside allowed paths."
+    ],
+    "scope_compliance": "Only task-allowed paths edited. No nested agents, installs, sudo, network, GitHub changes, original file edits, binary copies in repository or decompiler exports. All built artifacts are source-derived under /tmp. No docs or global build files edited."
+  }
+}
