@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "task_id": 44,
+  "autotask_key": "functions-eed05e04010ae8033d1f1b",
+  "recorded_at_utc": "2026-10-27T02:16:54.095872+00:00",
+  "result": "PARTIAL: two complete accessor bodies matched; public lookup policy tested; internal loader NOT RECONSTRUCTED",
+  "matching_claim": "NOT MATCHED",
+  "matching_claim_scope": "Whole four-function cluster. Exact matches below cover only the two specified eight-byte accessor bodies.",
+  "full_behavioural_equivalence": "UNVERIFIED",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_verified": true,
+    "size_bytes": 18696442,
+    "modified": false,
+    "discovery": "Read-only local canonical project reference exists outside disposable checkout.",
+    "relative_path_in_canonical_project": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "architecture": "32-bit little-endian ARM; entry mode ARM, not Thumb"
+  },
+  "analysis_provenance": {
+    "method": "Reused existing local Ghidra exports; independently checked all exported instructions against reference ELF PT_LOAD mappings. No fresh Ghidra import.",
+    "ghidra_version": "12.1.2",
+    "ghidra_language": "ARM:LE:32:v8",
+    "ghidra_image_base": "0x00010000",
+    "address_rule": "ELF virtual addresses used throughout; subtract 0x10000 from export instruction/call addresses.",
+    "analysis_scope": "ELF import plus selected disassembly; no global autoanalysis",
+    "checked_export_instructions": 546,
+    "export_mapping_result": "PASS",
+    "note": "No original instruction bytes, assembly listing or decompiler output serialized in this evidence."
+  },
+  "counts": {
+    "inventoried_functions": 4,
+    "functions_with_reused_disassembly": 4,
+    "functions_with_reused_decompilation": 4,
+    "complete_accessor_bodies_implemented": 2,
+    "portable_method_policies_implemented": 1,
+    "exact_function_body_matches": 2,
+    "portable_method_policies_oracle_tested": 1,
+    "remaining_unreconstructed_functions": 1,
+    "end_to_end_game_scenarios": 0
+  },
+  "functions": [
+    {
+      "address": "0x007b13e0",
+      "size_bytes": 1920,
+      "symbol": "glitch::video::CTextureManager::getTextureInternal(IReadFile*, custom string const&, bool, intrusive_ptr<ITexture> const&, intrusive_ptr<ITexture> const&)",
+      "stage": "DECOMPILED",
+      "verification_grade": "unmapped",
+      "reconstruction_status": "NOT RECONSTRUCTED",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "UNVERIFIED",
+      "source_entry": null,
+      "basic_blocks": 73,
+      "exported_instructions": 460,
+      "direct_call_sites": 53,
+      "export_sha256": "67da114e57cc928df08985675b51e4fc5c4e72f86843532069298e54e0d7de29",
+      "reference_region_sha256": "b99f18c5fae4e2fa3d17092fe0331fb80f7f60c695602bd50aa5fe15d2f15a15",
+      "remaining": [
+        "Recover ZIP detection/opening, archive-member selection, temporary stream ownership and all error branches.",
+        "Recover primary/alpha texture loading, pixel-format/layout outputs, cache registration and process-buffer handling.",
+        "Model and test dependency results and object lifetimes before implementing this method; no success stub supplied."
+      ],
+      "dependency_entry_points": {
+        "0x007e59f0": "CZipReader::isValid",
+        "0x0081b854": "CZipReader constructor",
+        "0x007fcec0": "CZipReader::findFile",
+        "0x007e8dbc": "CZipReader::getFileCount",
+        "0x007e59e0": "CZipReader::getFileInfo",
+        "0x00819878": "CZipReader::openFile(int)",
+        "0x007b0fc0": "CTextureManager::loadTextureFromFile",
+        "0x007ad6e4": "CTextureManager::addTexture",
+        "0x007cd538": "CTextureManager::findTexture",
+        "0x0079d474": "ITexture::setAlphaTexture",
+        "0x007f2b74": "allocProcessBuffer",
+        "0x007f2b48": "releaseProcessBuffer"
+      }
+    },
+    {
+      "address": "0x007b1dec",
+      "size_bytes": 332,
+      "symbol": "glitch::video::CTextureManager::getTexture(char const*, char const*)",
+      "stage": "TESTED",
+      "verification_grade": "behavioural",
+      "reconstruction_status": "PORTABLE LOOKUP POLICY IMPLEMENTED",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "SCOPED PASS; native ABI/ownership UNVERIFIED",
+      "source_entry": "nova3::recovered::texture_lookup_007b13e0::get_texture",
+      "basic_blocks": 12,
+      "exported_instructions": 82,
+      "direct_call_sites": 13,
+      "export_sha256": "6fd3c292d777afa2e7025fef4ed4e932b828b957d4d062909401b09f16d12fcd",
+      "reference_region_sha256": "5f97b1bf3a93308c4a29e7c639a72c31e63be6f449f0a623c47d46ff242461bc",
+      "established": [
+        "Null explicit key calls the manager's getHashName; non-null key is copied as a C string, including an empty key.",
+        "findTexture receives the key's NUL-terminated data. A cache hit returns immediately without file opening.",
+        "On a miss, open the original filename through the filesystem service.",
+        "Open failure logs the filename at level 3 and returns null.",
+        "Open success calls getTextureInternal with the opened file, full key string, false, and two null texture arguments; propagate its texture identity or null result."
+      ],
+      "exclusions": [
+        "getHashName at 0x79a944 is delegated; it is not assumed equivalent to the custom resource factory's similarly named function.",
+        "Real cache, filesystem, internal loader, ZIP parsing, image decoding and graphics behavior are delegated.",
+        "Uses shared_ptr/std::string rather than native intrusive pointers and custom-allocator COW strings; reference counts, allocations, exceptions and native ABI are not reproduced.",
+        "Diagnostic prefix text is not reproduced; filename, level and ordering are tested.",
+        "Filename must be non-null and NUL-terminated; no claim for invalid pointers."
+      ],
+      "oracle_cases": 492,
+      "oracle_transcript_sha256": "868de55391877a36979e6f579cce3ce2fe95e2af208215a9af75ea4ceb3acf9d"
+    },
+    {
+      "address": "0x007b8974",
+      "size_bytes": 8,
+      "symbol": "glitch::video::CImageLoaderPVR::CDataInfo::getFileDataSize() const",
+      "stage": "VERIFIED",
+      "verification_grade": "matching",
+      "reconstruction_status": "COMPLETE ACCESSOR BODY IMPLEMENTED",
+      "matching_claim": "MATCHED",
+      "matching_scope": "Exact eight-byte ARM function body only; renamed C-linkage symbol, not complete ELF/class ABI compatibility.",
+      "source_entry": "nova3_007b8974",
+      "basic_blocks": 1,
+      "exported_instructions": 2,
+      "direct_call_sites": 0,
+      "export_sha256": "df3a5d225da93300f3c63d7373d15fbbf81a64b5815527ce0378b4a55c5e2c18",
+      "reference_region_sha256": "687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1",
+      "established": "Returns the unchanged 32-bit word at object byte offset 12; no calls or memory writes.",
+      "preconditions": "Non-null aligned pointer to readable ARM32 storage. Opaque prefix and other class members are not reconstructed.",
+      "original_native_cases": 1049,
+      "source_explicit_cases": 49
+    },
+    {
+      "address": "0x007b8984",
+      "size_bytes": 8,
+      "symbol": "glitch::video::CImageLoaderPVR::CDataInfo::getFaceStartOffset() const",
+      "stage": "VERIFIED",
+      "verification_grade": "matching",
+      "reconstruction_status": "COMPLETE ACCESSOR BODY IMPLEMENTED",
+      "matching_claim": "MATCHED",
+      "matching_scope": "Exact eight-byte ARM function body only; renamed C-linkage symbol, not complete ELF/class ABI compatibility.",
+      "source_entry": "nova3_007b8984",
+      "basic_blocks": 1,
+      "exported_instructions": 2,
+      "direct_call_sites": 0,
+      "export_sha256": "dd1186f081c96ca88ab9548ab720295f4052e3201b758cdf210db6d41176dd55",
+      "reference_region_sha256": "5937f5681703fda310710f789fa565735c616704195eedd8c407e1391812db5f",
+      "established": "Returns the unchanged 32-bit word at object byte offset 16; no calls or memory writes.",
+      "preconditions": "Non-null aligned pointer to readable ARM32 storage. Opaque prefix and other class members are not reconstructed.",
+      "original_native_cases": 1049,
+      "source_explicit_cases": 49
+    }
+  ],
+  "build_provenance": {
+    "source_path": "reconstruction/recovered/libNOVA3_neon/block_007b13e0.cpp",
+    "source_sha256": "df7c27ff63fbf534a2246da1f3eff99448bb37140b475feda2b0f84a3017ac57",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp",
+    "test_sha256": "8cbd1cdfcce703538be902ff8d8105272a7bb96e690a29666bc7f16c00421eab",
+    "host_compiler": "/usr/bin/c++",
+    "host_compiler_version": "c++ (GCC) 16.2.1 20260810",
+    "host_target": "x86_64-pc-linux-gnu",
+    "host_flags": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "arm_compiler": "/usr/bin/clang++",
+    "arm_compiler_version": "clang version 23.1.3",
+    "arm_target": "armv7a-none-eabi",
+    "arm_cpu": "cortex-a8",
+    "arm_mode": "ARM",
+    "arm_flags": [
+      "--target=armv7a-none-eabi",
+      "-mcpu=cortex-a8",
+      "-marm",
+      "-std=c++17",
+      "-O2",
+      "-ffreestanding",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-DNOVA3_TASK44_ACCESSORS_ONLY"
+    ],
+    "arm_object_sha256": "c83afba2a66bdd9be491583684b749719a71d9a38e9820ffb52a57e6116abfb2",
+    "machine_code_comparison": {
+      "performed": true,
+      "method": "Exact function bytes extracted from candidate ELF symbol sections versus reference PT_LOAD virtual-address regions; no masking or normalization. Check no overlapping candidate relocations.",
+      "scope": "Only 0x007b8974 and 0x007b8984. No complete ELF, original symbol name, class ABI or original compiler identity claim.",
+      "results": [
+        {
+          "address": "0x7b8974",
+          "candidate_sha256": "687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1",
+          "candidate_symbol": "nova3_007b8974",
+          "exact_bytes": true,
+          "reference_sha256": "687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1",
+          "size": 8
+        },
+        {
+          "address": "0x7b8984",
+          "candidate_sha256": "5937f5681703fda310710f789fa565735c616704195eedd8c407e1391812db5f",
+          "candidate_symbol": "nova3_007b8984",
+          "exact_bytes": true,
+          "reference_sha256": "5937f5681703fda310710f789fa565735c616704195eedd8c407e1391812db5f",
+          "size": 8
+        }
+      ],
+      "other_functions": "0x007b13e0 NOT RECONSTRUCTED / NOT MATCHED; 0x007b1dec NOT MATCHED"
+    },
+    "production_dependencies": [
+      "C++17 standard library; accessors-only build is freestanding"
+    ],
+    "research_only_dependencies": {
+      "unicorn": "2.1.4",
+      "pyelftools": "0.33"
+    },
+    "integration": "Standalone source/test because CMake and headers are outside allowed paths. Test includes implementation; do not also link the source into the same executable.",
+    "original_runtime_dependency": false
+  },
+  "reproduction": {
+    "environment": "Run from checkout root. NOVA3_REFERENCE is the local reference ELF, NOVA3_PYTHON an existing Python with Unicorn 2.1.4 and pyelftools 0.33; no downloads required.",
+    "commands": [
+      "c++ -std=c++17 -O2 -DNDEBUG -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_007b13e0.cpp -o /tmp/nova44-source.o",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp -o /tmp/nova44-test",
+      "/tmp/nova44-test",
+      "clang++ --target=armv7a-none-eabi -mcpu=cortex-a8 -marm -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -Wall -Wextra -Wpedantic -Werror -DNOVA3_TASK44_ACCESSORS_ONLY -c reconstruction/recovered/libNOVA3_neon/block_007b13e0.cpp -o /tmp/nova44-arm.o",
+      "set -o pipefail; /tmp/nova44-test --oracle-script | \"$NOVA3_PYTHON\" - \"$NOVA3_REFERENCE\" /tmp/nova44-test /tmp/nova44-arm.o"
+    ]
+  },
+  "tests": [
+    {
+      "name": "independent_source_object_compilation",
+      "exit_code": 0
+    },
+    {
+      "name": "optimized_standalone_vectors",
+      "exit_code": 0,
+      "output": "PASS: 49 accessor vectors; 7 explicit lookup traces"
+    },
+    {
+      "name": "release_NDEBUG_standalone_vectors",
+      "build_command": "c++ -std=c++17 -O2 -DNDEBUG -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp -o /tmp/nova44-release",
+      "command": "/tmp/nova44-release",
+      "exit_code": 0
+    },
+    {
+      "name": "scoped_native_differential_and_accessor_machine_code",
+      "exit_code": 0,
+      "outputs": [
+        {
+          "accessor_machine_code_comparison": [
+            {
+              "address": "0x7b8974",
+              "candidate_sha256": "687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1",
+              "candidate_symbol": "nova3_007b8974",
+              "exact_bytes": true,
+              "reference_sha256": "687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1",
+              "size": 8
+            },
+            {
+              "address": "0x7b8984",
+              "candidate_sha256": "5937f5681703fda310710f789fa565735c616704195eedd8c407e1391812db5f",
+              "candidate_symbol": "nova3_007b8984",
+              "exact_bytes": true,
+              "reference_sha256": "5937f5681703fda310710f789fa565735c616704195eedd8c407e1391812db5f",
+              "size": 8
+            }
+          ]
+        },
+        {
+          "cases": 492,
+          "helpers": {
+            "0x10918c": 351,
+            "0x10b900": 238,
+            "0x2004000": 248,
+            "0x35a334": 609,
+            "0x69a288": 131,
+            "0x79a944": 254,
+            "0x7b13e0": 117,
+            "0x7cd538": 492,
+            "0x7cdde4": 244,
+            "0xec294": 117,
+            "0xeca5c": 492
+          },
+          "lookup_result": "PASS",
+          "scope": "0x7b1dec control flow, arguments and return identity; services/storage modeled; ownership/ABI excluded",
+          "transcript_sha256": "868de55391877a36979e6f579cce3ce2fe95e2af208215a9af75ea4ceb3acf9d"
+        },
+        {
+          "accessor_native_result": "PASS",
+          "cases_per_accessor": 1049,
+          "pyelftools": "0.33",
+          "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+          "transcript_sha256": "fd113d1365ec750bfdf399d891a506dbb54e57be4f4c2fc6e3ca923990b5238f",
+          "unicorn": "2.1.4"
+        }
+      ]
+    },
+    {
+      "name": "undefined_behavior_sanitizer",
+      "build_command": "clang++ -std=c++17 -O1 -g -fsanitize=undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp -o /tmp/nova44-ubsan",
+      "command": "/tmp/nova44-ubsan",
+      "exit_code": 0,
+      "differential_command": "set -o pipefail; /tmp/nova44-release --oracle-script | \"$NOVA3_PYTHON\" - \"$NOVA3_REFERENCE\" /tmp/nova44-ubsan /tmp/nova44-arm.o",
+      "differential_exit_code": 0,
+      "result": "Standalone and all 492 differential lookup cases passed without UBSan diagnostics; identical oracle transcript hashes."
+    },
+    {
+      "name": "wrong_reference_rejected",
+      "command": "set -o pipefail; /tmp/nova44-test --oracle-script | \"$NOVA3_PYTHON\" - reconstruction/recovered/libNOVA3_neon/block_007b13e0.cpp /tmp/nova44-test /tmp/nova44-arm.o",
+      "exit_code": 1,
+      "expected_exit_code": 1,
+      "result": "RuntimeError: wrong reference SHA256; rejected before ELF loading/emulation."
+    }
+  ],
+  "failed_or_blocked_checks": [
+    {
+      "name": "address_and_undefined_sanitizers",
+      "build_command": "clang++ -std=c++17 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_007b13e0_test.cpp -o /tmp/nova44-sanitized",
+      "command": "/tmp/nova44-sanitized",
+      "exit_code": 1,
+      "result": "ASan aborted before tests because its shadow memory range overlaps an existing sandbox mapping. ASan coverage UNVERIFIED; UBSan-only run passed. No host settings changed."
+    }
+  ],
+  "handoff": {
+    "files": "Only the three task-allowed files were created; no existing source/tests removed, no CMake/docs changes.",
+    "status": "Two matched accessor bodies plus one scoped portable lookup policy. Internal texture loader still requires source recovery; no gameplay milestone.",
+    "next_attempts": [
+      "Start with getTextureInternal non-ZIP loadTextureFromFile/addTexture branches. Establish descriptor output and alpha texture contracts before implementing.",
+      "Then recover ZIP metadata/member selection and process-buffer cleanup with independent native traces covering all 73 exported blocks.",
+      "Reuse the embedded test oracle to verify public lookup after replacing modeled services with recovered components.",
+      "Keep original class/string/refcount ABI work separate from the portable lookup policy. Existing block_00781c78.cpp has related portable PVR DataInfo but no full native object ABI."
+    ]
+  }
+}
