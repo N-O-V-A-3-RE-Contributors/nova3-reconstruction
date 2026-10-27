@@ -1,0 +1,459 @@
+{
+  "task": 69,
+  "round": 1,
+  "task_key": "functions-be7f8ec1c46c9e9168d276",
+  "reference_library": "libNOVA3_neon.so",
+  "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+  "reference_hash_verified": true,
+  "overall_matching_claim": "NOT MATCHED: two exact veneer matches only; the two larger bodies do not match.",
+  "summary": {
+    "assigned_functions": 4,
+    "inventoried_functions": 4,
+    "disassembled_functions": 4,
+    "decompiler_exports_used": 0,
+    "source_implemented_assigned_functions": 4,
+    "tested_assigned_functions": 4,
+    "exact_machine_code_matched_assigned_functions": 2,
+    "reference_bytes_in_assigned_regions": 260,
+    "exact_matched_reference_bytes": 8,
+    "end_to_end_game_functionality": "NONE; no Android application, billing implementation or real VM integration"
+  },
+  "reference_inspection": {
+    "method": "Read-only SHA256, ELF symbols, bounded llvm-objdump disassembly; manual control/data flow recovery.",
+    "architecture": "32-bit little-endian ARM EABI; four assigned symbols in A32 mode",
+    "debug_type_check": {
+      "method": "pyelftools iterate every DWARF CU and inspect DW_AT_name/DW_AT_linkage_name/DW_AT_MIPS_linkage_name for four assigned symbols",
+      "compilation_units_checked": 20,
+      "matching_assigned_function_name_DIEs": 0,
+      "conclusion": "No assigned-function signature/type evidence found; no full source or parameter names claimed."
+    }
+  },
+  "functions": [
+    {
+      "address": "0xd4dbc",
+      "symbol": "InAppBilling_ClearItemList",
+      "size_bytes": 4,
+      "mode": "A32; symbol address bit 0 is clear",
+      "stage": "TESTED",
+      "reconstruction_status": "IMPLEMENTED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED WRAPPER ONLY",
+      "behavioural_equivalence": "SCOPED PASS; full engine/runtime equivalence UNVERIFIED",
+      "source_path": "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp",
+      "source_sha256": "9dcf33f4bdebbdea090fa99d1c09e9c702fd23438731c5a5acde8b61408dfeea",
+      "assembly_comparison": {
+        "candidate_region_sha256": "e928253e755014d7e2f633e4473ca99936c4edd9a6006f5dc0db1fbeeca6248f",
+        "candidate_size": 4,
+        "exact_region_bytes": true,
+        "method": "raw linked region equality at original address; only external target addresses resolved",
+        "mode": "A32",
+        "reference_address": "0xd4dbc",
+        "reference_region_sha256": "e928253e755014d7e2f633e4473ca99936c4edd9a6006f5dc0db1fbeeca6248f",
+        "reference_size": 4,
+        "result": "MATCHED WRAPPER ONLY",
+        "symbol": "InAppBilling_ClearItemList"
+      },
+      "dependencies": [
+        {
+          "symbol": "InAppBilling::clearItemList()",
+          "address": "0x000d4d58",
+          "status": "NOT RECONSTRUCTED; test double only"
+        }
+      ],
+      "established": [
+        "Unconditional tail branch to external static billing method; return register forwarded without changes."
+      ],
+      "inferred": [
+        "int return preserves observable r0; original source-level return type of clearItemList is unknown."
+      ],
+      "differential_cases": 5
+    },
+    {
+      "address": "0xd4de4",
+      "symbol": "charToUI64",
+      "size_bytes": 172,
+      "mode": "A32; symbol address bit 0 is clear",
+      "stage": "TESTED",
+      "reconstruction_status": "IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "SCOPED PASS; full engine/runtime equivalence UNVERIFIED",
+      "source_path": "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp",
+      "source_sha256": "9dcf33f4bdebbdea090fa99d1c09e9c702fd23438731c5a5acde8b61408dfeea",
+      "assembly_comparison": {
+        "candidate_region_sha256": "d65ab62cc4e93a1a5f53932b2fd3e0d487d9845ba88ebfd1cd090d9728500cde",
+        "candidate_size": 240,
+        "exact_region_bytes": false,
+        "method": "raw unlinked region equality; no relocation masking",
+        "mode": "A32",
+        "reference_address": "0xd4de4",
+        "reference_region_sha256": "30f836c65e7a20dfa8288bb65007cfaaee9927889edcb4e1eeffbe56dd82bc86",
+        "reference_size": 172,
+        "result": "NOT MATCHED",
+        "symbol": "charToUI64"
+      },
+      "established": [
+        "r0 is an output address; r1 is a signed length; r2 points to length-delimited input bytes.",
+        "Always write zero to output first. Nonpositive lengths never read input.",
+        "For each byte, pow(10.0, length-1-index), signed-byte minus 48, multiply then add uint64 accumulator converted to binary64.",
+        "Convert and store after each byte. Intermediate truncation, clamping, binary64 rounding and overlap semantics are observable.",
+        "No digit validation or NUL termination. All 256 possible byte values included in differential tests.",
+        "Observed ARM unsigned conversion helper uses saturating unsigned 32-bit halves; source uses defined saturated uint64 conversion."
+      ],
+      "inferred": [
+        "void source return; incidental r0/r1 values excluded from contract."
+      ],
+      "dependencies": [
+        {
+          "address": "0x000d2b38",
+          "symbol": "pow@plt",
+          "status": "Host glibc libm substitution in oracle; original Android libm UNVERIFIED"
+        },
+        {
+          "address": "0x00be2ebc",
+          "symbol": "__floatundidf",
+          "status": "Original helper executed in reference oracle; C++ conversion in candidate"
+        },
+        {
+          "address": "0x00be323c",
+          "symbol": "__fixunsdfdi",
+          "status": "Original helper executed; defined source equivalent separately sampled on 2118 double inputs"
+        }
+      ],
+      "differential_cases": 1278,
+      "exclusions": [
+        "Original libm, errno and FP exception effects; nondefault rounding modes; concurrent/reentrant mutation; source-level return type."
+      ]
+    },
+    {
+      "address": "0xd4f74",
+      "symbol": "JNU_ThrowByName",
+      "size_bytes": 80,
+      "mode": "A32; symbol address bit 0 is clear",
+      "stage": "TESTED",
+      "reconstruction_status": "IMPLEMENTED",
+      "verification_grade": "behavioural",
+      "matching_claim": "NOT MATCHED",
+      "behavioural_equivalence": "SCOPED PASS; full engine/runtime equivalence UNVERIFIED",
+      "source_path": "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp",
+      "source_sha256": "9dcf33f4bdebbdea090fa99d1c09e9c702fd23438731c5a5acde8b61408dfeea",
+      "assembly_comparison": {
+        "candidate_region_sha256": "3bacddca2b44ac63d1dee4bcd0f8ec1448db7b13631fd1a34b9c8f2ff7e81381",
+        "candidate_size": 88,
+        "exact_region_bytes": false,
+        "method": "raw unlinked region equality; no relocation masking",
+        "mode": "A32",
+        "reference_address": "0xd4f74",
+        "reference_region_sha256": "0303295b252b73dcf2b1496eb2b85cc60b6c9e1533b371f1fb08b3291b415ef0",
+        "reference_size": 80,
+        "result": "NOT MATCHED",
+        "symbol": "JNU_ThrowByName"
+      },
+      "established": [
+        "FindClass via ARM32 JNI table offset 0x18; preserve environment and message.",
+        "Only nonnull class result calls ThrowNew at JNI offset 0x38; ignore its status.",
+        "Always DeleteLocalRef at JNI offset 0x5c, including null class; do not clear exceptions."
+      ],
+      "inferred": [
+        "void return follows JNI helper use/operations; incidental r0 after DeleteLocalRef is excluded."
+      ],
+      "differential_cases": 30,
+      "dependencies": [
+        "Platform JNI environment/table; FindClass, ThrowNew and DeleteLocalRef are test doubles."
+      ],
+      "exclusions": [
+        "Real VM behavior, actual Java exception state and caller type/signature recovery."
+      ]
+    },
+    {
+      "address": "0xd5224",
+      "symbol": "InAppBilling_GetState",
+      "size_bytes": 4,
+      "mode": "A32; symbol address bit 0 is clear",
+      "stage": "TESTED",
+      "reconstruction_status": "IMPLEMENTED",
+      "verification_grade": "matching",
+      "matching_claim": "MATCHED WRAPPER ONLY",
+      "behavioural_equivalence": "SCOPED PASS; full engine/runtime equivalence UNVERIFIED",
+      "source_path": "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp",
+      "source_sha256": "9dcf33f4bdebbdea090fa99d1c09e9c702fd23438731c5a5acde8b61408dfeea",
+      "assembly_comparison": {
+        "candidate_region_sha256": "c23828df9bd56cae75f9be5d2affa69b69729f3ee95f49403ce411dd09a82a0d",
+        "candidate_size": 4,
+        "exact_region_bytes": true,
+        "method": "raw linked region equality at original address; only external target addresses resolved",
+        "mode": "A32",
+        "reference_address": "0xd5224",
+        "reference_region_sha256": "c23828df9bd56cae75f9be5d2affa69b69729f3ee95f49403ce411dd09a82a0d",
+        "reference_size": 4,
+        "result": "MATCHED WRAPPER ONLY",
+        "symbol": "InAppBilling_GetState"
+      },
+      "dependencies": [
+        {
+          "symbol": "InAppBilling::getState()",
+          "address": "0x000d5148",
+          "status": "NOT RECONSTRUCTED; test double only"
+        }
+      ],
+      "established": [
+        "Unconditional tail branch to external static billing method; return register forwarded without changes."
+      ],
+      "differential_cases": 5
+    }
+  ],
+  "build_provenance": {
+    "host_compiler": "/usr/bin/g++",
+    "host_compiler_version": "g++ (GCC) 16.2.1 20260810",
+    "host_target": "x86_64-pc-linux-gnu",
+    "host_flags": [
+      "-std=c++17",
+      "-O2",
+      "-ffp-contract=off",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-idirafter",
+      "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+    ],
+    "arm_compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++",
+    "arm_compiler_version": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)",
+    "ndk_revision": "29.0.14206865 (r29)",
+    "arm_flags": [
+      "--target=armv7a-linux-androideabi21",
+      "-std=c++17",
+      "-O2",
+      "-marm",
+      "-mfpu=neon",
+      "-mfloat-abi=softfp",
+      "-ffp-contract=off",
+      "-ffunction-sections",
+      "-fomit-frame-pointer",
+      "-fno-exceptions",
+      "-fno-rtti",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "arm_linker": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld",
+    "linker_version": "LLD 21.0.0 (/mnt/disks/build-disk/src/googleplex-android/llvm-r563880-release/out/llvm-project/llvm 5e96669f06077099aa41290cdb4c5e6fa0f59349) (compatible with GNU linkers)",
+    "wrapper_link_command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld -T reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/wrappers.ld --gc-sections /tmp/candidate-arm.o -o /tmp/wrappers.elf",
+    "wrapper_link_scope": "Places source-built veneers at original addresses; external symbol addresses resolved numerically; no reference bytes or executable linked. Artifact is an analysis comparison fixture only.",
+    "file_sha256": {
+      "reconstruction/recovered/libNOVA3_neon/block_000d4dbc.cpp": "9dcf33f4bdebbdea090fa99d1c09e9c702fd23438731c5a5acde8b61408dfeea",
+      "reconstruction/recovered/libNOVA3_neon/block_000d4dbc/recovered.hpp": "4da800dda1ea03d5ff2a4e7199ad0dc300edccc6f4734a5c1f1960238db41cbc",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc_test.cpp": "a2218535fc6ddff3b90bc00c90ae672d9a309cd5a008c6a1c7d063b005a69f18",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/oracle.py": "f18dbc116a92ca769a6eb140473fef7fe5e5b8748c5101d26ad985909cca14dd",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/wrappers.ld": "60d75e6df4bb687b52bf3aaf9dedbe04b5c1f57c7bcb9d842f1c55f30cf2aa77",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/verify.sh": "ebc803a3b7165f510b4f8ddf80848523285662f24fe39c95b41ccdf0d6fbc52b",
+      "reconstruction/recovered/libNOVA3_neon/block_000d4dbc/README.md": "23fab5756b0f9817e154fad1de81a063f4962246b0e33846cbf00311a1abd55d"
+    },
+    "arm_object_sha256": "4ace36b27466c73a2024dc76be7091bc7abe1e879ca1a4bef914b96b1dbefa15",
+    "linked_wrappers_elf_sha256": "83fb004bf7c3621b9e257f6c582bd421c1e2b25640e2589d4c17bdfb2f9a9fe1",
+    "production_dependencies": [
+      "C++17 standard library and compiler runtime from source-available GCC/LLVM toolchains",
+      "Platform libm pow",
+      "Platform JNI headers (NDK AOSP Apache-2.0); no vendored headers",
+      "Two unresolved InAppBilling methods need independently reconstructed source before production linking"
+    ],
+    "research_only_dependencies": {
+      "pyelftools": "0.33",
+      "unicorn": "2.1.4"
+    }
+  },
+  "tests": [
+    {
+      "name": "full_reproducible_verification",
+      "command": "NOVA69_PYTHON=/home/jason/Projects/nova3_re/.venv/bin/python bash reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/verify.sh --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+      "exit_code": 0,
+      "log": "Aggregate safe outputs recorded here; transient local log /tmp/nova69-verification.log"
+    },
+    {
+      "name": "standalone_source_compilation",
+      "compiler": "GCC 16.2.1",
+      "flags": [
+        "-std=c++17",
+        "-O2",
+        "-ffp-contract=off",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-idirafter",
+        "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "host_explicit_vectors",
+      "builds": [
+        "O2",
+        "O2 -DNDEBUG"
+      ],
+      "exit_code": 0,
+      "per_build_counts": {
+        "numeric_vectors": 16,
+        "jni_traces": 16,
+        "wrapper_calls": 10
+      }
+    },
+    {
+      "name": "ASan_UBSan_explicit_vectors",
+      "compiler": "clang version 23.1.3",
+      "flags": [
+        "-std=c++17",
+        "-O1",
+        "-g",
+        "-ffp-contract=off",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "-idirafter",
+        "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/include"
+      ],
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "exit_code": 0,
+      "leak_check": "NOT RUN; sandbox ptrace limits; host settings unchanged"
+    },
+    {
+      "name": "ARMv7_NDK_compile_and_comparison_link",
+      "exit_code": 0,
+      "compiler_flags": "build_provenance.arm_flags",
+      "linker_script": "reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/wrappers.ld"
+    },
+    {
+      "name": "offline_reference_differential_and_region_comparison",
+      "exit_code": 0,
+      "report": {
+        "assembly_comparisons": [
+          {
+            "candidate_region_sha256": "e928253e755014d7e2f633e4473ca99936c4edd9a6006f5dc0db1fbeeca6248f",
+            "candidate_size": 4,
+            "exact_region_bytes": true,
+            "method": "raw linked region equality at original address; only external target addresses resolved",
+            "mode": "A32",
+            "reference_address": "0xd4dbc",
+            "reference_region_sha256": "e928253e755014d7e2f633e4473ca99936c4edd9a6006f5dc0db1fbeeca6248f",
+            "reference_size": 4,
+            "result": "MATCHED WRAPPER ONLY",
+            "symbol": "InAppBilling_ClearItemList"
+          },
+          {
+            "candidate_region_sha256": "d65ab62cc4e93a1a5f53932b2fd3e0d487d9845ba88ebfd1cd090d9728500cde",
+            "candidate_size": 240,
+            "exact_region_bytes": false,
+            "method": "raw unlinked region equality; no relocation masking",
+            "mode": "A32",
+            "reference_address": "0xd4de4",
+            "reference_region_sha256": "30f836c65e7a20dfa8288bb65007cfaaee9927889edcb4e1eeffbe56dd82bc86",
+            "reference_size": 172,
+            "result": "NOT MATCHED",
+            "symbol": "charToUI64"
+          },
+          {
+            "candidate_region_sha256": "3bacddca2b44ac63d1dee4bcd0f8ec1448db7b13631fd1a34b9c8f2ff7e81381",
+            "candidate_size": 88,
+            "exact_region_bytes": false,
+            "method": "raw unlinked region equality; no relocation masking",
+            "mode": "A32",
+            "reference_address": "0xd4f74",
+            "reference_region_sha256": "0303295b252b73dcf2b1496eb2b85cc60b6c9e1533b371f1fb08b3291b415ef0",
+            "reference_size": 80,
+            "result": "NOT MATCHED",
+            "symbol": "JNU_ThrowByName"
+          },
+          {
+            "candidate_region_sha256": "c23828df9bd56cae75f9be5d2affa69b69729f3ee95f49403ce411dd09a82a0d",
+            "candidate_size": 4,
+            "exact_region_bytes": true,
+            "method": "raw linked region equality at original address; only external target addresses resolved",
+            "mode": "A32",
+            "reference_address": "0xd5224",
+            "reference_region_sha256": "c23828df9bd56cae75f9be5d2affa69b69729f3ee95f49403ce411dd09a82a0d",
+            "reference_size": 4,
+            "result": "MATCHED WRAPPER ONLY",
+            "symbol": "InAppBilling_GetState"
+          }
+        ],
+        "billing_wrapper_cases": 10,
+        "conversion_helper_cases": 2118,
+        "exclusions": [
+          "pow import supplied by host glibc libm, not original Android libm",
+          "JNI calls and billing targets are test doubles; no VM or billing service executed",
+          "No original code patched, packaged, linked or used by production source",
+          "Void return types for charToUI64/JNU_ThrowByName inferred; incidental return register ignored",
+          "Finite sampled emulator tests; no universal, device, ABI or game parity claim"
+        ],
+        "jni_cases": 30,
+        "numeric_cases": 1278,
+        "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+        "result": "PASS",
+        "transcript_sha256": "d75569f9548871f48e6f61678a708959abcdfa991f675d78565d67b7fc86289a",
+        "versions": {
+          "pyelftools": "0.33",
+          "unicorn": "2.1.4"
+        }
+      }
+    },
+    {
+      "name": "git_diff_whitespace",
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "oracle_scope": {
+    "numeric_corpus": "Nonpositive lengths including INT32_MIN; every one-byte input; decimal boundaries; embedded NUL; signed bytes; repeated bytes at 18 lengths through 400; 400 arbitrary-byte and 400 decimal random cases; 64 overlapping output cases.",
+    "helper_corpus": "Positive/negative finite boundary values around powers of two, signed zeros, fractions, infinities, NaN and 2000 seeded arbitrary binary64 representations.",
+    "jni_corpus": "3 class results including null/high-bit pointer, 5 ThrowNew return statuses, null/non-null message; compare call order and exact argument forwarding.",
+    "wrapper_corpus": "5 signed return values each; exactly one dependency call; original tail branch retains entry LR.",
+    "seed": "0x69d4dbc",
+    "default_rounding": "nearest; reference FPSCR reset to zero each call",
+    "model_boundaries": {
+      "pow": "host glibc libm",
+      "JNI": "synthetic table functions",
+      "billing_targets": "synthetic return-value models"
+    },
+    "production_code_reuses_original_executable": false,
+    "original_file_modified": false,
+    "global_equivalence": "UNVERIFIED; sampled test evidence and only explicitly scoped matches"
+  },
+  "failed_attempts": [
+    {
+      "attempt": "Initial host compile with NDK entire sysroot include path via -I",
+      "result": "FAILED: Android libc headers shadowed host libc and produced preprocessor errors.",
+      "resolution": "Use -idirafter for JNI fallback, preserving native host libc headers. Both standalone and test builds then passed."
+    },
+    {
+      "attempt": "Initial ARM wrapper comparison with default frame-pointer setting",
+      "result": "NOT MATCHED: 16-byte wrapper with frame setup instead of 4-byte branch.",
+      "resolution": "Add -fomit-frame-pointer; linked full 4-byte regions then compare exactly. Larger bodies remain NOT MATCHED."
+    }
+  ],
+  "handoff": {
+    "reproduce": "NOVA69_PYTHON=/home/jason/Projects/nova3_re/.venv/bin/python bash reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/verify.sh --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "reference_free_reproduce": "bash reconstruction/tests/recovered/libNOVA3_neon/block_000d4dbc/verify.sh",
+    "bounded_scope_complete": "Four assigned entry points implemented and tested within declared contracts; two are only dependency forwarding wrappers.",
+    "blockers": [
+      "Original Android libm pow has not been executed or compared; glibc oracle substitution limits numeric equivalence.",
+      "No matching DWARF signature evidence; source-level void return types and clearItemList return type remain inferred.",
+      "Two larger functions are NOT MATCHED; compiler/ABI/code generation differs.",
+      "Billing target bodies remain NOT RECONSTRUCTED. No Java VM, device, Android integration or complete-game test."
+    ],
+    "next_attempts": [
+      "Recover assigned-function caller/type evidence to resolve inferred return types.",
+      "Obtain independent original-platform pow outputs, especially decimal rounding/overflow cases; retain local-only oracle data.",
+      "If exact matching remains required, determine original compiler/code-generation settings for numeric/JNI bodies; do not add opaque instruction blobs.",
+      "Reconstruct billing targets only in a separately authorized slice."
+    ],
+    "scope_compliance": "Only task-allowed paths added. Existing source/tests retained. No nested agents, package installation, sudo, network resources, GitHub writes, commits, executable patches or proprietary data copies. Source-built outputs stay under /tmp. Docs outside allowed paths were not edited."
+  }
+}
