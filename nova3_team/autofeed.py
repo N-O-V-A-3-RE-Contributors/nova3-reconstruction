@@ -378,12 +378,25 @@ def reconcile_and_feed(gh, root, *, batch=BATCH_LIMIT, cap=READY_LIMIT):
         if not created and slots == 0:
             note='Queue cap reached; no new issues created'
         elif not created:
-            pending_now=sum(i.get('state')=='open' and
-                            bool({QUEUE,CLAIMED,REVIEW} & set(label_names(i))) for i in issues)
-            if pending_now == 0:
-                note=create_expansion(gh,issues,root,origin)
+            # NOVA3_LEDGER_SCOPED_EXPANSION_V3
+            # A stale infrastructure review (for example #4) must not prevent
+            # discovery of new reference-grounded function tasks. Only open
+            # issues keyed to THIS ledger count as pending function work.
+            ledger_keys={t['key'] for t in tasks}
+            pending_functions=[i['number'] for i in issues
+                if i.get('state')=='open' and key_of(i) in ledger_keys
+                and bool({QUEUE,CLAIMED,REVIEW} & set(label_names(i)))]
+            unissued_functions=ledger_keys-known
+            if pending_functions:
+                note=('Waiting for pending function tasks: '
+                      + ', '.join('#'+str(n) for n in pending_functions[:12]))
+            elif unissued_functions:
+                note=('Function tasks remain unissued but cannot yet be queued '
+                      '(capacity or dependencies); no evidence task duplicated')
             else:
-                note='No new eligible tasks; waiting for in-flight tasks to integrate'
+                note=create_expansion(gh,issues,root,origin)
+                if note == 'Existing evidence expansion still tracked':
+                    note += '; waiting for in-flight expansion to integrate'
     return {'reconciled_merged':reconciled,'origin':origin,
             'manifest_task_count':len(tasks),'active_before':before,
             'created':created,'note':note}
