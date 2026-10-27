@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "task": 64,
+  "task_key": "functions-2243f3be0ab59188729029",
+  "round": 1,
+  "base_commit": "37eee6ab4e78f31d1149b5e026efb5c780d49671",
+  "result": "Four source-owned billing boundary adapters compiled and tested; exact fixed-address ARM function-body matches only.",
+  "verification_grade": "matching (isolated function bodies only)",
+  "matching": "EXACT FUNCTION-BODY MATCH IN FIXED-ADDRESS LINK PROBE",
+  "full_library_matching": "NOT MATCHED",
+  "full_native_ABI": "UNVERIFIED",
+  "reference": {
+    "name": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "available_locally": true,
+    "architecture": "ELF32 little-endian ARM; task entries in ARM mode",
+    "sha256_verified_before_and_after": true,
+    "modified": false,
+    "original_bytes_or_decompiler_text_published": false,
+    "local_path": "/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so"
+  },
+  "counts": {
+    "inventoried_functions": 4,
+    "disassembled_functions": 4,
+    "new_decompilations": 0,
+    "source_boundary_adapters_implemented": 4,
+    "source_boundary_adapters_tested": 4,
+    "exact_fixed_address_function_body_matches": 4,
+    "compared_bytes": 24,
+    "original_candidate_oracle_cases": 2048,
+    "full_native_ABI_implementations_verified": 0,
+    "downstream_billing_implementations": 0,
+    "end_to_end_game_scenarios": 0
+  },
+  "provenance": {
+    "method": "Direct local ELF .symtab and PT_LOAD reads; bounded Capstone disassembly checks. No decompiler body used or exported.",
+    "address_convention": "ELF virtual addresses, with no Ghidra image-base adjustment.",
+    "interrupted_source_preserved": true,
+    "interrupted_header_preserved": true,
+    "test_repair": "Three initializer lists mixed nullptr_t and void*, causing compilation failure. Explicit void* null casts repair them without changing test intent.",
+    "initial_host_compilation_exit_code": 1,
+    "initial_arm_comparison_attempt": "Clang default frame-pointer prologues gave larger source bodies; adding -fomit-frame-pointer removed them. No reference bytes changed."
+  },
+  "functions": [
+    {
+      "address": "0x000d60d0",
+      "size_bytes": 12,
+      "symbol": "Java_com_gameloft_android_GAND_GloftN3LT_iab_InAppBilling_nativeInit",
+      "source_entry": "native_init",
+      "dependency": "nova3_billing_init_dependency",
+      "dependency_address": "0x000d58c0",
+      "dependency_symbol": "_ZN12InAppBilling4initEP7_jclassP8_jobject",
+      "reference_region_sha256": "6681331aa283a0abeaba01ad4f1cf452a0546bbfcb8304be620ac178618b0603",
+      "candidate_region_sha256": "6681331aa283a0abeaba01ad4f1cf452a0546bbfcb8304be620ac178618b0603",
+      "compared_bytes": 12,
+      "instruction_count": 3,
+      "matching": "EXACT FUNCTION-BODY MATCH IN FIXED-ADDRESS LINK PROBE",
+      "scope": "All bytes compared without masking or normalization; absolute dependency symbols resolved by LLD. Export names, return types, downstream callees and full-library integration excluded.",
+      "state": "VERIFIED",
+      "verification_scope": "Isolated fixed-address instruction body and modeled forwarding boundary only.",
+      "verification_grade": "matching (function-body scope)",
+      "full_native_ABI": "UNVERIFIED",
+      "downstream_billing": "UNVERIFIED",
+      "oracle_cases": 512
+    },
+    {
+      "address": "0x000d6bc8",
+      "size_bytes": 4,
+      "symbol": "InAppBilling_RestoreTransactions",
+      "source_entry": "restore_transactions",
+      "dependency": "nova3_billing_restore_dependency",
+      "dependency_address": "0x000d6a98",
+      "dependency_symbol": "_ZN12InAppBilling19restoreTransactionsEv",
+      "reference_region_sha256": "b529e9f5a6d1ccba285cf6b5496cc5f29ae3c552bb206752d3a306a42e822617",
+      "candidate_region_sha256": "b529e9f5a6d1ccba285cf6b5496cc5f29ae3c552bb206752d3a306a42e822617",
+      "compared_bytes": 4,
+      "instruction_count": 1,
+      "matching": "EXACT FUNCTION-BODY MATCH IN FIXED-ADDRESS LINK PROBE",
+      "scope": "All bytes compared without masking or normalization; absolute dependency symbols resolved by LLD. Export names, return types, downstream callees and full-library integration excluded.",
+      "state": "VERIFIED",
+      "verification_scope": "Isolated fixed-address instruction body and modeled forwarding boundary only.",
+      "verification_grade": "matching (function-body scope)",
+      "full_native_ABI": "UNVERIFIED",
+      "downstream_billing": "UNVERIFIED",
+      "oracle_cases": 512
+    },
+    {
+      "address": "0x000d6e30",
+      "size_bytes": 4,
+      "symbol": "InAppBilling_SendNotifyConfirmation",
+      "source_entry": "send_notify_confirmation",
+      "dependency": "nova3_billing_notify_dependency",
+      "dependency_address": "0x000d6cdc",
+      "dependency_symbol": "_ZN12InAppBilling22sendNotifyConfirmationEPKc",
+      "reference_region_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "candidate_region_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "compared_bytes": 4,
+      "instruction_count": 1,
+      "matching": "EXACT FUNCTION-BODY MATCH IN FIXED-ADDRESS LINK PROBE",
+      "scope": "All bytes compared without masking or normalization; absolute dependency symbols resolved by LLD. Export names, return types, downstream callees and full-library integration excluded.",
+      "state": "VERIFIED",
+      "verification_scope": "Isolated fixed-address instruction body and modeled forwarding boundary only.",
+      "verification_grade": "matching (function-body scope)",
+      "full_native_ABI": "UNVERIFIED",
+      "downstream_billing": "UNVERIFIED",
+      "oracle_cases": 512
+    },
+    {
+      "address": "0x000d6f88",
+      "size_bytes": 4,
+      "symbol": "InAppBilling_GetItemList",
+      "source_entry": "get_item_list",
+      "dependency": "nova3_billing_item_list_dependency",
+      "dependency_address": "0x000d6e34",
+      "dependency_symbol": "_ZN12InAppBilling11getItemListEPKc",
+      "reference_region_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "candidate_region_sha256": "aebc66276bc591a3eeb9a292f13150c972e01f7639bdf6f69c9ae9baeab65b2c",
+      "compared_bytes": 4,
+      "instruction_count": 1,
+      "matching": "EXACT FUNCTION-BODY MATCH IN FIXED-ADDRESS LINK PROBE",
+      "scope": "All bytes compared without masking or normalization; absolute dependency symbols resolved by LLD. Export names, return types, downstream callees and full-library integration excluded.",
+      "state": "VERIFIED",
+      "verification_scope": "Isolated fixed-address instruction body and modeled forwarding boundary only.",
+      "verification_grade": "matching (function-body scope)",
+      "full_native_ABI": "UNVERIFIED",
+      "downstream_billing": "UNVERIFIED",
+      "oracle_cases": 512
+    }
+  ],
+  "source_hashes": {
+    "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp": "149149bb40d0da361df3ed084c5b36010a83f0ea7e302d1fe9021209c648268f",
+    "reconstruction/recovered/libNOVA3_neon/block_000d60d0/billing_forwarders.h": "a689e2f66067111ccd56acdb19eb2c0ef36858085e8ffa4e4535f0d01e92fb83",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0_test.cpp": "763182ff4ca658a33c43d5664b5d7bed147b0355f61cb5783a5a334146f61a3c",
+    "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0/verify.py": "abfbe2f948672e3603f4299c0c2e3a50114f41c96f554d05951ae3a63e480276",
+    "reconstruction/recovered/libNOVA3_neon/block_000d60d0/README.md": "d375b542ccc838bad3b1393ced2ab3f882d878cf32e6d80c7fb5b7d99f23fc24"
+  },
+  "toolchain": {
+    "pyelftools": "0.33",
+    "capstone": "5.0.7",
+    "g++": "g++ (GCC) 16.2.1 20260810",
+    "clang++": "clang version 23.1.3",
+    "ld.lld": "LLD 23.1.3 (compatible with GNU linkers)"
+  },
+  "builds_and_checks": [
+    {
+      "command": [
+        "g++",
+        "--version"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "g++ (GCC) 16.2.1 20260810\nCopyright (C) 2026 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "clang++",
+        "--version"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "clang version 23.1.3\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/bin",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ld.lld",
+        "--version"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "LLD 23.1.3 (compatible with GNU linkers)",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "-DNDEBUG",
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0_test.cpp",
+        "-o",
+        "<temporary-build>/host-test"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<temporary-build>/host-test"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "PASS: 291 boundary checks; downstream billing not tested",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "g++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O2",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp",
+        "-o",
+        "<temporary-build>/host.o"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-fno-pie",
+        "-no-pie",
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp",
+        "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0_test.cpp",
+        "-o",
+        "<temporary-build>/sanitized-test"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "<temporary-build>/sanitized-test"
+      ],
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=0"
+      },
+      "exit_code": 0,
+      "stdout": "PASS: 291 boundary checks; downstream billing not tested",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "clang++",
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Wpedantic",
+        "-Werror",
+        "--target=armv7a-linux-androideabi",
+        "-marm",
+        "-O2",
+        "-fomit-frame-pointer",
+        "-fno-pic",
+        "-ffunction-sections",
+        "-fno-exceptions",
+        "-fno-rtti",
+        "-fno-unwind-tables",
+        "-fno-asynchronous-unwind-tables",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp",
+        "-o",
+        "<temporary-build>/candidate.o"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "command": [
+        "ld.lld",
+        "-m",
+        "armelf_linux_eabi",
+        "-T",
+        "<temporary-build>/probe.ld",
+        "-e",
+        "_ZN5nova39recovered14block_000d60d011native_initEPvS2_S2_",
+        "--defsym=nova3_billing_init_dependency=0xd58c0",
+        "--defsym=nova3_billing_restore_dependency=0xd6a98",
+        "--defsym=nova3_billing_notify_dependency=0xd6cdc",
+        "--defsym=nova3_billing_item_list_dependency=0xd6e34",
+        "<temporary-build>/candidate.o",
+        "-o",
+        "<temporary-build>/probe.elf"
+      ],
+      "environment": {},
+      "exit_code": 0,
+      "stdout": "",
+      "stderr": ""
+    }
+  ],
+  "machine_code_comparison": {
+    "method": "Clang independently compiles production C++ with function sections. LLD links those sections at reference VAs, resolving four source-owned dependency names as absolute observed callee VAs. Read all bytes from original and candidate PT_LOAD mappings and require exact equality.",
+    "masked_bytes": 0,
+    "normalization": false,
+    "reference_patched": false,
+    "candidate_object_sha256": "4305e8e0f56420e81eb628cbe8b61707bc334909be3869adc422b76ff1a5c2a0",
+    "candidate_link_probe_sha256": "a19ddec359b1fd9cdfd593ef23554bbae36be92f189307e6f88ab88eaf3d6f78",
+    "probe_is_production_runtime": false,
+    "limitations": [
+      "Function bodies only: original export names and original return types are not recovered by this match.",
+      "Callee addresses are fixed-address test-link symbols, not implemented production dependencies.",
+      "No original compiler identity, original source identity, complete linked library match or Android ABI integration is claimed."
+    ]
+  },
+  "oracle": {
+    "unicorn_version": "2.1.4",
+    "cases": {
+      "native_init": 512,
+      "restore_transactions": 512,
+      "send_notify_confirmation": 512,
+      "get_item_list": 512
+    },
+    "total_cases": 2048,
+    "transcript_sha256": "b04d29e69369e803e8c8d1c95d46be324e48ba9977c8addde1a22d5b918e5e9c",
+    "scope": "Wrapper instructions only; every downstream billing call replaced by a register-recording test hook. No JNI or billing implementation tested."
+  },
+  "negative_check": {
+    "command": [
+      "python3",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0/verify.py",
+      "--reference",
+      "reconstruction/recovered/libNOVA3_neon/block_000d60d0.cpp"
+    ],
+    "exit_code": 1,
+    "expected_exit_code": 1,
+    "output": "Reference SHA256 mismatch; refusing comparison"
+  },
+  "host_test_scope": [
+    "Exactly one call to the correct dependency; init class/object order; ignored environment argument.",
+    "Null, embedded-NUL and nonterminated pointers forwarded without reads or mutation.",
+    "Five result-register patterns, including zero and high-bit values, preserved.",
+    "Source boundary tests only; downstream callbacks are test doubles."
+  ],
+  "source_only": {
+    "production_requires_originals": false,
+    "ordinary_tests_require_originals": false,
+    "optional_comparison_requires_local_original": true,
+    "original_code_embedded": false,
+    "original_files_written": false,
+    "network_access": false,
+    "host_configuration_changes": false,
+    "new_runtime_third_party_dependencies": [],
+    "test_only_dependencies": [
+      "pyelftools 0.33",
+      "Capstone 5.0.7",
+      "Unicorn 2.1.4"
+    ],
+    "final_apk_certification": "NOT PERFORMED"
+  },
+  "handoff": {
+    "readme": "reconstruction/recovered/libNOVA3_neon/block_000d60d0/README.md",
+    "verification_driver": "reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0/verify.py",
+    "reproduce": "python3 reconstruction/tests/recovered/libNOVA3_neon/block_000d60d0/verify.py --reference /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --oracle --sanitizers --output /tmp/nova3-task64-report.json",
+    "blockers": [
+      "Full native ABI, original return types and downstream billing implementations remain unverified.",
+      "CMake/global header changes and downstream source reconstruction are outside the allocated paths."
+    ],
+    "next_attempts": [
+      "Recover InAppBilling methods at 0x000d58c0, 0x000d6a98, 0x000d6cdc and 0x000d6e34 in separately scoped tasks.",
+      "Establish original return types/JNI contract before adding exported ABI integration.",
+      "Integrate source-owned dependencies and build registration when allocated."
+    ]
+  },
+  "build_command_note": "Commands record exact flags. <temporary-build> is created automatically by the verification driver; run the driver to reproduce the complete sequence."
+}
