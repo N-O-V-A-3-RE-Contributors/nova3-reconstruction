@@ -15,6 +15,182 @@ HEX64=re.compile(r'^[0-9a-f]{64}$')
 HEX_ADDR=re.compile(r'^[0-9a-fA-F]{4,16}$')
 
 
+def collect_program(data, program, *, library, ghidra_version, limit=32,
+                    excluded_addresses=(), disassemble=False):
+    """Read metadata from an already open, read-only Ghidra Program.
+
+    This stricter alternative to the legacy export scanner never decompiles or
+    saves the program. The caller must open it read-only and owns its lifecycle.
+    Require an existing instruction at the entry, a contiguous Ghidra body
+    exactly matching an ELF STT_FUNC extent, explicit TMode and a full byte
+    comparison against the independently read ELF. Bounds can still originate
+    from the same imported symbol: this establishes NO behavioural/source match.
+
+    With disassemble=True, try at most limit*4 symbol extents of at most 256
+    bytes in a transaction that is ALWAYS rolled back. Require complete bounded
+    instruction coverage instead of a saved body; mode then comes from ELF.
+    This permits additional analysis without altering the persistent project.
+
+    Only allowlisted coordination metadata is returned. Reject mismatched
+    program identity/architecture before inspecting functions. Missing candidate
+    evidence is counted, never converted into a guessed boundary. Exceptions
+    abort the operation rather than returning a partial ledger.
+    """
+    if type(disassemble) is not bool:
+        raise ValueError('disassemble must be boolean')
+    transaction = program.startTransaction('temporary function inventory') if disassemble else None
+    try:
+        return _collect_program(data, program, library=library, ghidra_version=ghidra_version,
+                                limit=limit, excluded_addresses=excluded_addresses,
+                                disassemble=disassemble)
+    finally:
+        if transaction is not None:
+            program.endTransaction(transaction, False)
+
+
+def _disassemble_extent(program, entry, size, thumb):
+    """Bound disassembly to one ELF extent; never run global autoanalysis."""
+    from ghidra.app.cmd.disassemble import DisassembleCommand
+    from ghidra.program.model.address import AddressSet
+    from ghidra.util.task import TaskMonitor
+    from java.math import BigInteger
+
+    body = AddressSet(entry, entry.add(size - 1))
+    context = program.getProgramContext()
+    register = program.getRegister('TMode')
+    mode = context.getValue(register, entry, False)
+    if mode is not None and str(mode) != str(int(thumb)):
+        return None  # Never replace conflicting saved instruction/context evidence.
+    if mode is None:
+        context.setValue(register, entry, entry, BigInteger.ONE if thumb else BigInteger.ZERO)
+    command = DisassembleCommand(entry, body, True)
+    command.enableCodeAnalysis(False)
+    if not command.applyTo(program, TaskMonitor.DUMMY):
+        return None
+    return body
+
+
+def _collect_program(data, program, *, library, ghidra_version, limit,
+                     excluded_addresses, disassemble):
+    from . import indexer
+
+    if type(limit) is not int or not 1 <= limit <= 256:
+        raise indexer.LedgerError('candidate limit must be between 1 and 256')
+    excluded = set(excluded_addresses)
+    for address in excluded:
+        indexer._integer(address, 'excluded address')
+    if not isinstance(ghidra_version, str) or not indexer._TOOL_VERSION.fullmatch(ghidra_version):
+        raise indexer.LedgerError('numeric Ghidra version required')
+    private = indexer.build_ledger(data)
+    binary = private['binary']
+    if str(program.getExecutableSHA256()).lower() != binary['sha256']:
+        raise indexer.LedgerError('Ghidra program binary hash mismatch')
+    architecture = str(program.getLanguageID())
+    order = 'LE' if binary['endianness'] == 'little' else 'BE'
+    if not architecture.startswith(f'ARM:{order}:32:'):
+        raise indexer.LedgerError('Ghidra program architecture mismatch')
+    base = indexer._integer(int(program.getImageBase().getOffset()), 'image base')
+    mode_register = program.getRegister('TMode')
+    if mode_register is None:
+        raise indexer.LedgerError('Ghidra program has no ARM TMode register')
+    manager = program.getFunctionManager()
+    listing = program.getListing()
+    memory = program.getMemory()
+    context = program.getProgramContext()
+    space = program.getAddressFactory().getDefaultAddressSpace()
+    records, hashes, skipped = [], {}, {}
+    attempts = 0
+
+    def skip(reason):
+        skipped[reason] = skipped.get(reason, 0) + 1
+
+    for function in private['functions']:
+        address, size = function['address'], function['size']
+        if address in excluded:
+            continue
+        if not size or size > indexer.MAX_PUBLISHED_FUNCTION_SIZE or function['size_conflict']:
+            skip('invalid_symbol_extent'); continue
+        alignment = 2 if function['thumb'] else 4
+        if address % alignment or size % alignment:
+            skip('unaligned_extent'); continue
+        if disassemble and size > 256:
+            skip('outside_small_disassembly_scope'); continue
+        indexer._integer(address + base + size - 1, 'rebased extent')
+        entry = space.getAddress(address + base)
+        if disassemble:
+            if attempts >= limit * 4:
+                break
+            attempts += 1
+            body = _disassemble_extent(program, entry, size, function['thumb'])
+            if body is None:
+                skip('disassembly_failed'); continue
+            cursor = address + base
+            instructions = listing.getInstructions(body, True)
+            while instructions.hasNext():
+                instruction = instructions.next()
+                if int(instruction.getAddress().getOffset()) != cursor:
+                    break
+                cursor += int(instruction.getLength())
+            if cursor != address + base + size:
+                skip('incomplete_instruction_coverage'); continue
+        else:
+            found = manager.getFunctionAt(entry)
+            if found is None or listing.getInstructionAt(entry) is None:
+                skip('no_existing_function_instruction'); continue
+            body = found.getBody()
+            if (int(body.getNumAddressRanges()) != 1
+                    or int(body.getMinAddress().getOffset()) != address + base
+                    or int(body.getNumAddresses()) != size):
+                skip('body_extent_disagrees'); continue
+        mode = context.getValue(mode_register, entry, False)
+        if mode is None or str(mode) not in ('0', '1') or bool(int(str(mode))) != function['thumb']:
+            skip('missing_or_conflicting_mode'); continue
+        symbol = function['symbols'][0]
+        offset = symbol['file_offset']
+        expected = data[offset:offset + size]
+        observed = bytes(int(memory.getByte(entry.add(i))) & 255 for i in range(size))
+        if observed != expected:
+            skip('full_extent_mapping_disagrees'); continue
+        calls = []
+        instructions = listing.getInstructions(body, True)
+        while instructions.hasNext():
+            instruction = instructions.next()
+            for reference in instruction.getReferencesFrom():
+                if reference.getReferenceType().isCall():
+                    calls.append({'from': str(reference.getFromAddress()),
+                                  'to': str(reference.getToAddress()),
+                                  'type': str(reference.getReferenceType())})
+        records.append(dict(binary_sha256=binary['sha256'], architecture=architecture,
+                            address=address, raw_value=address | int(function['thumb']),
+                            thumb=function['thumb'], symbol=symbol['name'], symbol_size=size,
+                            ghidra_image_base=base, ghidra_address=address + base,
+                            ghidra_version=ghidra_version, byte_mapping_validated=True,
+                            calls=calls))
+        hashes[address] = hashlib.sha256(expected).hexdigest()
+        if len(records) == limit:
+            break
+    result = indexer.build_coordination_ledger(data, library=library, ghidra_exports=records)
+    for row in result['functions']:
+        row['reference_code_sha256'] = hashes[row['address']]
+        row['boundary_evidence'].update(byte_mapping='full_extent_compared',
+                                        entry_instruction='present')
+        if disassemble:
+            row['boundary_confidence'] = 'elf_symbol_with_bounded_ghidra_disassembly_and_full_mapping_check'
+            row['boundary_evidence'].update(instruction_coverage='complete_symbol_extent',
+                                            mode='elf_symbol_thumb_bit',
+                                            analysis='bounded_disassembly_rolled_back')
+        else:
+            row['boundary_confidence'] = 'elf_symbol_with_ghidra_body_and_full_mapping_check'
+            row['boundary_evidence']['ghidra_body'] = 'contiguous_equal_symbol_extent'
+    result['statistics']['project_scan'] = {
+        'candidate_limit': limit, 'candidates_checked': len(records),
+        'disassembly_attempts': attempts,
+        'excluded_existing_addresses': len(excluded), 'skipped': skipped,
+        'discovery': ('bounded transient disassembly; transaction rolled back' if disassemble
+                      else 'existing Ghidra bodies only; no analysis or program writes')}
+    return result
+
+
 def sha256(path):
     h=hashlib.sha256()
     with open(path,'rb') as f:
