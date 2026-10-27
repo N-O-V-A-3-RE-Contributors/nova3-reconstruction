@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "task": 40,
+  "task_key": "functions-c7fde538e6cd0dd0b16c40",
+  "round": 1,
+  "recorded_utc": "2026-10-27T01:14:04.346945+00:00",
+  "status": "TESTED: scoped portable control-flow models; full engine integration incomplete",
+  "matching": "NOT MATCHED",
+  "machine_code_comparison": {
+    "performed": false,
+    "reason": "Portable source APIs, opaque handles and dependency injection intentionally differ from the original C++ ABI. No exact candidate/reference byte comparison was attempted. ARMv7 object compilation is not matching evidence."
+  },
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "expected_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "observed_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "hash_verified": true,
+    "local_reference_found": true,
+    "local_lookup": "~/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "architecture": "32-bit little-endian ARM EABI5",
+    "proprietary_bytes_embedded_or_written": false
+  },
+  "source": {
+    "path": "reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp",
+    "sha256": "d7abab9f97424fb8e12dd82b504a764e163b607b4d112982fc08a9145b928530",
+    "standard": "C++17",
+    "production_dependencies": "C++ standard library and caller-supplied source-owned Engine implementations only; no original binaries or vtables"
+  },
+  "tests": {
+    "path": "reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp",
+    "sha256": "2cedcc49336a216b80eced2e971c01a809f1429b270b66a2e72afc1afeb22ac1",
+    "host_contract_cases": 359,
+    "scoped_arm_differential_cases": 359,
+    "reference_engine": "Unicorn 2.1.4",
+    "disassembly_tool": "Capstone 5.0.9",
+    "elf_metadata_tool": "pyelftools 0.33",
+    "checks": [
+      {
+        "name": "independent_source_compile",
+        "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp -o /tmp/nova3-task40-xs5zr2ec/source.o",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "host_compile",
+        "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -o /tmp/nova3-task40-xs5zr2ec/host-test",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "host_contracts",
+        "command": "/tmp/nova3-task40-xs5zr2ec/host-test",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "PASS version=6 readFile=144 geometry=81 constructor=128\nHost contracts passed; reference comparison not run in this mode.",
+        "stderr": ""
+      },
+      {
+        "name": "oracle_compile",
+        "command": "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -DNOVA3_REFERENCE_ORACLE reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -lunicorn -o /tmp/nova3-task40-xs5zr2ec/reference-test",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "arm_differential",
+        "command": "/tmp/nova3-task40-xs5zr2ec/reference-test /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "Unicorn 2.1\nPASS version=6 readFile=144 geometry=81 constructor=128\nARM coverage 0x71e468: 17/17 instruction addresses\nARM coverage 0x72490c: 105/140 instruction addresses\nARM coverage 0x73f804: 37/37 instruction addresses\nARM coverage 0x747828: 88/88 instruction addresses\nScoped ARM differential comparison passed; machine-code match NOT MATCHED.",
+        "stderr": ""
+      },
+      {
+        "name": "sanitizer_compile",
+        "command": "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -o /tmp/nova3-task40-xs5zr2ec/sanitizer-test",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "asan_ubsan_contracts",
+        "command": "/tmp/nova3-task40-xs5zr2ec/sanitizer-test",
+        "environment_overrides": {
+          "ASAN_OPTIONS": "detect_leaks=0"
+        },
+        "exit_code": 0,
+        "stdout": "PASS version=6 readFile=144 geometry=81 constructor=128\nHost contracts passed; reference comparison not run in this mode.",
+        "stderr": ""
+      },
+      {
+        "name": "android_armv7_compile",
+        "command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp -o /tmp/nova3-task40-xs5zr2ec/android-armv7.o",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      {
+        "name": "android_object_identity",
+        "command": "file /tmp/nova3-task40-xs5zr2ec/android-armv7.o",
+        "environment_overrides": {},
+        "exit_code": 0,
+        "stdout": "/tmp/nova3-task40-xs5zr2ec/android-armv7.o: ELF 32-bit LSB relocatable, ARM, EABI5 version 1 (SYSV), not stripped",
+        "stderr": ""
+      }
+    ]
+  },
+  "compiler_versions": {
+    "host": "c++ (GCC) 16.2.1 20260810",
+    "sanitizer": "clang version 23.1.3",
+    "android_armv7": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)"
+  },
+  "compile_flags": {
+    "host": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ],
+    "oracle": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-DNOVA3_REFERENCE_ORACLE"
+    ],
+    "sanitizer": [
+      "-std=c++17",
+      "-O1",
+      "-g",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror",
+      "-fsanitize=address,undefined",
+      "-fno-omit-frame-pointer",
+      "-fno-pie",
+      "-no-pie"
+    ],
+    "android_armv7": [
+      "-std=c++17",
+      "-O2",
+      "-Wall",
+      "-Wextra",
+      "-Wpedantic",
+      "-Werror"
+    ]
+  },
+  "artifacts": [
+    {
+      "kind": "host_source_object",
+      "sha256": "0f0fb8138df519852cda33c7d027fc4a20b4c4fbafd0442fb0dc3f3914184699"
+    },
+    {
+      "kind": "android_armv7_source_object",
+      "sha256": "93352df49738959376c8808a5bb4cb8cb45b9d06cf0522bc130ebdd414e9e1ec"
+    }
+  ],
+  "functions": [
+    {
+      "address": "0x0071e468",
+      "size_bytes": 68,
+      "size_hex": "0x44",
+      "elf_symbol": "_ZN6glitch7collada15CResFileManager12checkVersionEPKc",
+      "symbol_evidence": ".symtab STT_FUNC with matching start/size",
+      "instruction_mode": "$a",
+      "reference_region_sha256": "e4f5c05b14ce227d478cc1c1297c07bf3d1e3638d2123f866ffbe3ee3c8eefa0",
+      "source_function": "checkVersion",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "full_equivalence": "UNVERIFIED",
+      "differential_cases": 6,
+      "executed_instruction_addresses": 17,
+      "instruction_addresses_excluding_literal_pool": 17,
+      "scope": "Open a file via manager filesystem, release a nonnull result, always return zero."
+    },
+    {
+      "address": "0x0072490c",
+      "size_bytes": 576,
+      "size_hex": "0x240",
+      "elf_symbol": "_ZN6glitch7collada15CResFileManager11getReadFileERKN5boost13intrusive_ptrINS_2io9IReadFileEEE",
+      "symbol_evidence": ".symtab STT_FUNC with matching start/size",
+      "instruction_mode": "$a",
+      "reference_region_sha256": "de9fccb77e952e5043fc6db09ef6ef5fef5d92500b8f62657461bde81a69c260",
+      "source_function": "getReadFile",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "full_equivalence": "UNVERIFIED",
+      "differential_cases": 144,
+      "executed_instruction_addresses": 105,
+      "instruction_addresses_excluding_literal_pool": 140,
+      "scope": "ZIP gate, seek arguments, allocation/constructor arguments, endian entry selection, passthrough flag mutation and explicit reference ownership under nonnull-archive contract."
+    },
+    {
+      "address": "0x0073f804",
+      "size_bytes": 148,
+      "size_hex": "0x94",
+      "elf_symbol": "_ZNK6glitch7collada16CColladaDatabase17constructGeometryEPNS_5video12IVideoDriverEPKc",
+      "symbol_evidence": ".symtab STT_FUNC with matching start/size",
+      "instruction_mode": "$a",
+      "reference_region_sha256": "6e15acae93749766e035063b79475d3158e13ddb3f4176e45c02d5b8366e9764",
+      "source_function": "constructGeometry",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "full_equivalence": "UNVERIFIED",
+      "differential_cases": 81,
+      "executed_instruction_addresses": 37,
+      "instruction_addresses_excluding_literal_pool": 37,
+      "scope": "Signed count, case-sensitive identifier equality, first matching 16-byte record, null selection on no match, opaque output forwarding to geometry overload."
+    },
+    {
+      "address": "0x00747828",
+      "size_bytes": 372,
+      "size_hex": "0x174",
+      "elf_symbol": "_ZN6glitch7collada8CResFileC1EPKcRKN5boost13intrusive_ptrINS_2io9IReadFileEEEb",
+      "symbol_evidence": ".symtab STT_FUNC with matching start/size",
+      "instruction_mode": "$a",
+      "reference_region_sha256": "dd3de082589e24db3cb6caced0dd67127a3e7c3b7c3498940dbd645a6e0c6875",
+      "source_function": "initializeResourceFile",
+      "state": "TESTED",
+      "verification_grade": "behavioural",
+      "matching": "NOT MATCHED",
+      "full_equivalence": "UNVERIFIED",
+      "differential_cases": 128,
+      "executed_instruction_addresses": 88,
+      "instruction_addresses_excluding_literal_pool": 88,
+      "scope": "Observed writes across 0x5c bytes, preservation of unknown bytes, name-before-content initialization order, direct-memory and FileReader Init selection, manager delegation and temporary ownership."
+    }
+  ],
+  "oracle_method": {
+    "execution": "Reference ELF PT_LOAD segments are read locally into a disposable Unicorn instance. Only the four named bodies execute. Every out-of-cluster call is intercepted; unexpected execution fails the test. Fixtures use synthetic strings, tables and objects. No original output assets or executable excerpts are persisted.",
+    "compared": [
+      "Return values / hidden return storage pointers",
+      "Dependency arguments and call order",
+      "Manager flags, including noncanonical nonzero byte values",
+      "Modeled reference ownership counts and ordered retain/release calls under explicitly hooked contracts",
+      "All 0x5c observed constructor state bytes, with original vptr normalized to a source-owned diagnostic tag",
+      "Geometry selection and opaque destination forwarding",
+      "Reference stack restoration and preservation of r4-r11"
+    ],
+    "hooked_dependencies": {
+      "0x000d24fc": "strcmp@plt; equality semantics only",
+      "0x000ec294": "intrusive_ptr_release(IReferenceCounted const*)",
+      "0x001088c4": "intrusive_ptr_add_ref(IReferenceCountedBase const*)",
+      "0x0010b900": "allocator-specific basic_string constructor",
+      "0x0069bf9c": "operator new(unsigned)",
+      "0x006c1d80": "res::File::Init(FileReader*)",
+      "0x00702f80": "intrusive_ptr<IReadFile>::operator=",
+      "0x00723c98": "CColladaDatabase::constructGeometry(driver,SGeometry*)",
+      "0x0076c3f4": "res::File::Init(void*)",
+      "0x007e59f0": "CZipReader::isValid(IReadFile*)",
+      "0x0081b854": "CZipReader constructor",
+      "0x00be3900": "__sync_add_and_fetch_4",
+      "virtual slots": "open +0x0c, seek +0x18, memory +0x34, has-memory +0x3c (last two meanings inferred from use)"
+    },
+    "exclusions": [
+      "Actual ZIP validity detection, ZIP reader construction, file opening, geometry creation, string allocation and res::File::Init internals are hooked, not recovered or verified here.",
+      "Engine interfaces and return types are portable models. Binary ABI, real C++ class types, concurrent behavior, allocation failures and exception unwinding remain UNVERIFIED.",
+      "getReadFile instructions 0x00724ab0 through 0x00724b38 are not covered or reconstructed: they are reached on a null archive after an earlier virtual dereference of that archive. createZip must return nonnull in the supported contract.",
+      "Original vtable data is neither reused nor executed. The constructor model writes a documented source-owned tag; the oracle normalizes only that field.",
+      "Caller graphs, real asset compatibility, object destruction and complete engine integration are not established."
+    ]
+  },
+  "failures_and_remedies": [
+    {
+      "step": "Initial oracle compilation",
+      "result": "Failed: uc_version expects unsigned int pointers. Corrected the test API call; final strict compilation and execution pass."
+    },
+    {
+      "step": "Initial local PLT metadata helpers",
+      "result": "Initial inspection scripts failed on rotated-immediate parsing and a missing register constant. Resolved the comparison symbol with llvm-objdump metadata; no source conclusions were taken from failed results."
+    },
+    {
+      "step": "Default LeakSanitizer run",
+      "exit_code": 1,
+      "result": "All 359 host cases completed, then LeakSanitizer failed because the runtime uses tracing/ptrace restrictions. Re-ran ASan/UBSan with ASAN_OPTIONS=detect_leaks=0; exit 0. Leak checking remains UNVERIFIED; host restrictions were not changed."
+    }
+  ],
+  "handoff": {
+    "files": [
+      "reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp",
+      "reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp",
+      "coordination/evidence/functions-c7fde538e6cd0dd0b16c40.json"
+    ],
+    "next_attempts": [
+      "Integrate this bounded source model into an engine only after recovering the hooked dependency contracts; build-system edits were outside this task allowance.",
+      "Recover res::File::Init overloads at 0x006c1d80/0x0076c3f4 and CZipReader at 0x0081b854 before claiming real resource loading.",
+      "Establish original geometry output type/layout and recover the SGeometry overload at 0x00723c98.",
+      "For future exact matching, recover original toolchain/ABI and implement actual class interfaces; this portable model is explicitly NOT MATCHED."
+    ],
+    "end_to_end_game_functionality_added": false,
+    "docs_updated": false,
+    "reason": "docs/worker-notes/ is not allowed for this task."
+  },
+  "reproduce": {
+    "working_directory": "Repository root; use a POSIX shell. Build outputs below are disposable.",
+    "prerequisites": "Existing C++17 compiler; Clang for sanitizer mode; optional installed Unicorn headers/library for offline reference mode; installed Android NDK for cross compilation. No installation or network access is part of this task.",
+    "setup": [
+      "NOVA3_TASK40_BUILD=$(mktemp -d /tmp/nova3-task40.XXXXXX)",
+      "NOVA3_TASK40_REFERENCE=\"$HOME/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so\""
+    ],
+    "hash_check": "python3 -c 'import hashlib,sys; actual=hashlib.sha256(open(sys.argv[1],\"rb\").read()).hexdigest(); print(actual); sys.exit(0 if actual==\"84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf\" else 1)' \"$NOVA3_TASK40_REFERENCE\"",
+    "host_commands": [
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp -o \"$NOVA3_TASK40_BUILD/source.o\"",
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -o \"$NOVA3_TASK40_BUILD/host-test\"",
+      "\"$NOVA3_TASK40_BUILD/host-test\""
+    ],
+    "optional_local_reference_commands": [
+      "c++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -DNOVA3_REFERENCE_ORACLE reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -lunicorn -o \"$NOVA3_TASK40_BUILD/reference-test\"",
+      "\"$NOVA3_TASK40_BUILD/reference-test\" \"$NOVA3_TASK40_REFERENCE\""
+    ],
+    "sanitizer_commands": [
+      "clang++ -std=c++17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -fno-pie -no-pie reconstruction/tests/recovered/libNOVA3_neon/block_0071e468_test.cpp -o \"$NOVA3_TASK40_BUILD/sanitizer-test\"",
+      "ASAN_OPTIONS=detect_leaks=0 \"$NOVA3_TASK40_BUILD/sanitizer-test\""
+    ],
+    "android_compile_command": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Werror -c reconstruction/recovered/libNOVA3_neon/block_0071e468.cpp -o \"$NOVA3_TASK40_BUILD/android-armv7.o\"",
+    "notes": "Run the hash check before optional reference commands and stop on any nonzero exit. Host tests need no reference, Unicorn, NDK or original assets. Leak detection is disabled only because of the recorded session restriction."
+  }
+}
