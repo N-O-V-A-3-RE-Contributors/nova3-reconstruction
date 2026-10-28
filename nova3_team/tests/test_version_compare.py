@@ -55,13 +55,14 @@ def fixture(entries=None, dynamic=(), *, base=0x1000, fill=0, dwarf=False):
     struct.pack_into("<HH", data, 42, 32, 1)
     data.extend(struct.pack("<8I", 1, text[4], base, base, text[5], text[5], 5, 4))
     if dwarf:
-        # DWARF v2, one CU, one named base type and one concrete subprogram.
+        # DWARF v2, one CU, a named base type/typedef and one concrete subprogram.
         # All strings are synthetic privacy sentinels, never reference content.
         abbrev = (b"\x01\x11\x01\x03\x08\x10\x06\x00\x00"
                   b"\x02\x24\x00\x03\x08\x00\x00"
-                  b"\x03\x2e\x00\x03\x08\x11\x01\x12\x01\x00\x00\x00")
+                  b"\x03\x2e\x00\x03\x08\x11\x01\x12\x01\x00\x00"
+                  b"\x04\x16\x00\x03\x08\x00\x00\x00")
         dies = (b"\x01PRIVATE_SOURCE_PATH_SENTINEL\0" + struct.pack("<I", 0)
-                + b"\x02PRIVATE_TYPE_SENTINEL\0\x03PRIVATE_FUNCTION_SENTINEL\0"
+                + b"\x02PRIVATE_TYPE_SENTINEL\0\x04PRIVATE_TYPEDEF_SENTINEL\0\x03PRIVATE_FUNCTION_SENTINEL\0"
                 + struct.pack("<II", base, base + 8) + b"\0")
         body = struct.pack("<HI", 2, 0) + b"\x04" + dies
         info = struct.pack("<I", len(body)) + body
@@ -212,11 +213,12 @@ class VersionCompareTests(unittest.TestCase):
         a = fixture(dwarf=True)
         report = compare(a, a)
         d = report["debug"]["dwarf"]
-        for key, count in dict(compile_units=1, named_types=1, function_dies=1,
+        for key, count in dict(compile_units=1, named_types=2, function_dies=1,
                                concrete_function_dies=1, line_rows=2, line_unique_addresses=1,
                                line_executable_bytes=8, symbol_entries_with_line_coverage=1,
                                function_die_low_pc_at_symbol_entry=1).items():
             self.assertEqual(d["counts"][key], count, key)
+        self.assertEqual(d["counts"]["named_type_tag_counts"], {"DW_TAG_base_type": 1, "DW_TAG_typedef": 1})
         self.assertEqual(report["dwarf_comparison"]["shared_sections"], 3)
         self.assertEqual(len(report["dwarf_comparison"]["identical_sections"]), 3)
         self.assertNotIn("PRIVATE_", json.dumps(report))

@@ -85,7 +85,8 @@ relocated. This is not a source-to-reference compiler match.
 ## Actual DWARF coverage
 
 Locally installed pyelftools parsed both inputs. Independent `readelf
---debug-dump=info` counts confirmed 20 CUs and 91 subprogram DIEs per input;
+--debug-dump=info` counts confirmed 20 CUs, 177 named type DIEs (including
+typedefs) and 91 subprogram DIEs per input;
 debug strings and paths were not printed or retained in this document.
 
 | Coverage | Premium retail | Cyrus debug |
@@ -93,9 +94,10 @@ debug strings and paths were not printed or retained in this document.
 | `.debug_info` bytes | 19,269 | 19,269 |
 | Compilation units | 20 | 20 |
 | Total DIEs, including null entries | 1,581 | 1,581 |
-| Named type DIEs | 128 | 128 |
+| Named type DIEs, including typedefs | 177 | 177 |
 | Named base-type / structure-type DIEs | 113 / 15 | 113 / 15 |
-| Distinct named type-name hashes | 27 | 27 |
+| Named typedef DIEs | 49 | 49 |
+| Distinct named type-name hashes | 53 | 53 |
 | Subprogram DIEs, including declarations | 91 | 91 |
 | Concrete subprogram DIEs | 83 | 83 |
 | Nondeclaration subprogram low PCs at symbol entries | 83 | 83 |
@@ -112,7 +114,8 @@ Both images have nine `.debug*` sections. Five have identical full section
 SHA-256s: `.debug_abbrev`, `.debug_loc`, `.debug_pubnames`, `.debug_ranges`,
 and `.debug_str`. Four differ: `.debug_aranges`, `.debug_frame`, `.debug_info`,
 and `.debug_line`. There are no edition-only DWARF sections or named
-type-tag/name-hash pairs; all 27 such pairs are shared. Hash identity of type
+type-tag/name-hash pairs; all 56 such pairs are shared (53 distinct name hashes).
+Hash identity of type
 names does not establish identical type layout, ownership or game relevance.
 These small tables may include compiler/runtime/library metadata; no
 comprehensive game-class coverage is established.
@@ -185,6 +188,9 @@ ctest --test-dir /tmp/nova88-build --output-on-failure
 The task-specific suite passes 20 tests; the repository suite passes 276 tests.
 The host source build succeeds and all 13 CTest checks pass. These validate
 the comparison harness and existing source targets, not game equivalence.
+Two final CLI runs produced identical complete report hashes, and the recorded
+tool-source hash agrees with the final script. Source hygiene also passes,
+including an explicit check of all three new deliverables.
 Local build/test logs are `/tmp/nova88-{cmake,ctest,unittest}.txt`; no logs or
 reference reports belong in the PR. Only the three issue-allowed source/doc
 files are changed. No GitHub state was modified and no PR was opened in this

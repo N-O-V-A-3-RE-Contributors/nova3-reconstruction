@@ -302,7 +302,7 @@ def _dwarf(data, sections):
                     raise CompareError("DWARF DIE budget exceeded")
                 attrs = die.attributes
                 name = attrs.get("DW_AT_name")
-                if name and die.tag and die.tag.endswith("_type"):
+                if name and die.tag and (die.tag.endswith("_type") or die.tag == "DW_TAG_typedef"):
                     value = name.value
                     if not isinstance(value, bytes):
                         raise CompareError("unsupported DWARF name form")
@@ -315,6 +315,8 @@ def _dwarf(data, sections):
                     row = dict(cu_offset=cu.cu_offset, offset=die.offset, declaration=declaration)
                     for key in ("DW_AT_low_pc", "DW_AT_high_pc"):
                         if key in attrs:
+                            if type(attrs[key].value) is not int or not 0 <= attrs[key].value <= 1 << 32:
+                                raise CompareError("invalid ARM32 DWARF PC attribute")
                             row[key[6:]] = attrs[key].value
                             row[key[6:] + "_form"] = attrs[key].form
                     if "DW_AT_ranges" in attrs:
