@@ -45,3 +45,6 @@ See [toolchain](docs/toolchain.md) for Android ARMv7 compilation, sanitizer comm
 ## Compiler-matched object research (experimental)
 
 See [offline object-matching and IDA/Ghidra workflow](docs/OBJECT_MATCHING.md) for ELF compiler fingerprinting, tentative translation units, private per-function assembly, global-asm C++ scaffolding and objdiff. This is a research-only loop; original `.o` files and a whole-`.so` hash match have **not** been recovered. The existing source-only CMake targets remain authoritative.
+
+
+For the fastest local-first route, see [Fast-track operator plan](docs/FAST_TRACK.md), including IDA Pro 9.4 headless analysis, hardware-aware batching, compiler preflight and source-built first-frame milestones. Run `python -m nova3_team.preflight` after synchronizing that workflow branch.
