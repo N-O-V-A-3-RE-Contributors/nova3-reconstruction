@@ -322,3 +322,24 @@ executable and its provenance/profile before making any compiler claim.
 Initializer/data and original pthread behavior require a separate bounded
 runtime/oracle task. No bulk follow-up, original-object recovery, whole-library
 match or game functionality is established by this pilot.
+
+## Task #99: historical provenance gate (2026-10-28)
+
+**MISSING_HISTORICAL_COMPILER; historical GCC NOT MATCHED.** A fresh bounded
+read-only check reconfirmed the Premium ELF/window hashes, A32 extent and 968
+GCC 4.4.3 `.comment` strings. Discovery checked 55 fixed C++ compiler paths in
+11 candidate roots; none was present. The configured historical-root variable
+was unset; the installed NDK remains r29. Zero historical profiles were built.
+
+[Historical toolchain handoff](HISTORICAL_TOOLCHAIN.md) documents the new
+read-only fingerprint/profile gate, explicit SHA trust pins, official source
+URLs pending authorized network review, missing compiler/sysroot requirements
+and the one-function continuation. 44 source-only tests pass, including the
+existing compiler-matrix/relocation regressions. Machine-readable metadata:
+`coordination/evidence/historical-toolchain-research.json`.
+
+The #97 Clang raw mismatch and separately scratch-linked 44-byte equality
+above remain unchanged. Neither identifies historical GCC/NDK nor verifies
+source equivalence, original C++ ABI, original behavior or whole-library SHA.
+No compiler download, package installation, GitHub change, production source
+regeneration or additional matching claim occurred.

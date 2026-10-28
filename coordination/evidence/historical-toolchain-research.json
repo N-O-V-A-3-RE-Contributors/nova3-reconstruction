@@ -1,0 +1,293 @@
+{
+  "blockers": [
+    {
+      "code": "MISSING_HISTORICAL_COMPILER",
+      "requirement": "Owner supplies separately authenticated trusted ARM GCC 4.4.3 C++ toolchain root, host compatibility evidence, binutils and historical Android sysroot; no installation authorized here"
+    },
+    {
+      "code": "OFFICIAL_HISTORY_NOT_ACCESSED",
+      "requirement": "Separate network-authorized review of supplied official URLs; record document revision/date and exact host-package checksum authentication"
+    },
+    {
+      "code": "PROFILE_NOT_REPLAYED",
+      "requirement": "Pin compiler support closure and headers/sysroot; check matrix sysroot limitation before at most eight sequential source compiles/links with 30-second per-process bounds"
+    }
+  ],
+  "boundary": {
+    "bulk_reconstruction_queued": false,
+    "github_state_modified": false,
+    "network_access": false,
+    "original_game_executable_run_or_modified": false,
+    "pr_created": false,
+    "production_source_modified": false,
+    "proprietary_bytes_or_dumps_in_deliverables": false,
+    "sudo_run": false,
+    "system_packages_installed": false
+  },
+  "bounded_search": {
+    "candidate_files_present": 0,
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m nova3_team.historical_toolchain discover",
+    "configured_root_environment_variable": "NOVA3_HISTORICAL_TOOLCHAIN_ROOT",
+    "configured_root_set": false,
+    "exit_code": 0,
+    "fixed_candidate_paths_checked": 55,
+    "installed_modern_ndk": {
+      "historical_candidate": false,
+      "metadata_source": "source.properties",
+      "release": "r29",
+      "revision": "29.0.14206865"
+    },
+    "recursive_scan": false,
+    "relative_candidate_templates": [
+      "bin/arm-linux-androideabi-g++",
+      "prebuilt/{linux-x86,linux-x86_64}/bin/arm-linux-androideabi-g++",
+      "toolchains/arm-linux-androideabi-4.4.3/prebuilt/{linux-x86,linux-x86_64}/bin/arm-linux-androideabi-g++"
+    ],
+    "root_templates": [
+      "/opt/android-ndk",
+      "/opt/android-ndk-{r7,r7b,r7c,r8,r8b,r8c,r8d,r8e}",
+      "/opt/android-sdk/ndk-bundle",
+      "$HOME/Android/Sdk/ndk-bundle"
+    ],
+    "roots_checked": 11,
+    "untrusted_executables_run": false
+  },
+  "date": "2026-10-28",
+  "documentation_research": {
+    "candidate_release_contents_verified": false,
+    "hypothetical_release_candidates": [
+      "r7",
+      "r7b",
+      "r7c",
+      "r8",
+      "r8b",
+      "r8c",
+      "r8d",
+      "r8e"
+    ],
+    "independently_authenticated_historical_archive_hashes": [],
+    "independently_authenticated_historical_executable_hashes": [],
+    "sources": [
+      {
+        "authenticates_game_toolchain": false,
+        "authority": "AOSP Android NDK repository",
+        "claim_scope": "Task-supplied research lead for arm-linux-androideabi-4.4.3; text not independently read",
+        "content_sha256": null,
+        "date_scope": "UNKNOWN_NOT_ACCESSED_OFFLINE",
+        "retrieved": false,
+        "url": "https://android.googlesource.com/platform/ndk/+/81dd1b4/docs/CHANGES.html",
+        "version_scope": "Historical snapshot at supplied short revision; release/date mapping NOT_VERIFIED"
+      },
+      {
+        "authenticates_game_toolchain": false,
+        "authority": "Official Android Developers",
+        "claim_scope": "Task-supplied official history lead, not evidence of a specific game package",
+        "content_sha256": null,
+        "date_scope": "UNKNOWN_NOT_ACCESSED_OFFLINE",
+        "retrieved": false,
+        "url": "https://developer.android.com/ndk/downloads/revision_history",
+        "version_scope": "Rolling NDK history; r7/r8 entries require authorized review"
+      }
+    ],
+    "status": "BLOCKED_NETWORK_PROHIBITED; LOCAL_HISTORICAL_DOCUMENT_UNAVAILABLE"
+  },
+  "grades": {
+    "EXACT_HISTORICAL_TOOLCHAIN_VERIFIED": false,
+    "EXACT_ORIGINAL_COMPILER_PROVEN": false,
+    "GCC_4_4_3_CANDIDATE_AVAILABLE": false,
+    "GCC_4_4_3_STRING_PRESENT": true,
+    "LINKED_WINDOW_MATCH": "NOT_TESTED_HISTORICAL_GCC",
+    "PROFILE_REPRODUCIBLE": false,
+    "SOURCE_EQUIVALENCE_VERIFIED": false,
+    "WHOLE_SO_HASH_MATCH": false
+  },
+  "handoff": "docs/progress/HISTORICAL_TOOLCHAIN.md",
+  "inputs": [
+    {
+      "path": "reconstruction/research/arm32_cpu_query_candidate.cpp",
+      "sha256": "ea7f1ae3cf95610d2f22ca566e9756d8591f16f99126634020b85cd6bc2dd46b"
+    },
+    {
+      "path": "reconstruction/research/arm32_cpu_query_candidate.h",
+      "sha256": "0a3817dfa6977a3c30f403508289167cd176b8b69bb0aca322fc724e9494250c"
+    }
+  ],
+  "plan_generation": {
+    "builds_performed": 0,
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m nova3_team.historical_toolchain profiles --count 8",
+    "compiler_field_present": false,
+    "exit_code": 0,
+    "flags": [
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O2"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O2",
+        "-fomit-frame-pointer"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-Os"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-Os",
+        "-fomit-frame-pointer"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O1"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O1",
+        "-fomit-frame-pointer"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O3"
+      ],
+      [
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=neon",
+        "-mfloat-abi=softfp",
+        "-fPIC",
+        "-std=c++03",
+        "-O3",
+        "-fomit-frame-pointer"
+      ]
+    ],
+    "flags_are_hypotheses": true,
+    "plans": 8,
+    "status": "MISSING_HISTORICAL_COMPILER"
+  },
+  "preflight": {
+    "api": "nova3_team.preflight.inspect (in memory)",
+    "heavy_analyzers_run": 0,
+    "logical_cpus": 4,
+    "ram_kib": 7924896,
+    "reference_files_present": 4
+  },
+  "prior_evidence": {
+    "compiler_family": "Modern NDK r29 Clang",
+    "modified": false,
+    "path": "coordination/evidence/compiler-pilot-000d2f10.json",
+    "raw_result": "RAW_MISMATCH",
+    "scope": "Prior #97 evidence, not rerun or attributed to GCC by task #99",
+    "scratch_linked_result": "RELOCATED_LINKED_WINDOW_MATCH"
+  },
+  "reference": {
+    "attributes_observed": [
+      "ARMv7",
+      "VFPv3",
+      "NEONv1"
+    ],
+    "comment_query_exit_code": 0,
+    "gcc_4_4_3_comment_occurrences": 968,
+    "hash_rechecked": true,
+    "per_translation_unit_compiler_identified": false,
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "symbol_extent_rechecked": true,
+    "window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca"
+  },
+  "result": "MISSING_HISTORICAL_COMPILER; historical GCC NOT MATCHED",
+  "schema": "nova3.historical-toolchain-research/1",
+  "scope": {
+    "address": "0x000d2f10",
+    "compile_timeout_seconds": 30,
+    "function": "android_getCpuCount",
+    "historical_profiles_executed": 0,
+    "link_timeout_seconds": 30,
+    "maximum_future_profiles": 8,
+    "mode": "A32",
+    "sequential_only": true,
+    "size": 44,
+    "source_symbol": "nova3_arm32_cpu_count_candidate"
+  },
+  "source_owned_deliverables": [
+    {
+      "path": "nova3_team/historical_toolchain.py",
+      "sha256": "cc2c271ef6d6ca03583bb289630cad9cfde81536b6517baa3ef0870ae88fcd58"
+    },
+    {
+      "path": "nova3_team/tests/test_historical_toolchain.py",
+      "sha256": "333d9bef21605a3e6e991ce5329f793d2c09a94b36b2d39ad098d775a2dda5e1"
+    }
+  ],
+  "task": 99,
+  "tests": {
+    "command": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest nova3_team.tests.test_historical_toolchain nova3_team.tests.test_compiler_matrix nova3_team.tests.test_relocation_probe -v",
+    "existing_matrix_regressions": 3,
+    "existing_relocation_regressions": 16,
+    "exit_code": 0,
+    "fixtures": "Source-owned inert bytes and mocked subprocess metadata; no real compiler execution",
+    "initial_failures": [
+      "Wrong imported _read signature for optional attributes input; replaced with bounded local reader",
+      "Directory fdopen raised before regular-file validation; fstat now precedes fdopen and closes rejected descriptors"
+    ],
+    "new_metadata_gate_tests": 25,
+    "preliminary_read_only_failure": "Unused nonexistent indexer parse_elf import; rerun using existing APIs succeeded",
+    "total_passed": 44
+  },
+  "tooling": {
+    "arm_attributes": "Optional pinned readelf on caller-provided source-built ARM EABI5 ET_REL; NOT_BUILT when absent",
+    "binutils": "Separate path/hash pins; version and executable hash, no implicit execution of GCC-reported tools",
+    "compiler_selected_binutils_automatically_verified": false,
+    "json_output": "stdout only",
+    "matrix_sysroot_support": "Existing allowlist excludes --sysroot/-I; separate scoped change if configured GCC search paths lack historical Android headers",
+    "metadata_queries": [
+      "--version",
+      "-dumpversion",
+      "-dumpmachine",
+      "-dumpspecs",
+      "-print-sysroot",
+      "-print-prog-name=ld",
+      "-print-prog-name=as",
+      "-print-prog-name=cc1plus"
+    ],
+    "metadata_timeout_seconds": 10,
+    "module": "nova3_team.historical_toolchain",
+    "profile_reproducibility": "Never awarded by metadata alone; requires clean pinned build replay",
+    "read_only": true,
+    "revalidation": "Independent owner pins; executable hashes, version, specs and tool metadata checked again",
+    "trust_boundary": "No executable queries without separate owner SHA-256 pin; local pins are not distribution authentication"
+  }
+}
