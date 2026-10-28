@@ -83,6 +83,21 @@ From the user's actual `~/Projects/nova3_re` checkout after this PR is
 merged, with the existing Premium and Cyrus ELF copies:
 
 ```sh
+bash tools/revalidate_local.sh
+```
+
+This single local-only command checks both known reference ELF SHA-256
+values, generates the full historical 25-block source inventory/worklist,
+compares Cyrus and Premium, creates a linker relocation worksheet with
+experimental `.ld`, fingerprints compiler metadata and stages a small
+donor-guided research unit. It runs the analysis stages **sequentially**,
+keeps all reports under ignored `.cache/revalidation/`, and never submits
+the original binaries to GitHub. If local paths differ, set the documented
+`NOVA3_RETAIL_ELF` and `NOVA3_CYRUS_ELF` variables.
+
+Equivalent individual commands, useful when one phase needs debugging:
+
+```sh
 RETAIL=analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so
 CYRUS=.cache/cyrus-debug/libNOVA3_neon.so
 

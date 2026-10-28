@@ -64,6 +64,35 @@ class MatchingTests(unittest.TestCase):
         with self.assertRaisesRegex(matching.MatchingError, "overstated"):
             matching._donor_group_hints(bad, hashlib.sha256(data).hexdigest())
 
+    def test_donor_ranking_drives_default_stage_and_explicit_addresses_override(self):
+        data = elf_fixture([symbol("first", 0x1001, 8),
+                            symbol("second", 0x1020, 12),
+                            symbol("third", 0x1040, 8)])
+        candidates = [
+            {"retail_address": 0x1040, "retail_size": 8, "name": "third",
+             "group_hint": "retail_cu_3", "translation_unit_proven": False},
+            {"retail_address": 0x1000, "retail_size": 8, "name": "first",
+             "group_hint": "retail_cu_1", "translation_unit_proven": False},
+        ]
+        plan = {"schema": "nova3.donor-plan/1",
+                "retail_sha256": hashlib.sha256(data).hexdigest(),
+                "candidates": candidates}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            binary = root / "test.so"
+            binary.write_bytes(data)
+            staged = matching.stage(data, binary, root / "ranked", limit=1,
+                                    donor_plan=plan)
+            overridden = matching.stage(data, binary, root / "explicit", limit=1,
+                                        addresses={0x1000}, donor_plan=plan)
+            self.assertEqual([r["address"] for r in staged["functions"]], [0x1040])
+            self.assertEqual([r["address"] for r in overridden["functions"]], [0x1000])
+            bad = dict(plan, candidates=candidates + [
+                {"retail_address": 0xeeee, "retail_size": 8, "name": "absent",
+                 "group_hint": "unclassified", "translation_unit_proven": False}])
+            with self.assertRaisesRegex(matching.MatchingError, "current reference ELF ledger"):
+                matching.stage(data, binary, root / "bad", limit=1, donor_plan=bad)
+
     def test_fail_closed_on_ambiguous_or_absent_symbol(self):
         data = elf_fixture([symbol("bad", 0x1001, 8),
                             symbol("same_address", 0x1001, 16)])

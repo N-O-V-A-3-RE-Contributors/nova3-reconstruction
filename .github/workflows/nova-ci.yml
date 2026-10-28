@@ -20,6 +20,12 @@ jobs:
         run: python -m nova3_team.guard --repo . --all
       - name: Unit tests for collaboration runtime
         run: python -m unittest discover -s nova3_team/tests -v
+      - name: Audit all historical recovered source under compiler-aware policy
+        run: |
+          python -m nova3_team.legacy_validation --repo . \
+            --out .cache/ci-legacy-inventory.json \
+            --plan-out .cache/ci-legacy-worklist.json
+          bash -n tools/revalidate_local.sh
       - name: Observatory contributor/owner role tests
         run: |
           python -m unittest discover -s tools/observatory/tests -v

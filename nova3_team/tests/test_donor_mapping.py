@@ -96,6 +96,15 @@ class DonorMapTests(unittest.TestCase):
         self.assertIsNone(first["retail_cu"])
         self.assertEqual(first["group_hint"], "scope_Renderer")
 
+    def test_alias_names_are_not_counted_as_independent_function_candidates(self):
+        data = fixture()
+        alias = dict(data["comparison"]["functions"][0], name="_ZN8Renderer9drawAliasEv")
+        data["comparison"]["functions"].append(alias)
+        result = donor_mapping.plan_donors(data)
+        self.assertEqual(result["total_pairs"], 4)
+        self.assertEqual(result["qualifying_pairs"], 2)
+        self.assertEqual(result["selected_pairs"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

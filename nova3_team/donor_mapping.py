@@ -153,11 +153,22 @@ def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> di
     # compiler-validation pilot, but do not conflate identical bytes with source.
     candidates.sort(key=lambda x: (x["donor_byte_status"] != "exact_bytes",
                                    x["retail_size"], x["retail_address"], x["name"]))
-    selected = candidates[:limit]
+    # The version comparison retains separately named symbol aliases.  A real
+    # function can have many names; never stage its address twice or count two
+    # names as independent verified reconstruction work.
+    seen_retail, seen_debug = set(), set()
+    unique = []
+    for row in candidates:
+        if row["retail_address"] in seen_retail or row["debug_address"] in seen_debug:
+            continue
+        seen_retail.add(row["retail_address"])
+        seen_debug.add(row["debug_address"])
+        unique.append(row)
+    selected = unique[:limit]
     return dict(schema=SCHEMA, retail_sha256=rhash, debug_sha256=dhash,
                 selection="exact_unique_names_first_smallest_functions",
-                total_pairs=len(rows), qualifying_pairs=len(candidates),
-                skipped_pairs=len(rows)-len(candidates),
+                total_pairs=len(rows), qualifying_pairs=len(unique),
+                skipped_pairs=len(rows)-len(unique),
                 selected_pairs=len(selected), status_counts=dict(sorted(status_counts.items())),
                 candidates=selected, verified_decompilation_count=0,
                 caveat="DWARF/IDA groupings are metadata hypotheses; byte identity across game builds is not C++ reconstruction or original-object proof.")

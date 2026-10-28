@@ -179,15 +179,42 @@ def _donor_group_hints(plan: dict, binary_sha256: str) -> dict[int, dict]:
     return hints
 
 
+def _validate_donor_addresses(data: bytes, hints: dict[int, dict]) -> None:
+    """Check *every* offered donor symbol against the current ELF ledger.
+
+    This is metadata correlation only.  Actual byte/range validation still
+    happens when ``select_functions`` stages a bounded chosen subset.
+    """
+    functions = defaultdict(list)
+    for row in build_ledger(data)["functions"]:
+        functions[row["address"]].append(row)
+    for address, donor in hints.items():
+        matches = functions.get(address, [])
+        if (len(matches) != 1 or matches[0]["size_conflict"]
+                or matches[0]["name"] != donor["name"]
+                or matches[0]["size"] != donor["size"]):
+            raise MatchingError("donor symbol disagrees with current reference ELF ledger at " +
+                                hex(address))
+
+
 def stage(data: bytes, binary: Path, out: Path, addresses: set[int] | None = None,
           limit: int = 16, donor_plan: dict | None = None) -> dict:
     """Generate ignored, local-only ASM, global-asm C++ and synthetic ref recipes."""
     out = out.resolve()
     if out.exists() and any(out.iterdir()):
         raise MatchingError("output directory must be new or empty to avoid overwriting work")
-    selected, excluded = select_functions(data, addresses, limit)
+    hints = {}
     if donor_plan is not None:
         hints = _donor_group_hints(donor_plan, digest(data))
+        _validate_donor_addresses(data, hints)
+        if addresses is None:
+            if not hints:
+                raise MatchingError("donor plan contains no eligible functions")
+            # Donor candidates are already ranked by bounded pilot value.
+            # Select from that list rather than arbitrary first ELF symbols.
+            addresses = set(list(hints)[:limit])
+    selected, excluded = select_functions(data, addresses, limit)
+    if donor_plan is not None:
         for row in selected:
             donor = hints.get(row["address"])
             if donor is not None:
