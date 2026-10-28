@@ -99,8 +99,36 @@ jobs:
             ${{ matrix.bundle }}.tar.gz
           if-no-files-found: error
           retention-days: 14
+  observatory:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test shared observatory
+        run: |
+          python -m unittest discover -s tools/observatory/tests -q
+          python tools/observatory/observer.py --demo --once
+          bash -n tools/observatory/install.sh
+      - name: Package source-based observatory
+        run: |
+          mkdir -p package/observatory
+          cp tools/observatory/{observer.py,operator_ops.py,presence_view.py,progress.py,project_roadmap.json,README.md,install.sh,install.ps1} package/observatory/
+          cp -r tools/observatory/tests package/observatory/tests
+          cd package
+          zip -q -r ../Nova3-Observatory.zip observatory -x '*/__pycache__/*' '*.pyc'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nova3-Observatory
+          path: Nova3-Observatory.zip
+          if-no-files-found: error
+          retention-days: 14
   release:
-    needs: build
+    needs: [build, observatory]
     if: startsWith(github.ref, 'refs/tags/launcher-v')
     runs-on: ubuntu-24.04
     permissions:
@@ -121,4 +149,4 @@ jobs:
           ls -lh files
           gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz \
             --title "NOVA3 contributor launcher $RELEASE_TAG" \
-            --notes "Unsigned first-run launchers. Each user must have private repository access, authenticate with GitHub and their selected AI provider, and approve dependency installation. No game data is included."
+            --notes "Unsigned contributor launchers and source-based NOVA3 Observatory. Install Observatory separately for richer monitoring; all GitHub owner actions require ADMIN/MAINTAIN permission. Each user authenticates their own GitHub and AI accounts. No game data is included."

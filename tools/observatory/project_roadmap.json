@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "name": "NOVA3 - recover, maintain, port, extend",
+  "vision": "One maintainable C++ game codebase, rebuilt from legally held references, with native Windows/Linux x86_64, Android ARM64/x86_64, and iOS ARM64 support; extensible gameplay and modern rendering.",
+  "policy": {
+    "source_quality": "human-readable, tested, documented, reproducible builds; no fabricated matching",
+    "source_verification": "compiled != behaviour-matched; merged PR != verified original function",
+    "data_policy": "never commit original APK/OBB/SO binaries or bulk proprietary decompiler exports",
+    "workers": "All task issues use nova:queued and Allowed paths; reuse existing contributor AI pool",
+    "unknowns": "Original game inventory completeness, legal distribution, platform SDK availability and original gameplay fidelity remain independently checked"
+  },
+  "stages": [
+    {
+      "id": "foundation",
+      "name": "Readable source and engine foundations",
+      "gate": "always",
+      "tasks": [
+        {
+          "key": "architecture-contract-v1",
+          "title": "NOVA3 roadmap: define maintainable game engine modules and APIs",
+          "paths": [
+            "docs/architecture/MODULES.md",
+            "docs/architecture/DEPENDENCIES.md",
+            "reconstruction/engine/README.md"
+          ],
+          "description": "Inspect existing reconstructed source and document cross-platform module boundaries (platform, render, audio, input, assets, gameplay, net). Define readable C++ interfaces, ownership, naming, endian/ABI assumptions and test requirements; DO NOT replace existing source in this task."
+        },
+        {
+          "key": "portable-build-v1",
+          "title": "NOVA3 roadmap: stage reusable native x86_64 CMake build",
+          "paths": [
+            "reconstruction/ports/cmake/NovaNativeConfig.cmake",
+            "reconstruction/ports/cmake/README.md",
+            "reconstruction/tests/ports/cmake_probe.py"
+          ],
+          "description": "Design build configuration for Linux/Windows native x86_64 using shared reconstruction sources and CMake. Avoid platform-specific patches and keep existing build intact. Implement tests with a nonproprietary standalone fixture; explicitly record untested targets."
+        },
+        {
+          "key": "readability-policy-v1",
+          "title": "NOVA3 roadmap: set C++ quality and reconstruction evidence policy",
+          "paths": [
+            "docs/architecture/STYLE.md",
+            "docs/architecture/PORTABILITY.md",
+            "docs/architecture/EVIDENCE.md"
+          ],
+          "description": "Provide consistent human-maintainable C++ style, clear naming, comments for inferred behaviour, portable types, unit tests and explicit NOT MATCHED statuses. Scope plans to current source; do not claim game already playable."
+        }
+      ]
+    },
+    {
+      "id": "native-platforms",
+      "name": "Windows, Linux, Android and iOS build layers",
+      "gate": "merged:architecture-contract-v1,portable-build-v1",
+      "tasks": [
+        {
+          "key": "linux-native-shell-v1",
+          "title": "NOVA3 native port: Linux x86_64 game entry and SDL adapter shell",
+          "paths": [
+            "reconstruction/ports/linux/entry.cpp",
+            "reconstruction/ports/linux/README.md",
+            "reconstruction/tests/ports/linux_smoke.cpp"
+          ],
+          "description": "Create a platform adapter shell that isolates Linux window, input and paths from game logic; document optional SDL dependencies. Use placeholders only where missing reconstructed gameplay must be integrated later. Build/test independently of game assets."
+        },
+        {
+          "key": "windows-native-shell-v1",
+          "title": "NOVA3 native port: Windows x86_64 game entry shell",
+          "paths": [
+            "reconstruction/ports/windows/entry.cpp",
+            "reconstruction/ports/windows/README.md",
+            "reconstruction/tests/ports/windows_smoke.cpp"
+          ],
+          "description": "Build a Windows x86_64 native entry and portability abstraction with strict compiler/type assumptions. Do not claim a playable game until runtime integration and tests are established. Avoid binary/asset copying."
+        },
+        {
+          "key": "android-native-shell-v1",
+          "title": "NOVA3 native port: Android ARM64/x86_64 NDK integration scaffold",
+          "paths": [
+            "reconstruction/ports/android/native_entry.cpp",
+            "reconstruction/ports/android/README.md",
+            "reconstruction/tests/ports/android_config_test.py"
+          ],
+          "description": "Architect a shared C++ Android native layer with JNI boundary and arm64-v8a/x86_64 ABIs. Device binaries are separate from architecture-neutral source; do not copy APK/OBB assets. Add synthetic contract tests."
+        },
+        {
+          "key": "ios-native-shell-v1",
+          "title": "NOVA3 native port: iOS ARM64 and simulator integration scaffold",
+          "paths": [
+            "reconstruction/ports/ios/native_bridge.mm",
+            "reconstruction/ports/ios/README.md",
+            "reconstruction/tests/ports/ios_config_test.py"
+          ],
+          "description": "Design iOS ARM64 device and arm64/x86_64 simulator native bridging with an Objective-C++ boundary. Xcode/macOS toolchain required for real iOS builds; avoid claiming Linux CI can ship iOS. Preserve shared C++ gameplay core."
+        }
+      ]
+    },
+    {
+      "id": "integration",
+      "name": "Game runtime integration and playability",
+      "gate": "merged:linux-native-shell-v1,windows-native-shell-v1,android-native-shell-v1,ios-native-shell-v1",
+      "tasks": [
+        {
+          "key": "runtime-composition-v1",
+          "title": "NOVA3 runtime: compose platform-independent engine subsystems",
+          "paths": [
+            "reconstruction/runtime/composition.cpp",
+            "reconstruction/runtime/composition.hpp",
+            "reconstruction/tests/runtime/composition_test.cpp"
+          ],
+          "description": "Create explicit subsystem composition and lifecycle for recovered asset, input, renderer, gameplay and audio modules. Use stubs with named TODO evidence when original code is unavailable. Write tests; do not assert gameplay equivalence."
+        },
+        {
+          "key": "playability-gates-v1",
+          "title": "NOVA3 validation: cross-platform smoke tests and playability gates",
+          "paths": [
+            "docs/quality/PLAYABILITY.md",
+            "docs/quality/BUILD_MATRIX.md",
+            "reconstruction/tests/runtime/playability_probe.cpp"
+          ],
+          "description": "Define real testable gates: startup, asset loading, rendering, input, audio, campaign entry, save/load, clean shutdown; flag UNKNOWN until run against legally held data. Include build matrix Linux/Windows/Android/iOS."
+        },
+        {
+          "key": "renderer-modernization-v1",
+          "title": "NOVA3 graphics: renderer abstraction for optional modern visuals",
+          "paths": [
+            "reconstruction/render/renderer_api.hpp",
+            "reconstruction/render/renderer_adapter.cpp",
+            "docs/architecture/RENDERER_ROADMAP.md"
+          ],
+          "description": "Introduce maintainable renderer abstraction that can support legacy-compatible rendering and optional modern graphics. Do not overwrite reconstruction targets. Document backend capabilities and visual-fidelity vs modernisation tradeoffs."
+        }
+      ]
+    },
+    {
+      "id": "extensions",
+      "name": "Extensible gameplay and future features",
+      "gate": "merged:runtime-composition-v1,playability-gates-v1,renderer-modernization-v1",
+      "tasks": [
+        {
+          "key": "feature-extension-api-v1",
+          "title": "NOVA3 extensions: design safe gameplay feature interfaces",
+          "paths": [
+            "reconstruction/features/feature_api.hpp",
+            "reconstruction/features/feature_registry.cpp",
+            "docs/features/EXTENSIONS.md",
+            "reconstruction/tests/features/registry_test.cpp"
+          ],
+          "description": "Build an opt-in feature registry with modular code and consistent tests so future user-requested features do not require core rewrites. Document compatibility and savegame/versioning risks. Do not invent arbitrary gameplay changes."
+        },
+        {
+          "key": "modern-effects-extension-v1",
+          "title": "NOVA3 extensions: optional graphics effects pipeline architecture",
+          "paths": [
+            "reconstruction/features/graphics_effects.hpp",
+            "reconstruction/features/graphics_effects.cpp",
+            "docs/features/MODERN_GRAPHICS.md"
+          ],
+          "description": "Create an optional, disableable modern effects extension interface with quality tiers and portability considerations; preserve baseline compatibility. No unsupported claims of rendering parity."
+        }
+      ]
+    }
+  ],
+  "feature_request_authors": [
+    "crjase"
+  ],
+  "feature_intake": "After extension API integration, an issue by an approved author labeled nova:feature-request is automatically converted into one AI planning task; a reviewed plan in coordination/feature_plans/ then becomes bounded implementation tasks."
+}
