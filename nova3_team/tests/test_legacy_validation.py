@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import redirect_stderr, redirect_stdout
+import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from nova3_team.legacy_validation import _safe_repo_path, inventory, main
+from nova3_team.legacy_validation import _safe_repo_path, inventory, main, revalidation_plan
 
 
 class LegacyValidationTests(unittest.TestCase):
@@ -103,10 +105,68 @@ class LegacyValidationTests(unittest.TestCase):
     def test_cli_requires_private_cache_for_written_reports(self):
         self.source("000d2f10")
         destination = self.root / ".cache/audit.json"
-        self.assertEqual(main(["--repo", str(self.root), "--out", str(destination)]), 0)
+        plan_path = self.root / ".cache/plan.json"
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["--repo", str(self.root), "--out", str(destination),
+                                   "--plan-out", str(plan_path)]), 0)
         data = json.loads(destination.read_text())
         self.assertEqual(data["schema"], "nova3.legacy-revalidation/1")
-        self.assertEqual(main(["--repo", str(self.root), "--require-verified"]), 2)
+        plan = json.loads(plan_path.read_text())
+        self.assertEqual(plan["schema"], "nova3.legacy-revalidation-plan/1")
+        self.assertEqual(plan["tasks"][0]["current_target_machine_match"], "NOT_VERIFIED")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["--repo", str(self.root), "--require-verified"]), 2)
+
+    def test_plan_prioritizes_proven_small_reference_windows(self):
+        long_source = self.source("000d2f10")
+        short_source = self.source("000d52fc")
+        self.source("000d39f0")
+        self.record("long.json", {
+            "source": {"path": long_source.relative_to(self.root).as_posix()},
+            "reference": {"sha256": "a" * 64},
+            "functions": [{"elf_va": "0xd2f10", "size_bytes": 200}],
+        })
+        self.record("short.json", {
+            "source": {"path": short_source.relative_to(self.root).as_posix()},
+            "reference": {"sha256": "b" * 64},
+            "functions": [{"elf_va": "0xd52fc", "size_bytes": 16}],
+        })
+        self.record("inferred.json", {
+            "reference": {"sha256": "c" * 64},
+            "functions": [{"address": "0x000d39f0", "size_bytes": 4}],
+        })
+        plan = revalidation_plan(inventory(self.root))
+        self.assertEqual([p["entry_address_hypothesis"] for p in plan["tasks"]],
+                         ["0x000d52fc", "0x000d2f10", "0x000d39f0"])
+        self.assertEqual([p["review_priority"] for p in plan["tasks"]], [1, 2, 3])
+        self.assertEqual(plan["tasks"][0]["known_total_reference_bytes"], 16)
+        self.assertEqual(plan["tasks"][0]["reference_sha256"], "b" * 64)
+        self.assertTrue(plan["tasks"][0]["requires_private_original"])
+        self.assertGreaterEqual(len(plan["tasks"][0]["checks_required_before_match_claim"]), 5)
+
+    def test_plan_rejects_untrusted_or_clobbering_output_paths(self):
+        self.source("000d2f10")
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as bad_path:
+            main(["--repo", str(self.root), "--plan-out", str(self.root / "coordination/plan.json")])
+        self.assertEqual(bad_path.exception.code, 2)
+        same = self.root / ".cache/same.json"
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as duplicate:
+            main(["--repo", str(self.root), "--out", str(same), "--plan-out", str(same)])
+        self.assertEqual(duplicate.exception.code, 2)
+        self.assertFalse(same.exists())
+
+    def test_conflicting_original_hashes_cannot_choose_a_reference(self):
+        source = self.source("000d2f10")
+        for index, letter in enumerate(("a", "b")):
+            self.record(f"record-{index}.json", {
+                "source": {"path": source.relative_to(self.root).as_posix()},
+                "reference": {"sha256": letter * 64},
+                "functions": [{"elf_va": "0xd2f10", "size_bytes": 44}],
+            })
+        task = revalidation_plan(inventory(self.root))["tasks"][0]
+        self.assertIsNone(task["reference_sha256"])
+        self.assertTrue(task["reference_sha256_conflict"])
+        self.assertEqual(task["current_target_machine_match"], "NOT_VERIFIED")
 
     def test_absent_source_dir_is_not_reported_as_success(self):
         (self.root / "reconstruction/recovered").rename(self.root / "reconstruction/removed")

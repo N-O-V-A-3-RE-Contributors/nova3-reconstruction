@@ -108,12 +108,23 @@ window. Output is metadata/hashes only and stays in ignored local cache.
 Code-window equality, even with no detected relocations, is **not** an
 original object/ABI/whole-.so match without independent evidence.
 
+`nova3_team.linker_worksheet` inventories observed ARM32 linked
+`PT_LOAD` segments, relevant section virtual addresses/alignment,
+REL/RELA types/counts and GOT/PLT/`.ARM.exidx` metadata in a local
+JSON worksheet. `--experimental-ld` produces a conspicuously
+**non-production** fixed-section `.experimental.ld` hypothesis under the
+same ignored cache directory, as a starting point for a controlled link
+experiment. It does not restore removed per-original-object relocations,
+historical linker flags, symbol versioning or a complete hash match.
+
 `nova3_team.legacy_validation` audits all existing
 `reconstruction/recovered/**/block_*.cpp` source and historical
 `coordination/evidence/*.json` declarations without discarding old code.
 Every block requires current compiler-aware review. Historical short
 window-match reports are preserved as claims for independent rechecking,
-not automatically promoted or silently downgraded. Full executable commands
+not automatically promoted or silently downgraded. `--plan-out` creates a
+priority-ordered private worklist with each block's source SHA, known function
+ranges and mandatory original/ABI/compiler/objdiff/behavioural checks. Full executable commands
 and the 11-step Discord acceptance matrix are in
 [`docs/DISCORD_IMPLEMENTATION.md`](DISCORD_IMPLEMENTATION.md).
 

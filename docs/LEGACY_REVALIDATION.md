@@ -13,7 +13,8 @@ From the repository root, with no APKs or ELF files required:
 
 ```sh
 python -m nova3_team.legacy_validation --repo . \
-  --out .cache/legacy-source-revalidation.json
+  --out .cache/legacy-source-revalidation.json \
+  --plan-out .cache/legacy-revalidation-worklist.json
 ```
 
 The command reads every `reconstruction/recovered/**/block_*.cpp` and the
@@ -27,6 +28,24 @@ the checkout's ignored `.cache/` directory, and the source is never modified.
 An exact source-path reference in evidence is preferred. If older evidence
 omits one, correlating its entry address with a `block_*.cpp` filename remains
 an **inferred** association, not proof of translation-unit membership.
+
+The optional second output is a deterministic, priority-ordered **worklist**:
+
+- Prefer blocks with explicit source-path evidence over tentative entry-address
+  associations; prioritize smaller fully measured original function windows
+  within each confidence tier to make early objdiff pilots more tractable.
+- Include each candidate source SHA, original reference SHA when present,
+  source/evidence paths, known ARM function addresses and lengths, and the
+  unresolved compiler/ABI/relocation/objdiff checklist.
+- Leave `current_target_machine_match` set to `NOT_VERIFIED` for *every* task.
+  An historical matching claim is retained for review but never automatically
+  promoted to verified equivalence.
+- Do **not** automatically open issues, release claim cooldowns, run AI models,
+  access local originals, or populate machine-code success totals.
+
+Both `--out` and `--plan-out` must be inside the checkout's ignored `.cache/`
+directory and must be different paths. No output file is written unless its
+corresponding option is supplied.
 
 Interpretation:
 

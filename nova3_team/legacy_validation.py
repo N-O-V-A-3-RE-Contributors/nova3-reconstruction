@@ -15,6 +15,7 @@ import re
 
 
 SCHEMA = "nova3.legacy-revalidation/1"
+PLAN_SCHEMA = "nova3.legacy-revalidation-plan/1"
 BLOCK_RE = re.compile(r"block_([0-9a-fA-F]{8})\.cpp$")
 HASH_RE = re.compile(r"[a-fA-F0-9]{64}\Z")
 GRADE_ORDER = {"hypothesis": 0, "tested": 1, "behavioural": 2, "matching": 3}
@@ -97,10 +98,19 @@ def _metadata(evidence: dict, path: str) -> dict:
         grade = grade.strip().lower() if isinstance(grade, str) else "unreported"
         if grade not in GRADE_ORDER:
             grade = "unreported"
+        size = fn.get("size_bytes", fn.get("size"))
+        if not isinstance(size, int) or isinstance(size, bool) or not 0 < size <= 16_777_216:
+            size = None
         functions.append({"address": address, "reported_grade": grade,
-                          "reported_machine_match": _match_declaration(evidence, fn)})
+                          "reported_machine_match": _match_declaration(evidence, fn),
+                          "known_reference_size_bytes": size})
+    reference = evidence.get("reference")
+    reference_sha = reference.get("sha256") if isinstance(reference, dict) else None
+    if not isinstance(reference_sha, str) or not HASH_RE.fullmatch(reference_sha):
+        reference_sha = None
     return {"file": path, "source_path": _root_source(evidence),
             "source_sha256": _declared_source_sha(evidence),
+            "reference_sha256": reference_sha.lower() if reference_sha else None,
             "functions": functions}
 
 
@@ -165,7 +175,8 @@ def inventory(root: Path) -> dict:
             declared = evidence["source_sha256"]
             observed = ("MATCH" if declared == sha else "MISMATCH") if declared else "UNRECORDED"
             provenance.append({"file": evidence["file"],
-                               "source_sha256_check": observed})
+                               "source_sha256_check": observed,
+                               "reference_sha256": evidence["reference_sha256"]})
             for fn in evidence["functions"]:
                 address = fn["address"]
                 existing = all_functions.get(address)
@@ -210,26 +221,95 @@ def inventory(root: Path) -> dict:
             "evidence_read_warnings": issues}
 
 
+PLAN_CHECKS = [
+    "Validate the private original ELF's SHA-256 against the reference evidence; never upload it",
+    "Cross-check ELF virtual address, file offset, function length, ARM/Thumb mode and data islands with Ghidra or IDA",
+    "Establish the historical GCC/NDK candidate and independently record target, C++ ABI, flags and linker versions",
+    "Compile this source block into a local ARM relocatable object, preserve compiler/flags and candidate hashes",
+    "Compare instruction windows and relocation semantics with objdiff; do not mistake synthetic ASM bytes for source matching",
+    "Run independent behavioural regressions and record unresolved dependencies before upgrading any verification grade",
+]
+
+
+def revalidation_plan(report: dict) -> dict:
+    """Create a reproducible worklist, explicitly not a byte-match verdict."""
+    if report.get("schema") != SCHEMA:
+        raise ValueError("unsupported legacy inventory schema")
+    tasks = []
+    for block in report["blocks"]:
+        refs = sorted({entry["reference_sha256"] for entry in block["evidence"]
+                       if entry.get("reference_sha256")})
+        funcs = block["reported_function_evidence"]
+        sizes = [fn.get("known_reference_size_bytes") for fn in funcs]
+        known_sizes = all(isinstance(size, int) and size > 0 for size in sizes) and bool(sizes)
+        total = sum(sizes) if known_sizes else None
+        tasks.append({
+            "source_path": block["source_path"],
+            "source_sha256": block["source_sha256"],
+            "entry_address_hypothesis": block["entry_address_hypothesis"],
+            "known_function_ranges": [
+                {"address": fn["address"], "size_bytes": fn.get("known_reference_size_bytes")}
+                for fn in funcs
+            ],
+            "known_total_reference_bytes": total,
+            "reference_sha256": refs[0] if len(refs) == 1 else None,
+            "reference_sha256_conflict": len(refs) > 1,
+            "evidence_association": block["evidence_association"],
+            "evidence_paths": [entry["file"] for entry in block["evidence"]],
+            "historical_machine_match": block["historical_machine_match"],
+            "current_target_machine_match": "NOT_VERIFIED",
+            "source_revalidation_status": block["revalidation_status"],
+            "requires_private_original": True,
+            "checks_required_before_match_claim": list(PLAN_CHECKS),
+        })
+    rank = {"EXPLICIT_SOURCE_PATH": 0, "INFERRED_FROM_BLOCK_ADDRESS": 1, "NO_EVIDENCE": 2}
+    tasks.sort(key=lambda task: (
+        rank.get(task["evidence_association"], 3),
+        task["known_total_reference_bytes"] if task["known_total_reference_bytes"] is not None else 1 << 62,
+        task["source_path"],
+    ))
+    for number, task in enumerate(tasks, start=1):
+        task["review_priority"] = number
+    return {"schema": PLAN_SCHEMA,
+            "ordering": "explicit source evidence first, then inferred associations; smaller known reference windows first",
+            "candidate_original_compiler": "GCC 4.4.3 (.comment evidence only; flags unverified)",
+            "target_machine_matches_automatically_claimed": 0,
+            "tasks": tasks}
+
+
+def _private_destination(repo: Path, raw: Path, parser: argparse.ArgumentParser) -> Path:
+    destination = raw.expanduser().resolve()
+    try:
+        relative = destination.relative_to(repo)
+    except ValueError:
+        relative = None
+    if relative is None or not relative.parts or relative.parts[0] != ".cache":
+        parser.error("report paths must remain in this checkout's ignored .cache/ directory")
+    return destination
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1],
                         help="Read source-owned C++ and existing evidence from this checkout")
     parser.add_argument("--out", type=Path, help="Write local metadata-only JSON under .cache/")
+    parser.add_argument("--plan-out", type=Path,
+                        help="Write an ordered compiler/objdiff revalidation worklist under .cache/")
     parser.add_argument("--require-verified", action="store_true",
                         help="Exit nonzero until at least one independently verified target match exists")
     args = parser.parse_args(argv)
     report = inventory(args.repo)
-    if args.out:
-        repo = args.repo.resolve()
-        destination = args.out.expanduser().resolve()
-        try:
-            relative = destination.relative_to(repo)
-        except ValueError:
-            relative = None
-        if relative is None or not relative.parts or relative.parts[0] != ".cache":
-            parser.error("--out must be inside this checkout's ignored .cache/ directory")
+    repo = args.repo.resolve()
+    destinations = {}
+    for label, raw in (("audit", args.out), ("plan", args.plan_out)):
+        if raw is not None:
+            destinations[label] = _private_destination(repo, raw, parser)
+    if len(set(destinations.values())) != len(destinations):
+        parser.error("--out and --plan-out must use different paths")
+    for name, destination in destinations.items():
+        payload = report if name == "audit" else revalidation_plan(report)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(report["summary"], indent=2, sort_keys=True))
     return 2 if args.require_verified and not report["summary"]["verified_target_machine_matches"] else 0
 

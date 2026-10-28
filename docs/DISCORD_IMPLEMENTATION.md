@@ -87,7 +87,10 @@ RETAIL=analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so
 CYRUS=.cache/cyrus-debug/libNOVA3_neon.so
 
 python -m nova3_team.legacy_validation --repo . \
-  --out .cache/legacy-source-revalidation.json
+  --out .cache/legacy-source-revalidation.json \
+  --plan-out .cache/legacy-revalidation-worklist.json
+python -m nova3_team.linker_worksheet --reference "$RETAIL" \
+  --out .cache/premium-linker-worksheet.json --experimental-ld
 python -m nova3_team.version_compare --retail "$RETAIL" \
   --debug "$CYRUS" --out .cache/cyrus-vs-retail.json
 python -m nova3_team.donor_mapping \
@@ -102,6 +105,14 @@ The donor plan is **metadata-only**. It ranks independently bounded matching
 names and uses DWARF compilation-unit ownership as an **inferred hypothesis**.
 An optional `--ida .cache/ida-premium-functions.json` requires a byte-identical
 Premium ELF input fingerprint and does not certify image-base mappings.
+The legacy worklist contains all existing source blocks in deterministic
+review order, with exact source hashes, known function ranges and required
+compiler/ABI/relocation/oracle checks. It is **not** a queue of approved AI
+issues until each candidate is scoped and given real private reference access.
+The linker worksheet reads only observable linked ELF sections, PT_LOAD
+segments and REL/RELA relocation metadata. Its optional
+`.experimental.ld` is an explicitly non-production *layout hypothesis*;
+relinking with it is not expected to reproduce the original SHA.
 
 For a single source-owned C++ candidate, record an *exploratory* compiler
 profile (the example modern Clang is **not** the historically verified GCC):
