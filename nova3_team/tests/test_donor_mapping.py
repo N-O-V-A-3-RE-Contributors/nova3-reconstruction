@@ -105,6 +105,51 @@ class DonorMapTests(unittest.TestCase):
         self.assertEqual(result["qualifying_pairs"], 2)
         self.assertEqual(result["selected_pairs"], 2)
 
+    def test_nontrivial_mixed_pilot_not_consumed_by_four_byte_stubs(self):
+        data = fixture()
+        original = data["comparison"]["functions"][:1]
+        data["comparison"]["functions"] = original
+        for i in range(80):
+            data["comparison"]["functions"].append(dict(
+                name=f"_ZN5Stub{i}E", status="exact_bytes",
+                retail_raw_value=0x3000 + i * 16,
+                debug_raw_value=0x5000 + i * 16,
+                retail_size=4, debug_size=4,
+                retail_sha256=SHA_A, debug_sha256=SHA_A))
+        for i, size in enumerate((32, 48, 72, 136, 192, 224, 500, 700)):
+            data["comparison"]["functions"].append(dict(
+                name=f"real_{i}", status="exact_bytes",
+                retail_raw_value=0x9000 + i * 0x1000,
+                debug_raw_value=0x19000 + i * 0x1000,
+                retail_size=size, debug_size=size,
+                retail_sha256=SHA_A, debug_sha256=SHA_A))
+        result = donor_mapping.plan_donors(data, limit=12)
+        sizes = [x["retail_size"] for x in result["candidates"]]
+        self.assertNotIn(4, sizes[:9])
+        self.assertIn(32, sizes)
+        self.assertIn(136, sizes)
+        self.assertIn(500, sizes)
+        self.assertEqual(result["verified_decompilation_count"], 0)
+
+    def test_legacy_source_hints_are_unverified_and_sha_guarded(self):
+        data = fixture()
+        source = "reconstruction/recovered/libNOVA3_neon/block_00001000.cpp"
+        legacy = {"schema": donor_mapping.LEGACY_SCHEMA, "tasks": [
+            {"source_path": source, "source_sha256": SHA_B,
+             "reference_sha256": SHA_A, "review_priority": 1,
+             "known_function_ranges": [{"address": "0x1000", "size_bytes": 12}]}
+        ]}
+        result = donor_mapping.plan_donors(data, legacy=legacy)
+        self.assertEqual(result["candidates"][0]["legacy_source_path"], source)
+        self.assertEqual(result["selected_existing_source_candidates"], 1)
+        self.assertFalse(result["candidates"][0]["source_matching_verified"])
+        legacy["tasks"][0]["reference_sha256"] = SHA_B
+        result = donor_mapping.plan_donors(data, legacy=legacy)
+        self.assertNotIn("legacy_source_path", result["candidates"][0])
+        legacy["schema"] = "unexpected"
+        with self.assertRaisesRegex(donor_mapping.DonorError, "legacy"):
+            donor_mapping.plan_donors(data, legacy=legacy)
+
 
 if __name__ == "__main__":
     unittest.main()

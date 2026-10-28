@@ -26,6 +26,7 @@ jobs:
             --out .cache/ci-legacy-inventory.json \
             --plan-out .cache/ci-legacy-worklist.json
           bash -n tools/revalidate_local.sh
+          bash -n tools/run_compiler_pilot.sh
       - name: Observatory contributor/owner role tests
         run: |
           python -m unittest discover -s tools/observatory/tests -v

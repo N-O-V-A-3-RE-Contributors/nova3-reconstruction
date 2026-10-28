@@ -53,6 +53,7 @@ python3 -m nova3_team.version_compare --retail "$RETAIL" \
 echo '[3/6] Ranking donor function/TU hypotheses'
 python3 -m nova3_team.donor_mapping \
   --report "$OUT/cyrus-vs-premium.json" \
+  --legacy-worklist "$OUT/legacy-worklist.json" \
   --out "$OUT/donor-plan.json" --limit 64
 
 echo '[4/6] Recording linked relocations and experimental layout'
@@ -72,5 +73,6 @@ echo
 echo "Local evidence ready under: $OUT"
 echo 'No real C++ ARM instruction match, historical compiler or original'
 echo 'object/relocation/full-ELF hash equivalence has been verified by this setup.'
-echo 'Next: profile a candidate compiler; compile actual C++ and compare one'
-echo 'source function through nova3_team.compiler_matrix / object_compare.'
+echo 'Next: bash tools/run_compiler_pilot.sh (requires the local ARM NDK).'
+echo 'The pilot records actual C++ compilation/relocation comparisons;'
+echo 'matching still requires independent compiler and ABI confirmation.'

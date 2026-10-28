@@ -95,6 +95,48 @@ keeps all reports under ignored `.cache/revalidation/`, and never submits
 the original binaries to GitHub. If local paths differ, set the documented
 `NOVA3_RETAIL_ELF` and `NOVA3_CYRUS_ELF` variables.
 
+**Donor-ranking correction:** the first real report exposed a selection bias:
+all 64 choices were four-byte functions. The donor planner now seeds bounded
+24–96, 97–384 and 385–1024-byte categories before filling the rest, and
+prefers exact-size addresses already in the legacy C++ worklist. Supply
+`--legacy-worklist .cache/revalidation/legacy-worklist.json`; these are
+**source-present hypotheses**, never automatic original object or machine
+matching. Existing source and byte-identical Cyrus pairs remain distinct
+from an independently reproduced ARM source function.
+
+### Required ARM C++ compiler pilot before a large AI decompilation wave
+
+After a successful six-stage audit, on the maintainer's machine run:
+
+```sh
+bash tools/run_compiler_pilot.sh
+```
+
+The script independently confirms the original Premium SHA-256, fingerprints
+one locally installed Android NDK Clang candidate and its flags, compiles
+**existing C++** `block_000d2f10.cpp` for ARM32, and compares its actual
+relocatable `.o` function against the original Premium A32 code window.
+Results are in a fresh, ignored
+`.cache/revalidation/compiler-pilot-*/matrix/matrix.json` directory. Set
+`NOVA3_PILOT_CXX=/absolute/path/to/clang++` if the Android NDK is not at
+`/opt/android-ndk` or `ANDROID_NDK_HOME`. A compilation or comparison failure
+exits nonzero; no original code is published.
+
+The pilot is deliberately a **negative control**: its source-owned
+`CpuQueryContext*` calling convention differs from the original no-argument
+global-state function. Successful C++ compilation and a genuine mismatch
+confirm the comparison machinery, **not** that the historical compiler or
+ARM source matching is solved. The next AI issue must use the evidence to
+produce a correctly scoped ABI candidate, compare at least two nontrivial
+functions under explicit compiler profiles, and report differences. Never
+turn an exploratory Clang mismatch into a `MATCHED_ARM` claim.
+
+The shared Observatory's worker-health page uses the repository's dedicated
+`nova:presence` issue (#92), with an optional rate-limited, editable comment
+per worker. Its absence never blocks source tasks; a stale report does not
+prove a worker is offline. The worker must be updated and restarted after
+new reporting infrastructure is deployed.
+
 Equivalent individual commands, useful when one phase needs debugging:
 
 ```sh
@@ -110,6 +152,7 @@ python -m nova3_team.version_compare --retail "$RETAIL" \
   --debug "$CYRUS" --out .cache/cyrus-vs-retail.json
 python -m nova3_team.donor_mapping \
   --report .cache/cyrus-vs-retail.json \
+  --legacy-worklist .cache/revalidation/legacy-worklist.json \
   --out .cache/donor-plan.json --limit 64
 python -m nova3_team.object_matching stage "$RETAIL" \
   --out .cache/objmatch-donor --donor-plan .cache/donor-plan.json \
