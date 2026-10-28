@@ -346,7 +346,13 @@ def main(argv=None):
     if local_ref and Path(local_ref).expanduser().is_dir():
         command_line+=['--binary-root',str(Path(local_ref).expanduser().resolve())]
     if a.once: command_line+=['--once']
-    try:return dashboard.run(command_line,cwd=directory,repo=repo,provider=provider)
+    try:
+        # One-task runs are diagnostic checkpoints. Stream *all* worker logs
+        # directly rather than letting the legacy TUI show only its last few
+        # lines; this also makes a completed issue/PR visible before exit.
+        if a.once:
+            return command(command_line,cwd=directory).returncode
+        return dashboard.run(command_line,cwd=directory,repo=repo,provider=provider)
     except KeyboardInterrupt:
         msg('Stopped by user; next launch can continue from the local checkpoint.')
         return 130
