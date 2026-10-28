@@ -43,7 +43,7 @@ class MatchingTests(unittest.TestCase):
                 matching.stage(data, binary, out)
 
     def test_fail_closed_on_ambiguous_or_absent_symbol(self):
-        data = elf_fixture([symbol("bad", 0x1000, 8),
+        data = elf_fixture([symbol("bad", 0x1001, 8),
                             symbol("same_address", 0x1001, 16)])
         with self.assertRaisesRegex(matching.MatchingError, "no safe"):
             matching.select_functions(data)
