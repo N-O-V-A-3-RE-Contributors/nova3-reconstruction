@@ -40,3 +40,8 @@ NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh
 ```
 
 See [toolchain](docs/toolchain.md) for Android ARMv7 compilation, sanitizer commands, tool versions and setup limits. No Android APK or gameplay has been implemented. All source mappings carry limited verified scopes; unsupported ZIP descriptors/ZIP64 and flags are rejected.
+
+
+## Compiler-matched object research (experimental)
+
+See [offline object-matching and IDA/Ghidra workflow](docs/OBJECT_MATCHING.md) for ELF compiler fingerprinting, tentative translation units, private per-function assembly, global-asm C++ scaffolding and objdiff. This is a research-only loop; original `.o` files and a whole-`.so` hash match have **not** been recovered. The existing source-only CMake targets remain authoritative.

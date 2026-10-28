@@ -208,3 +208,9 @@ Do not merely repeat these instructions or write a plan. **Start executing**:
 - Do not launch child AI agents, install packages, run sudo, touch network accounts or merge PRs from an AI session.
 - Provider execution permissions must remain scoped; never configure unrestricted root access for community workers.
 - Further workflow details: docs/NOVA_TEAM.md.
+
+## Object-matching research track (Discord workflow update — 2026-10-28)
+
+Read `docs/OBJECT_MATCHING.md` before attempting translation-unit segmentation, recovered-reference objects, global-asm wrappers, relocations, linker scripts, objdiff, IDA Pro, or Irrlicht/JNI imports. The offline command `python -m nova3_team.object_matching` is an experimental bounded scaffold, NOT a verified original compiler pipeline. First fingerprint the target ELF and record actual compiler/ABI evidence. Group functions into explicitly hypothetical translation units; a linked `.so` cannot uniquely recover original `.o` files, their removed relocations or linker inputs. Per-function `.s`, synthesized objects, compiler profiles and objdiff reports must remain under ignored private local cache paths. A byte-identical synthetic-ASM build is not a source match or full-`.so` SHA match. Source C++, JNI and licensed/pinned Irrlicht components belong in independent source-only production targets only after their provenance and functionality are established.
+
+IDA Pro is an optional local metadata producer. Preserve Ghidra as the free default, cross-check image rebasing, ELF bytes, ARM/Thumb state and function bounds before using either backend. Workers must not upload proprietary executable bytes, assembly, pseudocode or local game files to GitHub; published progress should contain only reviewed metadata and source-owned code/tests. Do not auto-merge. Never replace or downgrade existing independently tested reconstruction to global assembly as the final product.
