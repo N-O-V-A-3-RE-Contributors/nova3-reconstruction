@@ -2,6 +2,19 @@
 
 ## Immediate evidence/worker priorities (2026-10-28)
 
+**Pre-start checkpoint:** Jason's local six-stage audit succeeded. It
+inventoried 25 old recovered C++ blocks, identified no stale source hashes,
+and established no new ARM source-byte matches. A donor shortlist of 64
+four-byte thunks was unrepresentative; the updated planner now stratifies
+nontrivial sizes and consumes existing-source worklist hints. The dedicated
+worker-presence issue is #92; it is not a queued coding issue.
+
+Next on the private laptop: `bash tools/run_compiler_pilot.sh`. Review its
+actual ARM object comparison, then assign one tightly scoped native ABI
+validation task to the Codex worker. Do not queue broad decompilation until
+a reproducible source C++ comparison has been demonstrated. A code-window
+match is not necessarily proof of the original compiler/linker or full `.so`.
+
 1. Run `python -m nova3_team.legacy_validation --repo . --out .cache/legacy-source-revalidation.json` against all previous decompilation work; review each historical match assertion before assigning new grades.
 2. Run `nova3_team.version_compare` and `nova3_team.donor_mapping` locally on the Cyrus debug and Premium retail ELF, then stage a small `object_matching` unit. Validate its boundaries in IDA or Ghidra and retain the full ELF hashes locally.
 3. Establish a reproducible GCC 4.4.3 *candidate* alongside modern cross-compilers; test one genuine C++ ARM candidate with `nova3_team.compiler_matrix` and `nova3_team.object_compare`. Record code-window/relocation and behavioural results; do not claim original compiler flags, TU objects or full `.so` SHA without evidence.

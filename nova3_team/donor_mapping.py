@@ -21,6 +21,7 @@ SCHEMA = "nova3.donor-plan/1"
 MAX_ROWS = 100_000
 MAX_SELECT = 512
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
+LEGACY_SCHEMA = "nova3.legacy-revalidation-plan/1"
 
 
 class DonorError(ValueError):
@@ -92,7 +93,69 @@ def _ida_index(data: dict | None, retail_hash: str) -> dict[int, dict]:
     return by_addr
 
 
-def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> dict:
+def _legacy_index(plan: dict | None, retail_hash: str) -> dict[int, dict]:
+    """Associate reviewed source candidates without awarding them a match grade.
+
+    A legacy file can cover multiple functions and old references may lack a
+    SHA.  Conflicting address ownership is not evidence and is ignored.
+    """
+    if plan is None:
+        return {}
+    if not isinstance(plan, dict) or plan.get("schema") != LEGACY_SCHEMA:
+        raise DonorError("unsupported legacy revalidation worklist")
+    tasks = plan.get("tasks")
+    if not isinstance(tasks, list) or len(tasks) > MAX_ROWS:
+        raise DonorError("invalid legacy revalidation worklist")
+    by_address: dict[int, list[dict]] = defaultdict(list)
+    for task in tasks:
+        if not isinstance(task, dict):
+            raise DonorError("malformed legacy worklist row")
+        sha = task.get("reference_sha256")
+        if sha is not None and _hexhash(sha) != retail_hash:
+            continue  # A different edition cannot be a Premium source hint.
+        path = task.get("source_path")
+        source_sha = task.get("source_sha256")
+        ranges = task.get("known_function_ranges", [])
+        if (not isinstance(path, str) or not path.startswith("reconstruction/recovered/")
+                or not path.endswith(".cpp") or ".." in path
+                or not isinstance(source_sha, str) or not _SHA.fullmatch(source_sha)
+                or not isinstance(ranges, list) or len(ranges) > 128):
+            continue
+        for row in ranges:
+            if not isinstance(row, dict):
+                continue
+            try:
+                address = int(row.get("address", ""), 0)
+            except (TypeError, ValueError):
+                continue
+            size = row.get("size_bytes")
+            if 0 <= address < (1 << 32) and type(size) is int and size > 0:
+                by_address[address & ~1].append(dict(
+                    legacy_source_path=path, legacy_source_sha256=source_sha,
+                    legacy_reference_size=size,
+                    legacy_review_priority=task.get("review_priority")))
+    return {a: rows[0] for a, rows in by_address.items() if len(rows) == 1}
+
+
+def _pilot_tier(size: int) -> int:
+    """Prefer measurable nontrivial functions, not one-instruction thunks."""
+    if 24 <= size <= 96:
+        return 0
+    if 97 <= size <= 384:
+        return 1
+    if 385 <= size <= 1024:
+        return 2
+    if 12 <= size < 24:
+        return 3
+    if 1024 < size <= 2048:
+        return 4
+    if size > 2048:
+        return 5
+    return 6
+
+
+def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None,
+                legacy: dict | None = None) -> dict:
     """Select safe high-value donor hypotheses with no matching claim.
 
     Retail stays authoritative.  Only exact unique symbol correspondences with
@@ -112,6 +175,7 @@ def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> di
         raise DonorError("invalid or oversized compared function inventory")
     retail_cus, debug_cus = _unit_map(retail), _unit_map(debug)
     ida_index = _ida_index(ida, rhash)
+    legacy_index = _legacy_index(legacy, rhash)
     status_counts = Counter()
     candidates = []
     for row in rows:
@@ -139,6 +203,9 @@ def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> di
                      "AMBIGUOUS_IDA_RECORD" if ida_row.get("ambiguous") else
                      "IDA_BYTE_MAPPING_VERIFIED" if ida_row.get("byte_mapping_verified") is True else
                      "IDA_METADATA_ONLY")
+        legacy_hint = legacy_index.get(rv & ~1)
+        if legacy_hint and legacy_hint["legacy_reference_size"] != rs:
+            legacy_hint = None
         candidates.append(dict(name=name, retail_address=rv & ~1,
                                debug_address=dv & ~1, retail_size=rs, debug_size=ds,
                                donor_byte_status=row["status"],
@@ -148,11 +215,16 @@ def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> di
                                ida_status=ida_state,
                                original_object_recovered=False,
                                original_compiler_verified=False,
-                               source_matching_verified=False))
-    # Prefer unchanged debug/retail code and smaller bounded slices for a first
-    # compiler-validation pilot, but do not conflate identical bytes with source.
-    candidates.sort(key=lambda x: (x["donor_byte_status"] != "exact_bytes",
-                                   x["retail_size"], x["retail_address"], x["name"]))
+                               source_matching_verified=False,
+                               **(legacy_hint or {})))
+    # Within manageable size bands prefer source already requiring revalidation
+    # and unchanged Cyrus/Premium instruction windows. Four-byte return stubs
+    # remain available, but must not monopolize the first research batch.
+    candidates.sort(key=lambda x: (
+        _pilot_tier(x["retail_size"]),
+        "legacy_source_path" not in x,
+        x["donor_byte_status"] != "exact_bytes",
+        x["retail_size"], x["retail_address"], x["name"]))
     # The version comparison retains separately named symbol aliases.  A real
     # function can have many names; never stage its address twice or count two
     # names as independent verified reconstruction work.
@@ -164,12 +236,34 @@ def plan_donors(report: dict, *, limit: int = 64, ida: dict | None = None) -> di
         seen_retail.add(row["retail_address"])
         seen_debug.add(row["debug_address"])
         unique.append(row)
-    selected = unique[:limit]
+    # Seed a short representative batch across three nontrivial size bands;
+    # then fill by stable priority. This remains a ranked shortlist, not proof
+    # of compiler, TU ownership, behaviour or C++ reconstruction.
+    selected = []
+    selected_addresses: set[int] = set()
+    for tier in (0, 1, 2):
+        for row in (x for x in unique if _pilot_tier(x["retail_size"]) == tier):
+            if len([x for x in selected if _pilot_tier(x["retail_size"]) == tier]) >= 4:
+                break
+            if len(selected) >= limit:
+                break
+            selected.append(row)
+            selected_addresses.add(row["retail_address"])
+    for row in unique:
+        if len(selected) >= limit:
+            break
+        if row["retail_address"] not in selected_addresses:
+            selected.append(row)
+            selected_addresses.add(row["retail_address"])
     return dict(schema=SCHEMA, retail_sha256=rhash, debug_sha256=dhash,
-                selection="exact_unique_names_first_smallest_functions",
+                selection="representative_nontrivial_sizes_then_existing_source_and_exact_bytes",
                 total_pairs=len(rows), qualifying_pairs=len(unique),
                 skipped_pairs=len(rows)-len(unique),
                 selected_pairs=len(selected), status_counts=dict(sorted(status_counts.items())),
+                selected_size_tiers=dict(sorted(Counter(
+                    _pilot_tier(x["retail_size"]) for x in selected).items())),
+                selected_existing_source_candidates=sum(
+                    "legacy_source_path" in x for x in selected),
                 candidates=selected, verified_decompilation_count=0,
                 caveat="DWARF/IDA groupings are metadata hypotheses; byte identity across game builds is not C++ reconstruction or original-object proof.")
 
@@ -179,6 +273,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--report", type=Path, required=True,
                    help="Private JSON from nova3_team.version_compare")
     p.add_argument("--ida", type=Path, help="Optional private IDA metadata JSON")
+    p.add_argument("--legacy-worklist", type=Path,
+                   help="Optional private legacy revalidation worklist; source hints only")
     p.add_argument("--out", type=Path, required=True, help="Private JSON under repo .cache")
     p.add_argument("--limit", type=int, default=64)
     args = p.parse_args(argv)
@@ -191,7 +287,9 @@ def main(argv: list[str] | None = None) -> int:
             raise DonorError("output must be .json under repository .cache")
         report = json.loads(args.report.expanduser().read_text(encoding="utf-8"))
         ida = json.loads(args.ida.expanduser().read_text(encoding="utf-8")) if args.ida else None
-        result = plan_donors(report, limit=args.limit, ida=ida)
+        legacy = (json.loads(args.legacy_worklist.expanduser().read_text(encoding="utf-8"))
+                  if args.legacy_worklist else None)
+        result = plan_donors(report, limit=args.limit, ida=ida, legacy=legacy)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print("selected %d donor hypotheses; SOURCE MATCH UNVERIFIED" % result["selected_pairs"])

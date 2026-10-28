@@ -18,6 +18,25 @@ python -m nova3_team.worker run --provider codex
 
 Use `--once` for a single task. Local clones and work attempts live in `~/.cache/nova3-team`, separate from this repository. Keep the computer awake for continuous execution. If all tasks are claimed, the worker polls until new work arrives.
 
+### Pre-AI compiler research checkpoint (maintainer)
+
+Run `bash tools/revalidate_local.sh` once after updating the repository, then
+run `bash tools/run_compiler_pilot.sh` before assigning broad native function
+decompilation tasks. The first command inventories source and ranks
+representative nontrivial Cyrus donors; the second attempts a real ARM32
+compile and original instruction-window comparison. Its deliberately
+different-ABI C++ pilot normally **mismatches**. That is useful test evidence,
+not an original compiler or matching source claim. Keep reports in `.cache`;
+create small AI issues only after reviewing the first result. Other source-only
+render/asset/JNI milestones may continue without a byte-matched compiler.
+
+The Observatory's `W` tab reads contributor heartbeat comments from the
+dedicated [worker-presence issue](https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction/issues/92).
+Worker reporting is best-effort and privacy-minimised: GitHub account,
+random installation ID, provider, task number and status only. It never
+uploads local code, paths or tokens. Start a new worker after `git pull` to
+register; a missing/stale heartbeat is not proof that a worker is offline.
+
 ### Provider timeouts, private logs and quarantine
 
 The worker now streams AI stdout/stderr directly to private, permission-limited
