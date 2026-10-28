@@ -25,6 +25,8 @@ def fingerprint(error):
 
 def code_for(error):
     v = str(error).casefold()
+    if 'provider session timed out' in v or 'ai provider timeout' in v:
+        return 'PROVIDER_TIMEOUT'
     if 'head sha can\'t be blank' in v or 'base sha can\'t be blank' in v:
         return 'INVALID_PR_REFERENCE'
     if any(x in v for x in PERMANENT_PR):
@@ -41,7 +43,8 @@ def failure_decision(previous, error):
     code = code_for(error)
     count = 1 + (int(previous.get('failure_count', 0)) if previous.get('failure_key') == key else 0)
     deterministic = code in ('INVALID_PR_REFERENCE', 'PR_CONFIGURATION_ERROR',
-                             'NO_SOURCE_PROGRESS', 'SOURCE_GUARD_FAILURE')
+                             'NO_SOURCE_PROGRESS', 'SOURCE_GUARD_FAILURE',
+                             'PROVIDER_TIMEOUT')
     blocked = deterministic or count >= 2
     delay = 0 if blocked else 600  # One retry after 10m for transient failures.
     return dict(code=code, key=key, count=count, blocked=blocked, delay=delay)

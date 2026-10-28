@@ -88,6 +88,35 @@ Before writing `.ld` or reconstructing relocations:
 
 The actual upstream **Irrlicht engine version/fork, license and modifications used by N.O.V.A. 3 are not yet verified**. Do not copy a random version into reconstructed modules or replace game-specific engine code with generic Irrlicht. Search surviving symbols, RTTI, strings, headers and calls to identify the version, inspect source license obligations, then import an explicitly pinned *source-available* version under `reconstruction/third_party/` (with a reproducible manifest and source attribution). Keep engine adapters in `reconstruction/engine/` and recovered JNI interfaces in `reconstruction/android/`; compile them in source-only tests. Original JNI `.so` files remain offline evidence.
 
+## Cyrus donor and compiler-matrix extensions (2026-10-28)
+
+The new local-only `nova3_team.donor_mapping` consumes the **complete**
+`nova3_team.version_compare` Premium-versus-Cyrus report, verifies edition
+SHA metadata, ranks small named function candidates, and adds bounded
+DWARF compile-unit and optional IDA hints. Its output stays under
+`.cache/donor-plan.json`. Pass `--donor-plan .cache/donor-plan.json` to
+`object_matching stage` to group synthetic source units by *inferred*
+ownership. No debug-only function is automatically treated as a Premium
+original-TU definition.
+
+`nova3_team.compiler_matrix` compiles source-owned C++ with one to eight
+explicit, fingerprinted ARM compiler profiles sequentially and compares
+function bytes with the original linked ELF through
+`nova3_team.object_compare`. The comparator validates ELF32 ARM ET_REL
+symbol bounds and records whether candidate relocations affect the selected
+window. Output is metadata/hashes only and stays in ignored local cache.
+Code-window equality, even with no detected relocations, is **not** an
+original object/ABI/whole-.so match without independent evidence.
+
+`nova3_team.legacy_validation` audits all existing
+`reconstruction/recovered/**/block_*.cpp` source and historical
+`coordination/evidence/*.json` declarations without discarding old code.
+Every block requires current compiler-aware review. Historical short
+window-match reports are preserved as claims for independent rechecking,
+not automatically promoted or silently downgraded. Full executable commands
+and the 11-step Discord acceptance matrix are in
+[`docs/DISCORD_IMPLEMENTATION.md`](DISCORD_IMPLEMENTATION.md).
+
 ## Automation/agent acceptance conditions
 
 - GitHub holds source, scripts, test results and **allowlisted metadata only**. Never post APKs/OBBs/ELFs, original code bytes, extracted `.s`, obfuscated decompiler dumps, IDA databases or logs with private paths.

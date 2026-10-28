@@ -402,12 +402,14 @@ def classify_health(service: dict, gh_error: str | None, counts: dict, events: d
     last_event = events.get("last_event")
     if last_launch and events.get("unfinished") and now - last_launch > timedelta(minutes=45):
         return "QUIET", "No logged progress for >45m since AI launch (not proof of a hang)"
-    if counts.get("BLOCKED", 0):
-        return "ATTENTION", "Some tasks are blocked; others may still run"
-    if counts.get("QUEUED", 0) == 0 and counts.get("CLAIMED", 0) == 0:
-        return "IDLE", "No claimable tasks; feeder may replenish"
     if gh_error:
         return "DEGRADED", "GitHub refresh failed; showing cached data"
+    if counts.get("QUEUED", 0) == 0 and counts.get("CLAIMED", 0) == 0:
+        return "IDLE", ("Worker polling; blocked tasks need maintainer review"
+                        if counts.get("BLOCKED", 0) else
+                        "No claimable tasks; feeder may replenish")
+    if counts.get("BLOCKED", 0):
+        return "RUNNING", "Worker active; separate blocked tasks need maintainer review"
     return "RUNNING", "service active; activity depends on worker log"
 
 
@@ -1054,8 +1056,11 @@ class Observatory:
         self.put(y+4, 4, "MAIN PID", "muted")
         self.put(y+4, 17, self.snap.service.get("pid", "?"), "normal")
         self.put(y+5, 4, "ACTIVE TASK", "muted")
-        task = events.get("last_task")
-        self.put(y+5, 17, f"#{task}" if task else "None observed", "cyan")
+        in_flight = events.get("unfinished") or []
+        task = in_flight[-1] if in_flight else None
+        last = events.get("last_task")
+        self.put(y+5, 17, f"#{task}" if task else
+                 f"None (last #{last})" if last else "None observed", "cyan")
         self.put(y+6, 4, "LAST LOG", "muted")
         self.put(y+6, 17, fmt_age(events.get("last_event")), "normal")
         self.put(y+7, 4, "AI SESSIONS", "muted")

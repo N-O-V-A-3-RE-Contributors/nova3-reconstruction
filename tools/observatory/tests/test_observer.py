@@ -74,6 +74,7 @@ class Tests(unittest.TestCase):
         ]
         ev=o.parse_log_events(lines)
         self.assertEqual(ev['last_task'],29)
+        self.assertEqual(ev['unfinished'],[])
         self.assertEqual(ev['sessions'][0]['seconds'],600)
         self.assertEqual(o.median_session_seconds(ev),600)
         self.assertEqual(len(ev['failures']),1)
@@ -140,7 +141,13 @@ class Tests(unittest.TestCase):
 
     def test_health_blocked(self):
         health,_=o.classify_health({'active':'active'},None,{'QUEUED':5,'CLAIMED':0,'BLOCKED':1},{})
-        self.assertEqual(health,'ATTENTION')
+        self.assertEqual(health,'RUNNING')
+
+    def test_health_blocked_but_worker_idle(self):
+        health,reason=o.classify_health({'active':'active'},None,
+            {'QUEUED':0,'CLAIMED':0,'BLOCKED':3},{})
+        self.assertEqual(health,'IDLE')
+        self.assertIn('maintainer',reason)
 
     def test_health_degraded(self):
         health,_=o.classify_health({'active':'active'},'HTTP 500',{'QUEUED':5,'CLAIMED':0,'BLOCKED':0},{})
