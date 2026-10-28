@@ -18,6 +18,10 @@ jobs:
           python-version: '3.12'
       - name: Source hygiene
         run: python -m nova3_team.guard --repo . --all
+      # Synthetic public metadata only: this runner has no proprietary ELF.
+      # Green fixtures never certify source matching or original-local attestations.
+      - name: Fail-closed evidence gate fixtures (metadata and source identity only)
+        run: python -m unittest nova3_team.tests.test_verification_gate -v
       - name: Unit tests for collaboration runtime
         run: python -m unittest discover -s nova3_team/tests -v
       - name: Audit all historical recovered source under compiler-aware policy
