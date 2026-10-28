@@ -9,8 +9,9 @@
   },
   "blockers": [
     "Historical GCC executable/profile and full ABI/compiler/linker provenance remain UNKNOWN",
-    "Three candidate relocations unresolved in primary ET_REL comparison; raw 44-byte window is unequal",
-    "Initializer not reconstructed; no ARM runtime or original behavioral oracle executed"
+    "Raw ET_REL window still mismatches; original pre-link object and relocation history NOT_AVAILABLE",
+    "Initializer not reconstructed; no ARM runtime or original behavioral oracle executed",
+    "Original PLT/dynamic binding, EHABI and whole-library equivalence not established by absolute-symbol scratch link"
   ],
   "candidate_matrix": {
     "caveat": "Code-window checks are evidence, not recovered original .o/relocations/linker inputs or full source equivalence.",
@@ -266,7 +267,7 @@
     "source_symbol": "nova3_recovered_cpu_count",
     "whole_shared_library_sha256_matched": false
   },
-  "next_experiment": "Review three relocation records and perform one explicitly mapped source-only scratch link at the independently observed function/PLT/state/initializer addresses. Keep linked-window result separate from original-object or historical-compiler claims.",
+  "next_experiment": "Stop after this function. Independently fingerprint a locally supplied historical ARM GCC/profile before compiler claims; initializer/data/original pthread behavior needs a separately scoped runtime/oracle task.",
   "pr_status": "NOT_SUBMITTED: explicit session prohibition on modifying GitHub state; supervisor must submit for human review",
   "preserved_portable_source": {
     "abi": "Source-owned CpuQueryContext*; deliberate negative control",
@@ -274,6 +275,7 @@
     "sha256": "7825ea14f579d7d44bc6d2ddd32a4a24a9e798e2b2e2ef91f00085dd3561c30d",
     "unchanged": true
   },
+  "prior_checkpoint_task": 94,
   "private_handoff": ".cache/revalidation/task94/",
   "production_integration": false,
   "reference": {
@@ -319,6 +321,412 @@
     "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
     "size": 44,
     "window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca"
+  },
+  "relocation_followup": {
+    "attempts_corrected": [
+      {
+        "exit_code": 1,
+        "reason": "Test assertion incorrectly rejected compared_bytes metadata key",
+        "resolution": "Recursive checks forbid binary values and code fields while permitting counts; final 24 tests pass",
+        "stage": "Initial fixture suite"
+      },
+      {
+        "attempt_count": 3,
+        "exit_code": 1,
+        "reason": "Capstone represents modified immediates using a separate fourth rotation operand; initially omitted",
+        "resolution": "Apply A32 rotate-right before evaluating address; full independent check exits 0",
+        "stage": "Private PLT evaluator"
+      },
+      {
+        "exit_code": 1,
+        "reason": "Multicall lld requires a driver selector; resolving ld.lld symlink changes invocation behavior",
+        "resolution": "Record resolved executable hash but invoke ld.lld --version, which exits 0",
+        "stage": "Resolved lld --version"
+      },
+      {
+        "exit_code": 1,
+        "reason": "Direct /tmp script invocation omitted checkout from Python module search path",
+        "resolution": "Rerun with task-local PYTHONPATH pointing at checkout; evidence assertions pass",
+        "stage": "Private evidence script launch"
+      }
+    ],
+    "budget": "One source-owned function; 30-second subprocess timeouts; no heavyweight analyzer or network",
+    "commands": [
+      {
+        "argv_template": [
+          "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++",
+          "--target=armv7a-linux-androideabi21",
+          "-marm",
+          "-mfloat-abi=softfp",
+          "-mfpu=neon",
+          "-O2",
+          "-fPIC",
+          "-std=c++03",
+          "-fomit-frame-pointer",
+          "-c",
+          "-x",
+          "c++",
+          "reconstruction/research/arm32_cpu_query_candidate.cpp",
+          "-o",
+          "$NOVA3_PILOT_SCRATCH/candidate.o"
+        ],
+        "exit_code": 0
+      },
+      {
+        "argv_template": [
+          "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld",
+          "-m",
+          "armelf_linux_eabi",
+          "--build-id=none",
+          "-T",
+          "$NOVA3_PILOT_SCRATCH/layout.ld",
+          "$NOVA3_PILOT_SCRATCH/candidate.o",
+          "-o",
+          "$NOVA3_PILOT_SCRATCH/linked.elf"
+        ],
+        "exit_code": 0
+      },
+      {
+        "argv_template": [
+          "python3",
+          "-m",
+          "unittest",
+          "nova3_team.tests.test_relocation_probe",
+          "nova3_team.tests.test_compiler_matrix",
+          "nova3_team.tests.test_object_compare",
+          "-v"
+        ],
+        "exit_code": 0
+      },
+      {
+        "argv_template": [
+          "g++",
+          "-std=c++17",
+          "-O2",
+          "-Wall",
+          "-Wextra",
+          "-Werror",
+          "-pedantic",
+          "-pthread",
+          "reconstruction/research/arm32_cpu_query_candidate.cpp",
+          "reconstruction/tests/research/arm32_cpu_query_candidate_test.cpp",
+          "-Wl,--wrap=pthread_once",
+          "-o",
+          "$NOVA3_PILOT_SCRATCH/cpu-query-test"
+        ],
+        "exit_code": 0
+      },
+      {
+        "argv_template": [
+          "python3",
+          "-m",
+          "nova3_team.relocation_probe",
+          "--reference",
+          "$NOVA3_RETAIL_ELF",
+          "--object",
+          "$NOVA3_PILOT_SCRATCH/candidate.o",
+          "--linked",
+          "$NOVA3_PILOT_SCRATCH/linked.elf",
+          "--address",
+          "0xd2f10",
+          "--symbol",
+          "nova3_arm32_cpu_count_candidate",
+          "--target",
+          "pthread_once=0xd2910",
+          "--target",
+          "nova3_arm32_cpu_state=0xd96598",
+          "--target",
+          "nova3_arm32_cpu_initialize=0xd2f98",
+          "--expected-reference-sha256",
+          "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+          "--expected-window-sha256",
+          "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca"
+        ],
+        "exit_code": 0
+      },
+      {
+        "command_template": "python3 -m nova3_team.preflight --root \"$NOVA3_REFERENCE_PROJECT\" --out \"$NOVA3_PILOT_SCRATCH/preflight.json\"",
+        "exit_code": 0,
+        "observation": "4/4 reference files; no analyzer run"
+      },
+      {
+        "command_template": "python3 -m nova3_team.object_matching fingerprint \"$NOVA3_RETAIL_ELF\" --out \"$NOVA3_PILOT_SCRATCH/fingerprint.json\"",
+        "exit_code": 0
+      },
+      {
+        "command_template": "python3 -m nova3_team.object_matching profile \"$NOVA3_PILOT_CXX\" --flag=--target=armv7a-linux-androideabi21 --flag=-marm --flag=-mfloat-abi=softfp --flag=-mfpu=neon --flag=-O2 --flag=-fPIC --flag=-std=c++03 --flag=-fomit-frame-pointer --out \"$NOVA3_PILOT_SCRATCH/clang-omit-frame.json\"",
+        "exit_code": 0
+      },
+      {
+        "command_template": "\"$NOVA3_REFERENCE_PYTHON\" \"$NOVA3_PILOT_SCRATCH/verify_reference.py\"",
+        "exit_code": 0,
+        "observation": "Private read-only ELF+Capstone independent SHA, state, mappings, call/literal and PLT/GOT checks"
+      },
+      {
+        "command_template": "readelf -rW \"$NOVA3_PILOT_SCRATCH/candidate.o\"",
+        "exit_code": 0,
+        "observation": "Three .rel.text records and one .rel.ARM.exidx PREL31"
+      },
+      {
+        "command_template": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf --unwind \"$NOVA3_PILOT_SCRATCH/linked.elf\"",
+        "exit_code": 0,
+        "observation": "Two scratch unwind entries; no original unwind comparison"
+      }
+    ],
+    "compiler_profile": {
+      "compiler_executable_sha256": "d326ed4fc4f71e5315b9ce388fc23ec792f81652ca7b29e66294de6ed2520844",
+      "compiler_version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+      "flags": [
+        "--target=armv7a-linux-androideabi21",
+        "-marm",
+        "-mfloat-abi=softfp",
+        "-mfpu=neon",
+        "-O2",
+        "-fPIC",
+        "-std=c++03",
+        "-fomit-frame-pointer"
+      ],
+      "header_sha256": "0a3817dfa6977a3c30f403508289167cd176b8b69bb0aca322fc724e9494250c",
+      "historical_profile": false,
+      "matches_prior_omit_frame_object_hash": true,
+      "ndk_revision": "29.0.14206865",
+      "object_sha256": "9e15ea3849b13de32342e8b1148baa8618bd43e57b7d0bdada96a8ef536cd996",
+      "profile_sha256": "b69568a9bcd21c0002d604636312a2832fcd6cbc24aca22f528eab2b18a8d0bf",
+      "source_sha256": "ea7f1ae3cf95610d2f22ca566e9756d8591f16f99126634020b85cd6bc2dd46b"
+    },
+    "date": "2026-10-28",
+    "diagnostic": {
+      "address": 864016,
+      "behavior_verified": false,
+      "candidate_object_sha256": "9e15ea3849b13de32342e8b1148baa8618bd43e57b7d0bdada96a8ef536cd996",
+      "candidate_symbol": "nova3_arm32_cpu_count_candidate",
+      "candidate_thumb": false,
+      "historical_compiler_verified": false,
+      "linked_file_offset": 12048,
+      "linked_sha256": "a5fcece51104226edf780de56f7feabbe3009e971a7c509a4a26003516942d28",
+      "linked_vs_reference": {
+        "actual_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "compared_bytes": 44,
+        "differing_byte_count": 0,
+        "differing_offsets": [],
+        "equal": true,
+        "expected_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "status": "RELOCATED_LINKED_WINDOW_MATCH"
+      },
+      "linker_vs_resolved": {
+        "actual_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "compared_bytes": 44,
+        "differing_byte_count": 0,
+        "differing_offsets": [],
+        "equal": true,
+        "expected_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "status": "LINKER_AGREES"
+      },
+      "original_object_match": "NOT_AVAILABLE",
+      "original_prelink_relocations_recovered": false,
+      "outside_function_relocations": [
+        {
+          "section": ".ARM.exidx",
+          "section_offset": 0,
+          "symbol": ".text",
+          "type": "R_ARM_PREL31"
+        }
+      ],
+      "policy": "All bytes compared; no masking. Explicit candidate symbol mappings; direct A32 CALL only. Outside-window relocations not applied.",
+      "raw": {
+        "actual_sha256": "b33a554ec0973c93fb5ce97e90ef8039f5b15e86260a112dc182308cc484e31e",
+        "compared_bytes": 44,
+        "differing_byte_count": 6,
+        "differing_offsets": [
+          24,
+          25,
+          36,
+          37,
+          38,
+          40
+        ],
+        "equal": false,
+        "expected_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "status": "RAW_MISMATCH"
+      },
+      "reference_file_offset": 864016,
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "reference_window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+      "relocated_linked_window": "RELOCATED_LINKED_WINDOW_MATCH",
+      "relocations": [
+        {
+          "addend": -8,
+          "expression_value": -1568,
+          "offset": 24,
+          "place": 864040,
+          "section": ".text",
+          "section_offset": 24,
+          "symbol": "pthread_once",
+          "symbol_type": 0,
+          "symbol_value": 862480,
+          "type": "R_ARM_CALL"
+        },
+        {
+          "addend": 16,
+          "expression_value": 13383284,
+          "offset": 36,
+          "place": 864052,
+          "section": ".text",
+          "section_offset": 36,
+          "symbol": "nova3_arm32_cpu_state",
+          "symbol_type": 0,
+          "symbol_value": 14247320,
+          "type": "R_ARM_REL32"
+        },
+        {
+          "addend": 16,
+          "expression_value": 112,
+          "offset": 40,
+          "place": 864056,
+          "section": ".text",
+          "section_offset": 40,
+          "symbol": "nova3_arm32_cpu_initialize",
+          "symbol_type": 0,
+          "symbol_value": 864152,
+          "type": "R_ARM_REL32"
+        }
+      ],
+      "resolved": {
+        "actual_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "compared_bytes": 44,
+        "differing_byte_count": 0,
+        "differing_offsets": [],
+        "equal": true,
+        "expected_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+        "status": "RESOLVED_WINDOW_EQUAL"
+      },
+      "schema": "nova3.relocation-probe/1",
+      "size": 44,
+      "whole_so_sha_match": false
+    },
+    "diagnostic_source_sha256": "56abd0bbbef38b20f4eb4913486f0cb4a5e03326e834b079497098c90e44b3a5",
+    "diagnostic_test_sha256": "00f22047ea78a44c4b9ec1918e27db05409e43e5407fa0a4ac1f16d2b829df05",
+    "documented_recipe_reexecuted": {
+      "exit_code": 0,
+      "python_tests_passed": 24,
+      "same_linked_elf_sha256": true,
+      "same_object_sha256": true,
+      "scratch_paths": "Disposable /tmp; script extracted directly from documented recipe"
+    },
+    "github_state_modified": false,
+    "grades": {
+      "BEHAVIOR_VERIFIED": false,
+      "HISTORICAL_COMPILER_VERIFIED": false,
+      "ORIGINAL_OBJECT_MATCH": "NOT_AVAILABLE",
+      "RAW_MISMATCH": true,
+      "RELOCATED_LINKED_WINDOW_MATCH": true,
+      "WHOLE_SO_SHA_MATCH": false
+    },
+    "link_assumptions": {
+      "function_address": "0x000d2f10",
+      "initializer": "0x000d2f98",
+      "layout_ld_sha256": "1f640e582a438d25f502a48e5be3875e62ead1a0472845c6cc5392c36347974d",
+      "layout_reproduction": "docs/progress/ARM_COMPILER_PILOT.md: Reproduce #97 offline",
+      "original_plt_regenerated": false,
+      "pthread_once": "0x000d2910",
+      "runtime_usable": false,
+      "state": "0x00d96598",
+      "symbol_definitions": "Absolute symbols representing observed destinations. No original code or fake executable providers inserted. Scratch ELF was never run."
+    },
+    "linker": {
+      "executable": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/lld",
+      "executable_sha256": "9f7df260a1a6cd02e3274c1d57ff22b2745791b85fb38a958051ebcd31e42900",
+      "invoked_as": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld",
+      "version": "LLD 21.0.0 (/mnt/disks/build-disk/src/googleplex-android/llvm-r563880-release/out/llvm-project/llvm 5e96669f06077099aa41290cdb4c5e6fa0f59349) (compatible with GNU linkers)",
+      "version_exit_code": 0,
+      "version_sha256": "bd4cf6ebcf487c5d780cf5223e11047580326f29ac8dfb9f23ab39d079ca37f2"
+    },
+    "pr_submitted": false,
+    "private_handoff": "$NOVA3_PILOT_SCRATCH (session used /tmp/nova3-task97; temporary, regenerate via documented commands)",
+    "production_integration": false,
+    "reference_recheck": {
+      "address": 864016,
+      "call_destination": 862480,
+      "call_site": 864040,
+      "literal_checks": [
+        {
+          "literal_slot": 864052,
+          "pc_base": 864036,
+          "resolved_target": 14247320,
+          "symbol": "g_once"
+        },
+        {
+          "literal_slot": 864056,
+          "pc_base": 864040,
+          "resolved_target": 864152,
+          "symbol": "android_cpuInit"
+        }
+      ],
+      "mapping_symbol": "$a",
+      "plt_got_address": 14167644,
+      "plt_relocation": "R_ARM_JUMP_SLOT",
+      "plt_symbol": "pthread_once",
+      "pt_load_file_offset": 864016,
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "retained_dynamic_relocation_offsets_in_window": [],
+      "section_file_offset": 864016,
+      "size": 44,
+      "state": "A32",
+      "window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca"
+    },
+    "scratch_link": {
+      "dynamic_relocation_section_count": 0,
+      "ehabi_original_equivalence": "NOT_CHECKED",
+      "et_rel_exidx_size": 8,
+      "first_prel31_addend": 0,
+      "first_prel31_correct": true,
+      "first_prel31_resolved_target": 864016,
+      "linked_exidx_address": 864060,
+      "linked_exidx_size": 16,
+      "plt_section_present": false,
+      "second_entry": "LLD inserted end-of-text CantUnwind sentinel; not original metadata",
+      "veneer_symbol_count": 0
+    },
+    "task": 97,
+    "tests": {
+      "arm_runtime_execution": false,
+      "existing_regressions": 8,
+      "host_compile_exit_code": 0,
+      "host_modes": [
+        {
+          "exit_code": 0,
+          "mode": "positive"
+        },
+        {
+          "exit_code": 0,
+          "mode": "zero"
+        },
+        {
+          "exit_code": 0,
+          "mode": "negative"
+        },
+        {
+          "exit_code": 0,
+          "mode": "minimum"
+        },
+        {
+          "exit_code": 0,
+          "mode": "maximum"
+        }
+      ],
+      "host_test_binary_sha256": "3fdcfbef1c6f4d1e3622afd93fe0aa6cc9f327190d247aa4170b8ab4812d8728",
+      "new_fixture_tests": 16,
+      "python_test_exit_code": 0,
+      "python_tests_passed": 24,
+      "reference_behavior_execution": false,
+      "scope": "Synthetic source-independent ELF fixtures; no original game code in tests. All bytes compared, including an unrelocated mismatch negative control."
+    },
+    "unchanged_sources": [
+      "reconstruction/research/arm32_cpu_query_candidate.cpp",
+      "reconstruction/research/arm32_cpu_query_candidate.h",
+      "reconstruction/tests/research/arm32_cpu_query_candidate_test.cpp",
+      "reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp"
+    ]
   },
   "relocation_policy": {
     "candidate_01": [
@@ -374,12 +782,12 @@
       "policy": "Raw ET_REL bytes versus linked window; no relocation application, masking or exclusions in primary result",
       "source_matching_verified": false
     },
-    "linked_candidate_built": false,
+    "linked_candidate_built": true,
     "original_relocations_recovered": false,
-    "outside_window": "EHABI unwind relocations are present and unvalidated",
+    "outside_window": "Scratch PREL31 mechanics checked separately; no original EHABI equivalence claim",
     "primary": "Unmodified raw linked window versus unmodified ET_REL symbol window; no exclusions or applied relocations"
   },
-  "result": "NOT MATCHED",
+  "result": "RAW_MISMATCH; separate RELOCATED_LINKED_WINDOW_MATCH (44 bytes only)",
   "schema": "nova3.arm-compiler-pilot/1",
   "scope": "One no-argument CPU-count function; independent source and explicit model dependencies",
   "setup_failures": [
@@ -416,7 +824,7 @@
       "sha256": "d9c8685a569a3a297401b8cc2d7fabfbe471363382484e08f859980cbf7baeb2"
     }
   ],
-  "task": 94,
+  "task": 97,
   "tests": {
     "arm_runtime_execution": false,
     "harness_tests_passed": 8,
