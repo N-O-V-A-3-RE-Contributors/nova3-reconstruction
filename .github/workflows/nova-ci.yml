@@ -27,6 +27,8 @@ jobs:
             --plan-out .cache/ci-legacy-worklist.json
           bash -n tools/revalidate_local.sh
           bash -n tools/run_compiler_pilot.sh
+          sh -n START-LINUX.sh
+          python nova3_easy.py --self-test
       - name: Observatory contributor/owner role tests
         run: |
           python -m unittest discover -s tools/observatory/tests -v

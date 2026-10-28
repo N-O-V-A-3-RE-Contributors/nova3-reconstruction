@@ -18,6 +18,15 @@ python -m nova3_team.worker run --provider codex
 
 Use `--once` for a single task. Local clones and work attempts live in `~/.cache/nova3-team`, separate from this repository. Keep the computer awake for continuous execution. If all tasks are claimed, the worker polls until new work arrives.
 
+On Linux, `bash START-LINUX.sh --once` streams the complete bounded
+worker activity in the terminal (including claim/PR submission) and then
+returns. The no-argument launcher continues to run the worker with its
+legacy terminal interface for existing contributor setups. To open the newer
+Observatory, use `bash START-LINUX.sh --observer` or
+`~/.local/bin/nova3-observer`; the monitor does **not** start a second
+worker. Keep the observer open in a separate terminal from any long-running
+worker, or use the existing systemd worker service without duplicating it.
+
 ### Pre-AI compiler research checkpoint (maintainer)
 
 Run `bash tools/revalidate_local.sh` once after updating the repository, then

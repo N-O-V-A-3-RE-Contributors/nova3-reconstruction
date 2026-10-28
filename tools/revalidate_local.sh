@@ -65,12 +65,20 @@ python3 -m nova3_team.object_matching fingerprint "$RETAIL" \
   --out "$OUT/premium-compiler-evidence.json"
 
 echo '[6/6] Staging a bounded donor-guided research unit (synthetic only)'
+# Previous runs are valuable research snapshots. Never reuse a staged output
+# directory: object_matching deliberately refuses to overwrite existing ASM,
+# reference objects or C++ hypotheses. Reruns get a fresh private destination.
+STAGE_OUT="$OUT/objmatch"
+if [[ -e "$STAGE_OUT" || -L "$STAGE_OUT" ]]; then
+  STAGE_OUT="$(mktemp -d "$OUT/objmatch-repeat-XXXXXXXX")"
+fi
 python3 -m nova3_team.object_matching stage "$RETAIL" \
-  --out "$OUT/objmatch" --donor-plan "$OUT/donor-plan.json" \
+  --out "$STAGE_OUT" --donor-plan "$OUT/donor-plan.json" \
   --limit 16
 
 echo
 echo "Local evidence ready under: $OUT"
+echo "This run's synthetic object/ASM stage: $STAGE_OUT"
 echo 'No real C++ ARM instruction match, historical compiler or original'
 echo 'object/relocation/full-ELF hash equivalence has been verified by this setup.'
 echo 'Next: bash tools/run_compiler_pilot.sh (requires the local ARM NDK).'
