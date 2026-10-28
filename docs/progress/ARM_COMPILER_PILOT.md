@@ -1,4 +1,9 @@
-# Task #94: bounded ARM32 compiler / ABI pilot
+# Tasks #94 / #97: bounded ARM32 compiler / ABI pilot
+
+**Current #97 result: RAW_MISMATCH; separate RELOCATED_LINKED_WINDOW_MATCH
+over all 44 bytes.** Source equivalence, historical compiler, original object,
+whole-library matching and original behavior remain unverified. The #94
+baseline below is retained; the #97 experiment and reproduction follow it.
 
 2026-10-28. **NOT MATCHED; source equivalence NOT_VERIFIED.** One query was
 investigated; the existing portable recovery was preserved. No production
@@ -149,16 +154,171 @@ once-error handling. Values cover positive, zero, negative and signed limits.
 The initializer is test-owned. Eight comparison-harness regression tests pass;
 these are not reference behavioral tests. No ARM device execution occurred.
 
-## Handoff / smallest next experiment
+## Task #94 handoff (relocation experiment completed by #97 below)
 
 Keep `NOT MATCHED` and `NOT_VERIFIED`. This task has one source candidate with
 host-tested dependency behavior and real ARM objects; zero independently
 verified ARM runtime functions and zero whole-library/gameplay claims.
 
-Next: review the three relocation records and perform one explicitly mapped
+At the #94 checkpoint, the next experiment was to review the three relocation records and perform one explicitly mapped
 scratch link/relocation experiment using the evidenced function, PLT, state
 and initializer addresses. Record its separate linked-window result without
 calling it original object recovery. Select and fingerprint a locally supplied
 historical GCC candidate before comparing compiler provenance; do not install
 one or broaden the decompilation wave from these Clang results. Preserve the
 portable context ABI and all existing recovery blocks.
+
+## Task #97: relocation-aware linked-window experiment
+
+2026-10-28. One function only. Both C++ candidate files, the host test and the
+portable `CpuQueryContext*` implementation remain unchanged. Modern NDK r29
+Clang again produced the same 44-byte A32 ET_REL function and object hash as
+#94. Its **primary, unmodified raw comparison is still RAW_MISMATCH**, with
+six differing bytes at offsets 24, 25, 36, 37, 38 and 40. No bytes are masked.
+
+The new `python3 -m nova3_team.relocation_probe` independently reads actual
+ELF REL records and their implicit addends. It rejects unsupported function
+relocations, unresolved/unused symbol mappings, bad offsets, duplicate sites,
+branch overflow, BLX/Thumb calls, malformed/non-ARM/non-ELF inputs and ambiguous
+file mappings. Its supported function scope is aligned A32, external symbols,
+R_ARM_CALL and R_ARM_REL32; it does not reconstruct a general linker. ELF32
+EABI5 is required. The linked/reference inputs must have a unique executable
+file-backed PT_LOAD mapping agreeing with their symbol/section mapping.
+
+The read-only private reference check independently reconfirmed the full ELF
+and window hashes above, symbol extent, section and segment mappings, and the
+nearest `$a` mapping symbol. Capstone independently decoded the bounded call
+and literal-address calculations. PLT `0x000d2910` resolves through GOT
+`0x00d82e5c` to the retained R_ARM_JUMP_SLOT for `pthread_once`. No retained
+dynamic relocation targets the 44-byte query window; the reference's original
+pre-link relocations remain unavailable.
+
+| Candidate site | Actual REL type | Implicit addend A | Explicit scratch symbol S | Place P |
+| --- | --- | ---: | --- | --- |
+| +0x18 | R_ARM_CALL | -8 | pthread_once = 0x000d2910 | 0x000d2f28 |
+| +0x24 | R_ARM_REL32 | 16 | nova3_arm32_cpu_state = 0x00d96598 | 0x000d2f34 |
+| +0x28 | R_ARM_REL32 | 16 | nova3_arm32_cpu_initialize = 0x000d2f98 | 0x000d2f38 |
+
+For CALL, sign-extend the instruction's imm24 shifted left two bits, then
+encode `S + A - P`. The implicit -8 already accounts for the A32 PC pipeline;
+subtracting another eight would be wrong. Direct ARM BL reach/alignment are
+checked, and overflow/interworking requiring a veneer is rejected. REL32 uses
+`((S + A) | T) - P` modulo 2^32 without an overflow check; T is the STT_FUNC
+Thumb bit removed from S before addition. All three actual mapped targets are
+even/A32. The two +16 addends bridge each literal's place to the PC base of its
+consumer: `0x000d2f24` and `0x000d2f28`, respectively. Those bases and literal
+values were checked independently against the original instructions locally.
+
+LLD 21.0.0 linked **only the source-compiled candidate object**, using explicit
+absolute symbols at these addresses. This models the query's destination at
+the observed PLT entry; it does **not** regenerate the original PLT, GOT,
+dynamic binding, initializer or data implementation. The scratch ELF is an
+unexecuted research ET_EXEC, not a functioning program or production input.
+No original ELF bytes were inserted, and no reference bytes were patched.
+
+The independent linker mapped its function to file offset `0x2f10`, while the
+reference maps to `0xd2f10`. Comparing the full independently mapped windows
+gives 44/44 equal bytes. The diagnostic's relocation result also agrees with
+all 44 linker bytes. The resolved and actual linked windows have SHA-256
+`435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca`.
+The scratch ELF hash is
+`a5fcece51104226edf780de56f7feabbe3009e971a7c509a4a26003516942d28`;
+this is **not** the original shared-library hash.
+
+No veneer symbols or `.plt` section were emitted; the linked branch reaches
+the prescribed address directly. No relocations remain in the scratch ELF.
+Separately, the candidate has R_ARM_PREL31 at `.ARM.exidx+0` referencing the
+`.text` section symbol, with implicit addend zero. LLD places `.ARM.exidx` at
+`0x000d2f3c`; independently decoding its first signed PREL31 gives the query
+address `0x000d2f10`. It expands the eight-byte input index to 16 bytes with
+an end-of-text CantUnwind sentinel. LLVM readelf successfully decodes it.
+This checks the scratch link's EHABI mechanics only; original unwind-table
+equivalence is **NOT_CHECKED**. The diagnostic inventories outside-window
+relocations and never applies them to the function comparison.
+
+| Independent observation | Result |
+| --- | --- |
+| Raw ET_REL vs reference | RAW_MISMATCH, 6/44 differing bytes |
+| Diagnostic resolved window vs reference | RESOLVED_WINDOW_EQUAL, 44/44 bytes |
+| Actual scratch linked window vs reference | RELOCATED_LINKED_WINDOW_MATCH, 44/44 bytes |
+| ORIGINAL_OBJECT_MATCH | NOT_AVAILABLE; no original ET_REL object |
+| HISTORICAL_COMPILER_VERIFIED | false; GCC 4.4.3 executable/profile unknown |
+| WHOLE_SO_SHA_MATCH | false |
+| BEHAVIOR_VERIFIED | false; no original/ARM runtime execution |
+
+### Reproduce #97 offline
+
+Set `NOVA3_RETAIL_ELF` to the maintainer's read-only Premium ELF. Run from the
+checkout. All generated artifacts remain in a disposable private directory;
+never commit the ELF, object, linker output or private verification script.
+The existing local scratch handoff for this session is `/tmp/nova3-task97/`;
+it is temporary, so the commands below are the durable reproduction path.
+
+```sh
+NOVA3_PILOT_SCRATCH="$(mktemp -d /tmp/nova3-task97.XXXXXXXX)"
+NOVA3_PILOT_CXX=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++
+NOVA3_PILOT_LD=/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/ld.lld
+"$NOVA3_PILOT_CXX" --target=armv7a-linux-androideabi21 -marm \
+  -mfloat-abi=softfp -mfpu=neon -O2 -fPIC -std=c++03 \
+  -fomit-frame-pointer -c -x c++ \
+  reconstruction/research/arm32_cpu_query_candidate.cpp \
+  -o "$NOVA3_PILOT_SCRATCH/candidate.o"
+cat > "$NOVA3_PILOT_SCRATCH/layout.ld" <<'LD'
+ENTRY(nova3_arm32_cpu_count_candidate)
+SECTIONS {
+ . = 0x000d2f10;
+ .text : { *(.text) }
+ .ARM.exidx : { *(.ARM.exidx*) }
+ .ARM.extab : { *(.ARM.extab*) }
+ pthread_once = 0x000d2910;
+ nova3_arm32_cpu_state = 0x00d96598;
+ nova3_arm32_cpu_initialize = 0x000d2f98;
+}
+LD
+"$NOVA3_PILOT_LD" -m armelf_linux_eabi --build-id=none \
+  -T "$NOVA3_PILOT_SCRATCH/layout.ld" "$NOVA3_PILOT_SCRATCH/candidate.o" \
+  -o "$NOVA3_PILOT_SCRATCH/linked.elf"
+python3 -m nova3_team.relocation_probe --reference "$NOVA3_RETAIL_ELF" \
+  --object "$NOVA3_PILOT_SCRATCH/candidate.o" \
+  --linked "$NOVA3_PILOT_SCRATCH/linked.elf" --address 0xd2f10 \
+  --symbol nova3_arm32_cpu_count_candidate \
+  --target pthread_once=0xd2910 --target nova3_arm32_cpu_state=0xd96598 \
+  --target nova3_arm32_cpu_initialize=0xd2f98 \
+  --expected-reference-sha256 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf \
+  --expected-window-sha256 435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca \
+  > "$NOVA3_PILOT_SCRATCH/probe.json"
+python3 -m unittest nova3_team.tests.test_relocation_probe \
+  nova3_team.tests.test_compiler_matrix nova3_team.tests.test_object_compare -v
+```
+
+Compiler, linker and diagnostic commands exited 0. The diagnostic's exit 0
+means it completed, including when comparisons mismatch; inspect each status.
+Invalid input exits 2. Omitting `--linked` never awards the linked-window grade.
+24 Python tests pass (16 new fixture tests, eight existing regressions), with
+no original files or ARM toolchain required for the fixtures. The unchanged
+source-only host command documented above was rerun: compile and all five
+test modes exited 0. These check modeled pthread dependency behavior, not
+original ARM behavior. No source-owned CPU initializer was added.
+
+The initial new test run had one overbroad assertion rejecting the metadata
+key `compared_bytes`; it now recursively rejects binary values/code fields
+while allowing byte counts. The private PLT check initially omitted Capstone's
+separate immediate-rotation operand; corrected A32 rotation arithmetic passes.
+Invoking the resolved multicall `lld --version` exited 1; invoking the actual
+`ld.lld --version` driver succeeded. These failures and fixes are recorded in
+the JSON, without proprietary instruction output.
+
+### Bounded handoff
+
+This completes the one-function relocation experiment. The JSON preserves the
+#94 raw matrix and adds #97 tool/profile/source/object/linker hashes, exact
+commands, return codes, relocation worksheet and separate comparison grades.
+No GitHub state was modified and no PR was submitted; the supervisor can use
+this evidence for human review. No package installation, network access,
+heavy analyzer, original executable execution or production integration ran.
+
+Next independent gate: identify a locally available historical ARM GCC
+executable and its provenance/profile before making any compiler claim.
+Initializer/data and original pthread behavior require a separate bounded
+runtime/oracle task. No bulk follow-up, original-object recovery, whole-library
+match or game functionality is established by this pilot.
