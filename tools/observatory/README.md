@@ -112,3 +112,17 @@ The `nova-launchers.yml` workflow packages Observatory as a separate release
 ZIP when a trusted `launcher-v*` tag is published. It coexists with existing
 Windows, macOS and Linux contributor launchers; the full UI is opt-in until
 the worker's embedded dashboard can be safely replaced.
+
+After this feature is merged to `main`, the repository maintainer can also
+request a new release without manually creating a Git tag:
+
+```sh
+gh workflow run nova-launchers.yml --ref main \
+  -f publish_release=true \
+  -R N-O-V-A-3-RE-Contributors/nova3-reconstruction
+```
+
+The release job rejects a non-maintainer actor and manual invocations outside
+`main`. The multi-platform launcher builds and Observatory tests must pass
+before new versioned assets are published; a normal workflow dispatch without
+`publish_release=true` only builds CI artifacts.

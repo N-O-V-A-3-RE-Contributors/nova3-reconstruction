@@ -4,6 +4,12 @@ on:
     tags:
       - 'launcher-v*'
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish versioned launcher and Observatory assets (maintainer only)'
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
 jobs:
@@ -129,7 +135,7 @@ jobs:
           retention-days: 14
   release:
     needs: [build, observatory]
-    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    if: startsWith(github.ref, 'refs/tags/launcher-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.actor == 'crjase' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -143,10 +149,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/launcher-v') && github.ref_name || format('launcher-v{0}-{1}', github.run_number, github.run_attempt) }}
         run: |
           set -euo pipefail
           ls -lh files
-          gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz \
+          gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz --target "$GITHUB_SHA" \
             --title "NOVA3 contributor launcher $RELEASE_TAG" \
             --notes "Unsigned contributor launchers and source-based NOVA3 Observatory. Install Observatory separately for richer monitoring; all GitHub owner actions require ADMIN/MAINTAIN permission. Each user authenticates their own GitHub and AI accounts. No game data is included."
