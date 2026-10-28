@@ -1,0 +1,434 @@
+{
+  "schema_version": 1,
+  "task": "Premium ARMv7 CPU-query source reconstruction pilot",
+  "issue": 86,
+  "date": "2026-10-28",
+  "reference": {
+    "logical_path": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "sha256_confirmed_before_and_after": true,
+    "architecture": "ELF32 little-endian ARM EABI5",
+    "e_flags": "0x05000002",
+    "elf_arm_attributes": {
+      "cpu_name": "7-A",
+      "cpu_arch": "v7",
+      "arm_isa_use": "Yes",
+      "fp_arch": "VFPv3",
+      "advanced_simd": "NEONv1",
+      "abi_enum_size": "int",
+      "abi_alignment_needed": 8
+    },
+    "runtime_dependency": false
+  },
+  "summary": {
+    "inventoried_functions": 4,
+    "disassembled_functions": 4,
+    "decompiled_functions": 4,
+    "understood_functions": 3,
+    "source_implemented_functions": 3,
+    "tested_functions": 3,
+    "verified_functions_scoped_to_modeled_dependencies": 3,
+    "end_to_end_game_functionality": "NONE from this slice",
+    "original_android_abi_integration": "NOT IMPLEMENTED",
+    "historical_translation_unit": "NOT ESTABLISHED; independent candidates only"
+  },
+  "source": {
+    "path": "reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp",
+    "sha256": "7825ea14f579d7d44bc6d2ddd32a4a24a9e798e2b2e2ef91f00085dd3561c30d",
+    "test_path": "reconstruction/tests/recovered/libNOVA3_neon/block_000d2f10_test.cpp",
+    "test_sha256": "490393456c33ae77d01884c629dabdae5a19edd07a050d9e416f43f4916c0feb",
+    "interface": "Source-owned CpuQueryContext exposes the original once service, initializer and persistent cached fields. Export names intentionally differ from original no-argument Android functions.",
+    "preconditions": "Valid context/callbacks/storage; once implementation must publish initializer writes. Shared control/cache across queries; external synchronization for subsequent writes. No recursive initialization or callback exceptions.",
+    "inferred_types": [
+      "CPU count is signed int32, consistent with local NDK API. Instructions alone return 32 bits.",
+      "CPU family is represented as int32; enum interpretation inferred from NDK API and ELF enum-size attribute. No enum-range validation added."
+    ],
+    "third_party_source_added": false,
+    "production_original_executable_bytes_or_loading": false,
+    "root_cmake_integration": "Standalone tests only; root CMakeLists.txt is outside the edit allowlist."
+  },
+  "functions": [
+    {
+      "stable_id": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf:000d2f10:A32",
+      "elf_va": "0xd2f10",
+      "raw_symbol_value": "0xd2f10",
+      "size_bytes": 44,
+      "end_exclusive": "0xd2f3c",
+      "symbol": "android_getCpuCount",
+      "symbol_tables": [
+        ".symtab",
+        ".dynsym"
+      ],
+      "other_function_range_overlaps": [],
+      "arm_mode": "A32",
+      "thumb": false,
+      "mapping_symbol": "$a",
+      "entry_mapping_verified": true,
+      "ghidra_va": "0xe2f10",
+      "ghidra_full_range_bytes_verified": true,
+      "ghidra_disassembly_instructions": 9,
+      "ghidra_decompile_completed": true,
+      "states_earned": [
+        "INVENTORIED",
+        "DISASSEMBLED",
+        "DECOMPILED",
+        "UNDERSTOOD",
+        "IMPLEMENTED",
+        "TESTED",
+        "VERIFIED"
+      ],
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_cpu_count",
+      "differential_cases": 4608,
+      "verification_scope": "Returned bits, one once-service call per query, shared control/initializer, read-after-call semantics, ignored status and cached state under modeled dependencies. Original A32 preserved registers/SP checked. Not original initializer or Android ABI integration.",
+      "assembly_comparison": "NOT MATCHED",
+      "unresolved_dependencies": [
+        "pthread_once platform adapter",
+        "android_cpuInit at 0x000d2f98",
+        "persistent cache binding"
+      ]
+    },
+    {
+      "stable_id": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf:000d2f3c:A32",
+      "elf_va": "0xd2f3c",
+      "raw_symbol_value": "0xd2f3c",
+      "size_bytes": 48,
+      "end_exclusive": "0xd2f6c",
+      "symbol": "android_getCpuFeatures",
+      "symbol_tables": [
+        ".symtab",
+        ".dynsym"
+      ],
+      "other_function_range_overlaps": [],
+      "arm_mode": "A32",
+      "thumb": false,
+      "mapping_symbol": "$a",
+      "entry_mapping_verified": true,
+      "ghidra_va": "0xe2f3c",
+      "ghidra_full_range_bytes_verified": true,
+      "ghidra_disassembly_instructions": 10,
+      "ghidra_decompile_completed": true,
+      "states_earned": [
+        "INVENTORIED",
+        "DISASSEMBLED",
+        "DECOMPILED",
+        "UNDERSTOOD",
+        "IMPLEMENTED",
+        "TESTED",
+        "VERIFIED"
+      ],
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_cpu_features",
+      "differential_cases": 4608,
+      "verification_scope": "Returned bits, one once-service call per query, shared control/initializer, read-after-call semantics, ignored status and cached state under modeled dependencies. Original A32 preserved registers/SP checked. Not original initializer or Android ABI integration.",
+      "assembly_comparison": "NOT MATCHED",
+      "unresolved_dependencies": [
+        "pthread_once platform adapter",
+        "android_cpuInit at 0x000d2f98",
+        "persistent cache binding"
+      ]
+    },
+    {
+      "stable_id": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf:000d2f6c:A32",
+      "elf_va": "0xd2f6c",
+      "raw_symbol_value": "0xd2f6c",
+      "size_bytes": 44,
+      "end_exclusive": "0xd2f98",
+      "symbol": "android_getCpuFamily",
+      "symbol_tables": [
+        ".symtab",
+        ".dynsym"
+      ],
+      "other_function_range_overlaps": [],
+      "arm_mode": "A32",
+      "thumb": false,
+      "mapping_symbol": "$a",
+      "entry_mapping_verified": true,
+      "ghidra_va": "0xe2f6c",
+      "ghidra_full_range_bytes_verified": true,
+      "ghidra_disassembly_instructions": 9,
+      "ghidra_decompile_completed": true,
+      "states_earned": [
+        "INVENTORIED",
+        "DISASSEMBLED",
+        "DECOMPILED",
+        "UNDERSTOOD",
+        "IMPLEMENTED",
+        "TESTED",
+        "VERIFIED"
+      ],
+      "verification_grade": "behavioural",
+      "source_symbol": "nova3_recovered_cpu_family",
+      "differential_cases": 4608,
+      "verification_scope": "Returned bits, one once-service call per query, shared control/initializer, read-after-call semantics, ignored status and cached state under modeled dependencies. Original A32 preserved registers/SP checked. Not original initializer or Android ABI integration.",
+      "assembly_comparison": "NOT MATCHED",
+      "unresolved_dependencies": [
+        "pthread_once platform adapter",
+        "android_cpuInit at 0x000d2f98",
+        "persistent cache binding"
+      ]
+    },
+    {
+      "stable_id": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf:000d2f98:A32",
+      "elf_va": "0xd2f98",
+      "raw_symbol_value": "0xd2f98",
+      "size_bytes": 2632,
+      "end_exclusive": "0xd39e0",
+      "symbol": "android_cpuInit",
+      "symbol_tables": [
+        ".symtab"
+      ],
+      "other_function_range_overlaps": [],
+      "arm_mode": "A32",
+      "thumb": false,
+      "mapping_symbol": "$a",
+      "entry_mapping_verified": true,
+      "ghidra_va": "0xe2f98",
+      "ghidra_full_range_bytes_verified": true,
+      "ghidra_disassembly_instructions": 637,
+      "ghidra_decompile_completed": true,
+      "states_earned": [
+        "INVENTORIED",
+        "DISASSEMBLED",
+        "DECOMPILED"
+      ],
+      "verification_grade": "hypothesis",
+      "source_symbol": null,
+      "differential_cases": 0,
+      "verification_scope": null,
+      "assembly_comparison": "NOT MATCHED",
+      "unresolved_dependencies": [
+        "filesystem/error/retry behavior",
+        "input parsing and CPU feature predicates",
+        "allocation ownership and failure paths",
+        "libc imports and __popcountsi2"
+      ]
+    }
+  ],
+  "evidence_basis": {
+    "preflight": {
+      "references_present": 4,
+      "references_expected": 4,
+      "ida_executable_present": true,
+      "default_python_idapro_visible": false,
+      "ida_venv_import_idapro_succeeded": true,
+      "heavy_analyzer_concurrency": 1
+    },
+    "boundary_validation": "readelf -sW both symbol tables; exact sizes; no overlapping distinct function ranges in .symtab; mapping symbols $a/$d; Capstone independently decodes all three getter code regions as A32 with a single direct call each. Trailing 8 bytes of each getter symbol are mapping-marked literal data.",
+    "capstone_version": "5.0.9",
+    "ghidra": {
+      "backend": "Ghidra 12.1.2 / PyGhidra 3.2.0",
+      "mode": "Existing persistent project opened read-only, bounded in-memory disassembly/decompilation only; no full autoanalysis; no database save.",
+      "image_base": "0x10000",
+      "address_rule": "Ghidra address = ELF VA + 0x10000, independently verified against every byte in each symbol range.",
+      "read_only_api": "DefaultProjectData(ProjectLocator(project_directory, \"premium\"), False, False); DomainFile.getReadOnlyDomainObject; FlatProgramAPI; bounded DisassembleCommand and DecompInterface.decompileFunction(timeout=30).",
+      "decompilation_errors": 0,
+      "project_modified_on_disk": false
+    },
+    "ida": "Optional idalib import operational in its existing venv. No IDA database opened: available unpacked database resides outside allowed writable paths. Ghidra read-only project supplied the bounded decompiler evidence; no original or database copy made.",
+    "shared_control": {
+      "elf_va": "0x00d96598",
+      "symbol": "g_once",
+      "size": 4
+    },
+    "initializer": {
+      "elf_va": "0x000d2f98",
+      "symbol": "android_cpuInit"
+    },
+    "once_service": {
+      "plt_elf_va": "0x000d2910",
+      "relocation_slot": "0x00d82e5c",
+      "import": "pthread_once",
+      "observed_call_sites": [
+        "0x000d2f28",
+        "0x000d2f54",
+        "0x000d2f84"
+      ]
+    },
+    "cached_globals": [
+      {
+        "symbol": "g_cpuCount",
+        "elf_va": "0x00d9659c",
+        "size": 4
+      },
+      {
+        "symbol": "g_cpuFeatures",
+        "elf_va": "0x00d965a0",
+        "size": 8
+      },
+      {
+        "symbol": "g_cpuFamily",
+        "elf_va": "0x00d965a8",
+        "size": 4
+      }
+    ],
+    "initializer_direct_callees": [
+      {
+        "address": "0xbe31ac",
+        "symbol": "__popcountsi2",
+        "size": 64,
+        "kind": "defined function"
+      },
+      {
+        "address": "0xd1ff8",
+        "symbol": "__errno",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd20f4",
+        "symbol": "free",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd24f0",
+        "symbol": "__stack_chk_fail",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2634",
+        "symbol": "read",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd273c",
+        "symbol": "memchr",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2778",
+        "symbol": "memcmp",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2808",
+        "symbol": "memmem",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2850",
+        "symbol": "strtol",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2898",
+        "symbol": "malloc",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd29f4",
+        "symbol": "memcpy",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2bbc",
+        "symbol": "open",
+        "kind": "PLT import"
+      },
+      {
+        "address": "0xd2cc4",
+        "symbol": "close",
+        "kind": "PLT import"
+      }
+    ],
+    "oracle": {
+      "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+      "matching": "NOT MATCHED",
+      "differential_cases_per_function": {
+        "android_getCpuCount": 4608,
+        "android_getCpuFeatures": 4608,
+        "android_getCpuFamily": 4608
+      },
+      "versions": {
+        "unicorn": "2.1.4",
+        "pyelftools": "0.33"
+      },
+      "scope": "A32 getters with modeled pthread_once and initializer; return bits, call order, cache, preserved registers and SP; no actual CPU detection or Android integration"
+    }
+  },
+  "reproduction": {
+    "input_setup": "Set NOVA86_REFERENCE to the local legally held Premium ELF. No original input is needed for compilation, standalone regression, sanitizers or existing project CI checks.",
+    "standalone_compile": "c++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -O2 -pthread reconstruction/tests/recovered/libNOVA3_neon/block_000d2f10_test.cpp -o /tmp/nova86-test",
+    "standalone_run": "/tmp/nova86-test",
+    "candidate_shared_library": "c++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -O2 -shared -fPIC reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp -Wl,-z,defs -o /tmp/nova86-source.so",
+    "emit_oracle": "/tmp/nova86-test --emit-oracle > /tmp/nova86-oracle.py",
+    "run_private_oracle": "python /tmp/nova86-oracle.py --reference \"$NOVA86_REFERENCE\" --candidate /tmp/nova86-source.so",
+    "sanitizer_compile": "clang++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -no-pie -pthread reconstruction/tests/recovered/libNOVA3_neon/block_000d2f10_test.cpp -o /tmp/nova86-sanitized-nopie",
+    "sanitizer_run": "ASAN_OPTIONS=detect_leaks=0 /tmp/nova86-sanitized-nopie",
+    "arm_compile": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=armv7a-linux-androideabi21 -marm -std=c++17 -Wall -Wextra -Wpedantic -Werror -O2 -fPIC -c reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp -o /tmp/nova86-arm.o",
+    "ci": [
+      "python -m nova3_team.guard --repo . --all",
+      "PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s nova3_team/tests -v",
+      "cmake -S . -B /tmp/nova86-build -G Ninja -DCMAKE_BUILD_TYPE=Debug",
+      "cmake --build /tmp/nova86-build -j 2",
+      "ctest --test-dir /tmp/nova86-build --output-on-failure"
+    ]
+  },
+  "results": {
+    "standalone_compile_exit": 0,
+    "standalone_exit": 0,
+    "scripted_source_queries": 9216,
+    "concurrent_source_queries": 2048,
+    "concurrent_threads": 8,
+    "real_pthread_once_initializer_calls": 1,
+    "source_shared_library_compile_exit": 0,
+    "private_oracle_exit": 0,
+    "differential_cases_total": 13824,
+    "oracle_cases": "256 deterministic value scenarios, all six query orders, cold/shared initialization, warm cache mutation and no-write/ignored-status modes; full-width mask and int32 boundary values; preserved r4-r11/SP and getter writes restricted to stack.",
+    "wrong_reference_negative_test": {
+      "input": "source-owned C++ file, not a game binary",
+      "exit": 1,
+      "expected_exit": 1,
+      "diagnostic": "FAIL: reference SHA-256 mismatch"
+    },
+    "asan_ubsan_exit": 0,
+    "leak_sanitizer": "Disabled for sandbox compatibility; no leak-check claim.",
+    "arm_compile_exit": 0,
+    "arm_object_sha256": "e97581161edf92f1e78c484b9466c29c5630118cf62ed941908035d9ee4f657e",
+    "arm_object_kind": "ELF32 little-endian ARM EABI5, relocatable, A32 mapping; all three candidate symbols 36 bytes. Compile check, not Android link/runtime validation.",
+    "guard_tracked_files": 343,
+    "guard_exit": 0,
+    "collaboration_unit_tests": 256,
+    "collaboration_unit_test_exit": 0,
+    "cmake_configure_exit": 0,
+    "cmake_build_exit": 0,
+    "ctest_passed": 13,
+    "ctest_failed": 0,
+    "ctest_exit": 0,
+    "guard_new_allowed_files": 3,
+    "guard_new_allowed_files_exit": 0,
+    "whitespace_and_provenance_checks": "PASS on all three allowed files; source/test hashes match recorded provenance."
+  },
+  "compiler_evidence": {
+    "reference_comment": "Repeated GCC: (GNU) 4.4.3 strings; not proof of flags, NDK revision, linker or every function compiler.",
+    "host_cpp": "c++ (GCC) 16.2.1 20260810",
+    "host_clang": "clang version 23.1.3",
+    "android_clang": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)",
+    "candidate_gcc_4_4_3_tested": false,
+    "assembly_comparison": "NOT MATCHED",
+    "comparison_method": "No machine-code equality established. Current source-owned explicit-context API differs from the original global/no-argument interface; modern ARM object is compile evidence only.",
+    "whole_library_hash_match": "NOT MATCHED"
+  },
+  "attempts_and_failures": [
+    {
+      "step": "Initial Ghidra startup",
+      "result": "Read-only host configuration prevented java_home.save. Resolved with process-local XDG_CONFIG_HOME under /tmp; no host settings changed."
+    },
+    {
+      "step": "First bounded Ghidra metadata pass",
+      "result": "Script int conversion of java.math.BigInteger failed after first function. Corrected conversion and all four functions completed on next pass."
+    },
+    {
+      "step": "First PIE ASan run",
+      "result": "ASan aborted before tests because shadow memory overlapped an existing mapping. Recompiled test with -no-pie; ASan/UBSan test then passed. No initial sanitizer pass claimed."
+    }
+  ],
+  "host_changes": "None. No package installation, sudo, network, nested agents, GitHub changes or original-file modifications. Temporary builds/diagnostics only under /tmp.",
+  "handoff": {
+    "blocked_addresses": [
+      "0x000d2f98"
+    ],
+    "next_smallest_task": "Recover one android_cpuInit error/empty-input branch using bounded open/read/close hooks and explicit filesystem fixtures; determine input paths and feature predicates from evidence before writing detection source.",
+    "integration_followup": "Bind CpuQueryContext to source-owned persistent state and a real platform pthread_once adapter after initializer recovery; Android no-argument ABI exports are not supplied here.",
+    "pr": "Not opened: this session explicitly prohibits network and GitHub state changes. Supervisor can review the three allowed files and prepare a sanitized PR."
+  }
+}
