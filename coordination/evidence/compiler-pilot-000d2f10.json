@@ -1,0 +1,467 @@
+{
+  "abi": {
+    "candidate_binding": "Hidden external initializer and state model observed local binding",
+    "candidate_layout": "Source-owned grouping of four-byte once and four-byte count at +4, not a recovered original struct",
+    "cpp": "C++03 compilation; no C++ runtime operations in query; original general C++ ABI UNKNOWN",
+    "float": "Explicit modern softfp/NEON candidate; original float ABI not conclusively identified; this function exercises no floating point",
+    "query": "C linkage; no arguments; 32-bit result",
+    "reference_runtime": "libstdc++.so dependency observed; exact original runtime version UNKNOWN"
+  },
+  "blockers": [
+    "Historical GCC executable/profile and full ABI/compiler/linker provenance remain UNKNOWN",
+    "Three candidate relocations unresolved in primary ET_REL comparison; raw 44-byte window is unequal",
+    "Initializer not reconstructed; no ARM runtime or original behavioral oracle executed"
+  ],
+  "candidate_matrix": {
+    "caveat": "Code-window checks are evidence, not recovered original .o/relocations/linker inputs or full source equivalence.",
+    "experiments": [
+      {
+        "comparison": {
+          "candidate_code_sha256": "2a32572069898898facb353b09816b884cf2423c9b114c3d8e3541cdd5f5e64c",
+          "candidate_object_sha256": "a5fff9110ff87da473461be0d3f6ff196c95c307d3cff6e4357883db8995522b",
+          "candidate_relocation_count": 3,
+          "candidate_section": ".text",
+          "candidate_size": 48,
+          "candidate_symbol": "nova3_arm32_cpu_count_candidate",
+          "candidate_thumb": false,
+          "code_window_equal": false,
+          "evidence_scope": "Linked-code window only; no ABI, data, linker or original .o proof",
+          "kind": "source-candidate-to-linked-window",
+          "original_compiler_verified": false,
+          "original_object_recovered": false,
+          "original_relocations_recovered": false,
+          "original_so_hash_matching_verified": false,
+          "original_thumb": false,
+          "reference_address": 864016,
+          "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+          "reference_size": 44,
+          "reference_window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+          "schema": "nova3.object-window-comparison/1",
+          "source_matching_verified": false,
+          "status": "FUNCTION_SIZE_MISMATCH"
+        },
+        "compile_exit_code": 0,
+        "compiler_version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+        "flags": [
+          "--target=armv7a-linux-androideabi21",
+          "-marm",
+          "-mfloat-abi=softfp",
+          "-mfpu=neon",
+          "-O2",
+          "-fPIC",
+          "-std=c++03"
+        ],
+        "number": 1,
+        "object_file": "candidate_01.o",
+        "object_sha256": "a5fff9110ff87da473461be0d3f6ff196c95c307d3cff6e4357883db8995522b",
+        "profile_name": "clang-default-frame.json",
+        "profile_sha256": "88ad9de388458a97b02b4512f8bb2c79f43187c42283283a6e6463027f34bd14",
+        "source_matching_verified": false,
+        "status": "FUNCTION_SIZE_MISMATCH"
+      },
+      {
+        "comparison": {
+          "candidate_code_sha256": "b33a554ec0973c93fb5ce97e90ef8039f5b15e86260a112dc182308cc484e31e",
+          "candidate_object_sha256": "9e15ea3849b13de32342e8b1148baa8618bd43e57b7d0bdada96a8ef536cd996",
+          "candidate_relocation_count": 3,
+          "candidate_section": ".text",
+          "candidate_size": 44,
+          "candidate_symbol": "nova3_arm32_cpu_count_candidate",
+          "candidate_thumb": false,
+          "code_window_equal": false,
+          "evidence_scope": "Linked-code window only; no ABI, data, linker or original .o proof",
+          "kind": "source-candidate-to-linked-window",
+          "original_compiler_verified": false,
+          "original_object_recovered": false,
+          "original_relocations_recovered": false,
+          "original_so_hash_matching_verified": false,
+          "original_thumb": false,
+          "reference_address": 864016,
+          "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+          "reference_size": 44,
+          "reference_window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+          "schema": "nova3.object-window-comparison/1",
+          "source_matching_verified": false,
+          "status": "FUNCTION_BYTES_DIFFERENT"
+        },
+        "compile_exit_code": 0,
+        "compiler_version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+        "flags": [
+          "--target=armv7a-linux-androideabi21",
+          "-marm",
+          "-mfloat-abi=softfp",
+          "-mfpu=neon",
+          "-O2",
+          "-fPIC",
+          "-std=c++03",
+          "-fomit-frame-pointer"
+        ],
+        "number": 2,
+        "object_file": "candidate_02.o",
+        "object_sha256": "9e15ea3849b13de32342e8b1148baa8618bd43e57b7d0bdada96a8ef536cd996",
+        "profile_name": "clang-omit-frame.json",
+        "profile_sha256": "b69568a9bcd21c0002d604636312a2832fcd6cbc24aca22f528eab2b18a8d0bf",
+        "source_matching_verified": false,
+        "status": "FUNCTION_BYTES_DIFFERENT"
+      }
+    ],
+    "original_compiler_verified": false,
+    "profiles_run": 2,
+    "reference_address": 864016,
+    "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "schema": "nova3.compiler-matrix/1",
+    "source_matching_verified": false,
+    "source_sha256": "ea7f1ae3cf95610d2f22ca566e9756d8591f16f99126634020b85cd6bc2dd46b",
+    "source_symbol": "nova3_arm32_cpu_count_candidate",
+    "whole_shared_library_sha256_matched": false
+  },
+  "command_path_policy": "Private reference/project/Python paths replaced with environment placeholders; NDK executable retained as tool provenance",
+  "commands": [
+    {
+      "command_template": "python3 -m nova3_team.preflight",
+      "exit_code": 0,
+      "observation": "0/4 checkout-relative references; actual reference project lives elsewhere"
+    },
+    {
+      "command_template": "python3 -m nova3_team.preflight --root \"$NOVA3_REFERENCE_PROJECT\" --out .cache/revalidation/task94/reference-preflight.json",
+      "exit_code": 0,
+      "observation": "4/4 local references"
+    },
+    {
+      "command_template": "NOVA3_RETAIL_ELF=\"$NOVA3_RETAIL_ELF\" bash tools/run_compiler_pilot.sh",
+      "exit_code": 0,
+      "observation": "Actual negative-control ARM C++ object, 36 versus 44 bytes"
+    },
+    {
+      "command_template": "python3 -m nova3_team.object_matching fingerprint \"$NOVA3_RETAIL_ELF\" --out .cache/premium-compiler-evidence.json",
+      "exit_code": 0,
+      "observation": "Metadata fingerprint; compiler and original flags remain UNKNOWN"
+    },
+    {
+      "command_template": "\"$NOVA3_REFERENCE_PYTHON\" .cache/revalidation/task94/verify_reference.py",
+      "exit_code": 0,
+      "observation": "Final bounded Ghidra import/mapping/disassembly/decompilation; private output only"
+    },
+    {
+      "command_template": "python3 .cache/revalidation/task94/check_plt.py",
+      "exit_code": 0,
+      "observation": "Independently resolves selected PLT stub to pthread_once GOT relocation"
+    },
+    {
+      "command_template": "python3 -m nova3_team.object_matching profile \"$NOVA3_PILOT_CXX\" --flag=--target=armv7a-linux-androideabi21 --flag=-marm --flag=-mfloat-abi=softfp --flag=-mfpu=neon --flag=-O2 --flag=-fPIC --flag=-std=c++03 --out .cache/revalidation/task94/clang-default-frame.json",
+      "exit_code": 0,
+      "observation": "Candidate profile only"
+    },
+    {
+      "command_template": "python3 -m nova3_team.object_matching profile \"$NOVA3_PILOT_CXX\" --flag=--target=armv7a-linux-androideabi21 --flag=-marm --flag=-mfloat-abi=softfp --flag=-mfpu=neon --flag=-O2 --flag=-fPIC --flag=-std=c++03 --flag=-fomit-frame-pointer --out .cache/revalidation/task94/clang-omit-frame.json",
+      "exit_code": 0,
+      "observation": "Candidate profile only"
+    },
+    {
+      "command_template": "python3 -m nova3_team.compiler_matrix --reference \"$NOVA3_RETAIL_ELF\" --source reconstruction/research/arm32_cpu_query_candidate.cpp --symbol nova3_arm32_cpu_count_candidate --address 0xd2f10 --profile .cache/revalidation/task94/clang-default-frame.json --profile .cache/revalidation/task94/clang-omit-frame.json --compile-timeout 30 --out .cache/revalidation/task94/matrix",
+      "exit_code": 0,
+      "observation": "Two successful source compiles; both raw comparisons mismatch"
+    },
+    {
+      "command_template": "python3 -m nova3_team.object_compare --reference \"$NOVA3_RETAIL_ELF\" --address 0xd2f10 --object .cache/revalidation/task94/matrix/candidate_02.o --symbol nova3_arm32_cpu_count_candidate --expected-reference-sha256 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf --out .cache/revalidation/task94/direct-comparison.json",
+      "exit_code": 0,
+      "observation": "FUNCTION_BYTES_DIFFERENT"
+    },
+    {
+      "command_template": "g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -pthread reconstruction/research/arm32_cpu_query_candidate.cpp reconstruction/tests/research/arm32_cpu_query_candidate_test.cpp -Wl,--wrap=pthread_once -o .cache/revalidation/task94/cpu-query-test",
+      "exit_code": 0,
+      "observation": "Host test executable built"
+    },
+    {
+      "command_template": "python3 -m unittest nova3_team.tests.test_compiler_matrix nova3_team.tests.test_object_compare -v",
+      "exit_code": 0,
+      "observation": "8 harness tests pass; not reference equivalence"
+    }
+  ],
+  "compiler": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "executable_sha256": "d326ed4fc4f71e5315b9ce388fc23ec792f81652ca7b29e66294de6ed2520844",
+    "historical_compiler_verified": false,
+    "ndk_revision": "29.0.14206865",
+    "role": "Exploratory modern Clang; not identified original GCC",
+    "version": "Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)\nTarget: x86_64-unknown-linux-gnu\nThread model: posix\nInstalledDir: /opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin\n",
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6"
+  },
+  "date": "2026-10-28",
+  "github_mutation": false,
+  "grades": {
+    "actual_original_instruction_window_match": false,
+    "arm_object_built": true,
+    "arm_object_built_with_identified_historical_toolchain": false,
+    "end_to_end_game_functionality": false,
+    "host_tests_passed": true,
+    "original_behaviour_compared": "Static dependency/control-flow comparison only; no dynamic original oracle",
+    "source_equivalence": "NOT_VERIFIED",
+    "source_present": true,
+    "whole_library_sha256_match": false
+  },
+  "historical_toolchain": {
+    "assembler": "UNKNOWN",
+    "comment": "GCC: (GNU) 4.4.3",
+    "compiler_executable_sha256": null,
+    "flags": "UNKNOWN",
+    "linker": "UNKNOWN",
+    "ndk_revision": "UNKNOWN",
+    "occurrences": 968,
+    "tool_search": "No GCC 4.4.3 ARM candidate in checked PATH/NDK locations; not an exhaustive filesystem search"
+  },
+  "negative_control": {
+    "caveat": "Code-window checks are evidence, not recovered original .o/relocations/linker inputs or full source equivalence.",
+    "experiments": [
+      {
+        "comparison": {
+          "candidate_code_sha256": "31585837076fc706a50aca3da93102e7b1997f1dfa5722430a931f58c8b53162",
+          "candidate_object_sha256": "e97581161edf92f1e78c484b9466c29c5630118cf62ed941908035d9ee4f657e",
+          "candidate_relocation_count": 0,
+          "candidate_section": ".text",
+          "candidate_size": 36,
+          "candidate_symbol": "nova3_recovered_cpu_count",
+          "candidate_thumb": false,
+          "code_window_equal": false,
+          "evidence_scope": "Linked-code window only; no ABI, data, linker or original .o proof",
+          "kind": "source-candidate-to-linked-window",
+          "original_compiler_verified": false,
+          "original_object_recovered": false,
+          "original_relocations_recovered": false,
+          "original_so_hash_matching_verified": false,
+          "original_thumb": false,
+          "reference_address": 864016,
+          "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+          "reference_size": 44,
+          "reference_window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca",
+          "schema": "nova3.object-window-comparison/1",
+          "source_matching_verified": false,
+          "status": "FUNCTION_SIZE_MISMATCH"
+        },
+        "compile_exit_code": 0,
+        "compiler_version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+        "flags": [
+          "--target=armv7a-linux-androideabi21",
+          "-marm",
+          "-O2",
+          "-fPIC",
+          "-std=c++17"
+        ],
+        "number": 1,
+        "object_file": "candidate_01.o",
+        "object_sha256": "e97581161edf92f1e78c484b9466c29c5630118cf62ed941908035d9ee4f657e",
+        "profile_name": "compiler-profile.json",
+        "profile_sha256": "954f13ba7f579cca40294e8764e366969ec10437a175658e3a5ef84ddfbb3d2a",
+        "source_matching_verified": false,
+        "status": "FUNCTION_SIZE_MISMATCH"
+      }
+    ],
+    "original_compiler_verified": false,
+    "profiles_run": 1,
+    "reference_address": 864016,
+    "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "schema": "nova3.compiler-matrix/1",
+    "source_matching_verified": false,
+    "source_sha256": "7825ea14f579d7d44bc6d2ddd32a4a24a9e798e2b2e2ef91f00085dd3561c30d",
+    "source_symbol": "nova3_recovered_cpu_count",
+    "whole_shared_library_sha256_matched": false
+  },
+  "next_experiment": "Review three relocation records and perform one explicitly mapped source-only scratch link at the independently observed function/PLT/state/initializer addresses. Keep linked-window result separate from original-object or historical-compiler claims.",
+  "pr_status": "NOT_SUBMITTED: explicit session prohibition on modifying GitHub state; supervisor must submit for human review",
+  "preserved_portable_source": {
+    "abi": "Source-owned CpuQueryContext*; deliberate negative control",
+    "path": "reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp",
+    "sha256": "7825ea14f579d7d44bc6d2ddd32a4a24a9e798e2b2e2ef91f00085dd3561c30d",
+    "unchanged": true
+  },
+  "private_handoff": ".cache/revalidation/task94/",
+  "production_integration": false,
+  "reference": {
+    "address": 864016,
+    "call_site": "0x000d2f28",
+    "comment_gcc_443_occurrences": 968,
+    "count_storage": "0x00d9659c",
+    "elf_class": 32,
+    "elf_type": "ET_DYN",
+    "file_offset": 864016,
+    "function": "android_getCpuCount",
+    "ghidra": {
+      "address": 929552,
+      "all_44_bytes_equal": true,
+      "analysis_scope": "ELF import, one bounded function only; no global autoanalysis",
+      "calls": [
+        {
+          "from_va": 864040,
+          "to_va": 862480
+        }
+      ],
+      "decompilation_completed": true,
+      "image_base": 65536,
+      "language": "ARM:LE:32:v8",
+      "tmode": 0,
+      "version": "12.1.2"
+    },
+    "initializer": "0x000d2f98",
+    "literal_slots": [
+      "0x000d2f34",
+      "0x000d2f38"
+    ],
+    "machine": "EM_ARM",
+    "once_storage": "0x00d96598",
+    "plt": {
+      "plt_address": 862480,
+      "relocation": {
+        "got_address": 14167644,
+        "relocation_type": 22,
+        "symbol": "pthread_once"
+      }
+    },
+    "reference_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "size": 44,
+    "window_sha256": "435ee619bd5512e70580bde9ca41f789984afa3d70fb55a4ef6a6a85995604ca"
+  },
+  "relocation_policy": {
+    "candidate_01": [
+      {
+        "offset": "0x1c",
+        "symbol": "pthread_once",
+        "type": "R_ARM_CALL"
+      },
+      {
+        "offset": "0x28",
+        "symbol": "nova3_arm32_cpu_state",
+        "type": "R_ARM_REL32"
+      },
+      {
+        "offset": "0x2c",
+        "symbol": "nova3_arm32_cpu_initialize",
+        "type": "R_ARM_REL32"
+      }
+    ],
+    "candidate_02": [
+      {
+        "offset": "0x18",
+        "symbol": "pthread_once",
+        "type": "R_ARM_CALL"
+      },
+      {
+        "offset": "0x24",
+        "symbol": "nova3_arm32_cpu_state",
+        "type": "R_ARM_REL32"
+      },
+      {
+        "offset": "0x28",
+        "symbol": "nova3_arm32_cpu_initialize",
+        "type": "R_ARM_REL32"
+      }
+    ],
+    "diagnostic": {
+      "candidate_relocation_offsets": [
+        24,
+        36,
+        40
+      ],
+      "diagnostic_only": true,
+      "diagnostic_unrelocated_differing_offsets": [],
+      "differing_byte_offsets": [
+        24,
+        25,
+        36,
+        37,
+        38,
+        40
+      ],
+      "policy": "Raw ET_REL bytes versus linked window; no relocation application, masking or exclusions in primary result",
+      "source_matching_verified": false
+    },
+    "linked_candidate_built": false,
+    "original_relocations_recovered": false,
+    "outside_window": "EHABI unwind relocations are present and unvalidated",
+    "primary": "Unmodified raw linked window versus unmodified ET_REL symbol window; no exclusions or applied relocations"
+  },
+  "result": "NOT MATCHED",
+  "schema": "nova3.arm-compiler-pilot/1",
+  "scope": "One no-argument CPU-count function; independent source and explicit model dependencies",
+  "setup_failures": [
+    {
+      "exit_code": 1,
+      "reason": "LaunchSupport attempted java_home.save under read-only user config",
+      "resolution": "Explicit launcher.java_home=Java 21",
+      "stage": "Ghidra Java discovery"
+    },
+    {
+      "exit_code": 1,
+      "reason": "ProjectLocator rejects a path element starting with dot",
+      "resolution": "Disposable project under /tmp/nova3-task94-ghidra",
+      "stage": "Ghidra project location"
+    },
+    {
+      "exit_code": 1,
+      "reason": "Headless VM property was missing",
+      "resolution": "Explicit -Djava.awt.headless=true",
+      "stage": "AWT initialization"
+    }
+  ],
+  "sources": [
+    {
+      "path": "reconstruction/research/arm32_cpu_query_candidate.cpp",
+      "sha256": "ea7f1ae3cf95610d2f22ca566e9756d8591f16f99126634020b85cd6bc2dd46b"
+    },
+    {
+      "path": "reconstruction/research/arm32_cpu_query_candidate.h",
+      "sha256": "0a3817dfa6977a3c30f403508289167cd176b8b69bb0aca322fc724e9494250c"
+    },
+    {
+      "path": "reconstruction/tests/research/arm32_cpu_query_candidate_test.cpp",
+      "sha256": "d9c8685a569a3a297401b8cc2d7fabfbe471363382484e08f859980cbf7baeb2"
+    }
+  ],
+  "task": 94,
+  "tests": {
+    "arm_runtime_execution": false,
+    "harness_tests_passed": 8,
+    "host_compiler": "g++ (GCC) 16.2.1 20260810",
+    "host_compiler_executable_sha256": "f04191f6a7b2cd7d9a62e1745872b8a6088791e5af6955488c69c9b2c4668bc9",
+    "modes": [
+      {
+        "exit_code": 0,
+        "mode": "positive",
+        "stderr": "",
+        "stdout": ""
+      },
+      {
+        "exit_code": 0,
+        "mode": "zero",
+        "stderr": "",
+        "stdout": ""
+      },
+      {
+        "exit_code": 0,
+        "mode": "negative",
+        "stderr": "",
+        "stdout": ""
+      },
+      {
+        "exit_code": 0,
+        "mode": "minimum",
+        "stderr": "",
+        "stdout": ""
+      },
+      {
+        "exit_code": 0,
+        "mode": "maximum",
+        "stderr": "",
+        "stdout": ""
+      }
+    ],
+    "per_mode": {
+      "concurrent_queries": 1024,
+      "initializer_executions": 1,
+      "injected_once_error_query": true,
+      "post_once_changed_cache_query": true
+    },
+    "reference_execution": false,
+    "test_binary_sha256": "3fdcfbef1c6f4d1e3622afd93fe0aa6cc9f327190d247aa4170b8ab4812d8728"
+  },
+  "verification": "NOT_VERIFIED"
+}
