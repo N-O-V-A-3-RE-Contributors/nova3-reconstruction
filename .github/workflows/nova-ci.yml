@@ -20,6 +20,10 @@ jobs:
         run: python -m nova3_team.guard --repo . --all
       - name: Unit tests for collaboration runtime
         run: python -m unittest discover -s nova3_team/tests -v
+      - name: Observatory contributor/owner role tests
+        run: |
+          python -m unittest discover -s tools/observatory/tests -v
+          python tools/observatory/observer.py --demo --once
       - name: Rebuild reconstructed host library
         run: |
           cmake -S . -B /tmp/nova3-build -G Ninja -DCMAKE_BUILD_TYPE=Debug
