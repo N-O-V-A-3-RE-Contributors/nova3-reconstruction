@@ -18,6 +18,34 @@ python -m nova3_team.worker run --provider codex
 
 Use `--once` for a single task. Local clones and work attempts live in `~/.cache/nova3-team`, separate from this repository. Keep the computer awake for continuous execution. If all tasks are claimed, the worker polls until new work arrives.
 
+### Provider timeouts, private logs and quarantine
+
+The worker now streams AI stdout/stderr directly to private, permission-limited
+`~/.cache/nova3-team/OWNER_REPO/.nova-private/<issue-checkout>/round-N.log`
+while the session runs. Journal messages include elapsed seconds and local
+log byte counts, **never the AI's raw output or original game bytes**.
+Inspect these files locally after a stalled attempt; do not paste unredacted
+credentials, decompiler dumps or proprietary instruction excerpts into GitHub.
+
+`NOVA3_AI_SESSION_TIMEOUT` controls the single-session time budget. The
+default is **1,200 seconds (20 minutes)**, and the accepted range is 300–1,800
+seconds. A timed-out provider is now `PROVIDER_TIMEOUT` rather than an
+unexplained `NO_SOURCE_PROGRESS`. It immediately quarantines the task,
+preserving its checkout, local changes and stream logs, instead of launching
+two more identical sessions. Re-scope the issue and fix the cause before a
+maintainer requeues it. The old local retry cooldown can be cleared with
+`python -m nova3_team.reliability --repo OWNER/REPO --reset-issue N`
+**only after** fixing and requeueing the task; do not erase the saved checkout
+or blindly bypass the circuit breaker.
+
+The historic issue #82 failed with **three 30-minute session timeouts** before
+these safeguards existed. Its prior `NO_SOURCE_PROGRESS` classification
+describes missing source edits, not proof that compilation or decompilation
+was impossible. The maintainer intentionally moved it to `nova:blocked`
+pending a smaller task and fixed worker. See
+[`docs/DISCORD_IMPLEMENTATION.md`](DISCORD_IMPLEMENTATION.md) for the local
+Cyrus donor and compiler-aware revalidation sequence.
+
 ## Coordination
 
 GitHub issue labels: `nova:queued`, `nova:claimed`, `nova:review`.

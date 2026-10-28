@@ -1,5 +1,26 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Compiler-aware historical revalidation (2026-10-28)
+
+A read-only inventory over 25 existing `reconstruction/recovered/` C++ blocks
+and 25 historical evidence JSON records completed successfully:
+8 source blocks have explicit evidence-path associations, 17 have inferred
+address associations, none lack an evidence record, and no stale recorded
+source SHA was found. **Zero blocks are yet independently reverified as an
+original ARM source-code match under the new compiler/objdiff standard.**
+Two historical evidence records assert short billing-forwarder instruction
+window matches; those claims have been retained for independent review.
+Previously passing behavioural tests remain meaningful within their scope.
+
+The new local tools for Cyrus/Premium donor hypotheses, ARM ET_REL code-window
+comparison and sequential compiler-candidate experiments are source-only
+research infrastructure, not a completed original-linker reconstruction.
+Observed `GCC 4.4.3` strings are still an incomplete compiler fingerprint.
+Original linker inputs, source-built JNI/Irrlicht integration and a playable
+APK remain unverified. See `docs/DISCORD_IMPLEMENTATION.md` and
+`docs/LEGACY_REVALIDATION.md`. The worker now preserves private streaming
+AI logs and quarantines a timed-out provider after one bounded attempt.
+
 Current source milestone: **named loading from complete Premium OBBs, checked BRES relocation, real inline mesh extraction, actual ETC1 texture pixel decoding, and game-specific ETC filename routing**. No playable game or Android APK exists; no original executable enters production targets.
 
 | Measure | Actual coverage |

@@ -42,6 +42,57 @@ class MatchingTests(unittest.TestCase):
             with self.assertRaisesRegex(matching.MatchingError, "empty"):
                 matching.stage(data, binary, out)
 
+    def test_stage_uses_sha_and_symbol_checked_donor_hypotheses_only(self):
+        data = elf_fixture([symbol("_ZN8Renderer4drawEv", 0x1001, 8)])
+        candidate = {"retail_address": 0x1000, "retail_size": 8,
+                     "name": "_ZN8Renderer4drawEv", "group_hint": "retail_cu_0000000c",
+                     "translation_unit_proven": False}
+        plan = {"schema": "nova3.donor-plan/1", "retail_sha256": hashlib.sha256(data).hexdigest(),
+                "candidates": [candidate]}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            original = root / "original.so"
+            original.write_bytes(data)
+            result = matching.stage(data, original, root / "stage", donor_plan=plan)
+        self.assertEqual(result["grouping_source"], "donor-plan-hypotheses")
+        self.assertFalse(result["translation_units_verified"])
+        self.assertEqual(result["units"][0]["name"], "retail_cu_0000000c")
+        bad = dict(plan, retail_sha256="0" * 64)
+        with self.assertRaisesRegex(matching.MatchingError, "SHA mismatch"):
+            matching._donor_group_hints(bad, hashlib.sha256(data).hexdigest())
+        bad = dict(plan, candidates=[dict(candidate, translation_unit_proven=True)])
+        with self.assertRaisesRegex(matching.MatchingError, "overstated"):
+            matching._donor_group_hints(bad, hashlib.sha256(data).hexdigest())
+
+    def test_donor_ranking_drives_default_stage_and_explicit_addresses_override(self):
+        data = elf_fixture([symbol("first", 0x1001, 8),
+                            symbol("second", 0x1020, 12),
+                            symbol("third", 0x1040, 8)])
+        candidates = [
+            {"retail_address": 0x1040, "retail_size": 8, "name": "third",
+             "group_hint": "retail_cu_3", "translation_unit_proven": False},
+            {"retail_address": 0x1000, "retail_size": 8, "name": "first",
+             "group_hint": "retail_cu_1", "translation_unit_proven": False},
+        ]
+        plan = {"schema": "nova3.donor-plan/1",
+                "retail_sha256": hashlib.sha256(data).hexdigest(),
+                "candidates": candidates}
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            binary = root / "test.so"
+            binary.write_bytes(data)
+            staged = matching.stage(data, binary, root / "ranked", limit=1,
+                                    donor_plan=plan)
+            overridden = matching.stage(data, binary, root / "explicit", limit=1,
+                                        addresses={0x1000}, donor_plan=plan)
+            self.assertEqual([r["address"] for r in staged["functions"]], [0x1040])
+            self.assertEqual([r["address"] for r in overridden["functions"]], [0x1000])
+            bad = dict(plan, candidates=candidates + [
+                {"retail_address": 0xeeee, "retail_size": 8, "name": "absent",
+                 "group_hint": "unclassified", "translation_unit_proven": False}])
+            with self.assertRaisesRegex(matching.MatchingError, "current reference ELF ledger"):
+                matching.stage(data, binary, root / "bad", limit=1, donor_plan=bad)
+
     def test_fail_closed_on_ambiguous_or_absent_symbol(self):
         data = elf_fixture([symbol("bad", 0x1001, 8),
                             symbol("same_address", 0x1001, 16)])

@@ -1,5 +1,14 @@
 # Outstanding blockers — 2026-10-25
 
+## Compiler-aware matching and AI-queue blockers (2026-10-28)
+
+- The Premium library contains repeated GCC 4.4.3 compiler strings, but no proven complete original per-TU flags, assembler/linker version, build order or reproducible toolchain profile. Modern NDK Clang builds demonstrate portability only. Some recovered C++ uses C++17 and cannot simply be recompiled by GCC 4.4.3 unchanged; create separate historical-ABI candidates when byte matching is justified.
+- The linked `.so` cannot uniquely restore discarded original `.o` sections/translation-unit boundaries and pre-link relocations. Synthetic wrappers are research references, not original objects; an identical full-`.so` SHA and valid final linker script have not been reproduced. A relocation worksheet and measured linker experiments are still prerequisites.
+- The Cyrus debug ELF is a promising symbol/DWARF donor, but compile-unit and function transfers are inferred until Premium mapping is validated. A reported behavioural/short-window match from a previous issue is not automatically an independent new-standard compiler/objdiff result.
+- Issue #82 ran three 1,800-second provider sessions ending `Session timed out` with no source edits. Its `NO_SOURCE_PROGRESS` classification hid the provider timeout. The issue is intentionally `nova:blocked` pending smaller scope and deployment of streamed private logs and explicit `PROVIDER_TIMEOUT` quarantine; do not reset its checkpoint or requeue blindly. Other blocked architecture issues likewise need task review.
+- Local Ghidra discovery analysed two original ELFs, deferred two and reported zero newly identified functions in `up-to-date` mode. This is not complete-game coverage, and deferred references need resource/ledger investigation before generating more AI reconstruction tasks.
+- The original modified Irrlicht engine version/fork and source-built JNI binding remain unverified; copying arbitrary stock Irrlicht or linking original JNI executable would violate the source-only end-state. No independent Android game runtime has been demonstrated.
+
 - No Android device/emulator attached: `adb devices -l` in .cache/logs/environment.json returned an empty list. Host utility/oracle tests continue; no game runtime comparison or actual gameplay test exists.
 - Premium supplied APK is GAND.GloftN3LT code105/v1.0.8e; supplied expansions are ANMP.GloftN3HM main1050/patch1070. Installer selects GAND directory; actual expected component list remains unresolved. Do not assume matching assets. See research/android/STARTUP.md and research/assets/ARCHIVE_REPORT.md.
 - Premium DWARF has20 compiler-runtime compilation units and zero observed game C++ class DIEs. Full game layout recovery requires symbols, disassembly, vtables and data evidence rather than DWARF.

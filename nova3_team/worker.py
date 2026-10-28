@@ -1,6 +1,6 @@
 """Cross-platform opt-in unattended worker. Runs one sandboxed local CLI at a time."""
 from __future__ import annotations
-import argparse, hashlib, json, os, pathlib, shutil, subprocess, sys, time, uuid
+import argparse, hashlib, json, os, pathlib, shutil, signal, subprocess, sys, time, uuid
 from datetime import datetime, timezone
 from .common import GitHub, lease_active, lease_get, label_names
 from .guard import check as guard_check
@@ -13,6 +13,126 @@ def run(cmd, cwd=None, timeout=90, capture=True, check=True):
     if check and cp.returncode:
         raise RuntimeError(f'{cmd[:4]} failed ({cp.returncode}): {(cp.stderr or cp.stdout or "")[-900:]}')
     return cp
+
+
+def ai_session_timeout():
+    """Bound provider runtime before launching an expensive, unattended job."""
+    raw = os.environ.get('NOVA3_AI_SESSION_TIMEOUT', '1200')
+    try:
+        seconds = int(raw)
+    except ValueError as exc:
+        raise ValueError('NOVA3_AI_SESSION_TIMEOUT must be an integer number of seconds') from exc
+    if not 300 <= seconds <= 1800:
+        raise ValueError('NOVA3_AI_SESSION_TIMEOUT must be between 300 and 1800 seconds')
+    return seconds
+
+
+def private_round_log(workdir, round_num):
+    """Never write provider output to GitHub or the tracked source checkout."""
+    workdir = pathlib.Path(workdir)
+    folder = workdir.parent / '.nova-private' / workdir.name
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if os.name == 'posix':
+        folder.chmod(0o700)
+    return folder / f'round-{round_num}.log'
+
+
+def _tail_file(path, limit=16000):
+    try:
+        with pathlib.Path(path).open('rb') as file:
+            file.seek(0, os.SEEK_END)
+            file.seek(max(0, file.tell() - limit))
+            return file.read().decode('utf-8', errors='replace')
+    except OSError:
+        return ''
+
+
+def _stop_provider_group(proc):
+    """Stop a timed-out CLI and its subprocesses, avoiding runaway local jobs."""
+    if proc.poll() is not None:
+        return
+    try:
+        if os.name == 'posix':
+            os.killpg(proc.pid, signal.SIGTERM)
+        else:
+            proc.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        try:
+            if os.name == 'posix':
+                os.killpg(proc.pid, signal.SIGKILL)
+            else:
+                proc.kill()
+        except ProcessLookupError:
+            pass
+        proc.wait(timeout=5)
+    if os.name == 'posix':
+        # The CLI might exit on SIGTERM while its Java/Ghidra or shell children
+        # survive. They remain in its dedicated process group; kill that group.
+        try:
+            os.killpg(proc.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+
+
+def run_provider(cmd, cwd, log, timeout):
+    """Stream AI output to a private local file; retain diagnostics on timeout.
+
+    subprocess.run(capture_output=True) hid all progress until termination and
+    returned empty logs for issue #82's three 30-minute timeouts. This
+    implementation exposes only elapsed time/byte counts to worker telemetry.
+    Logs stay in .nova-private and are never attached to GitHub comments.
+    """
+    log = pathlib.Path(log)
+    log.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if os.name == 'posix':
+        log.parent.chmod(0o700)
+    descriptor = os.open(log, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    if os.name == 'posix':
+        os.chmod(log, 0o600)
+    settings = {'start_new_session': True} if os.name == 'posix' else {}
+    started = time.monotonic()
+    timed_out = False
+    try:
+        with os.fdopen(descriptor, 'wb') as sink:
+            proc = subprocess.Popen(cmd, cwd=cwd, stdout=sink,
+                                    stderr=subprocess.STDOUT, **settings)
+            try:
+                while True:
+                    remaining = timeout - (time.monotonic() - started)
+                    if remaining <= 0:
+                        timed_out = True
+                        _stop_provider_group(proc)
+                        break
+                    try:
+                        proc.wait(timeout=min(60, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        elapsed = int(time.monotonic() - started)
+                        if elapsed >= 60:
+                            note(f'AI provider still running: elapsed={elapsed}s; '
+                                 f'local_log_bytes={log.stat().st_size}')
+            except BaseException:
+                _stop_provider_group(proc)
+                raise
+            sink.flush()
+    except BaseException:
+        # os.fdopen owns descriptor after successful construction. On errors
+        # before ownership is transferred, close the raw descriptor safely.
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+    output = _tail_file(log)
+    return subprocess.CompletedProcess(
+        cmd, 124 if timed_out else proc.returncode, stdout=output,
+        stderr=f'Provider session timed out after {int(timeout)} seconds' if timed_out else '')
 
 
 def note(s):
@@ -208,14 +328,22 @@ def verify(workdir):
     return True,'\n'.join(feedback)
 
 
-def record_handoff(workdir,round_num,cmd,cp,changes):
-    folder=pathlib.Path(workdir).parent/'.nova-private'/pathlib.Path(workdir).name
-    folder.mkdir(parents=True, exist_ok=True)
-    log=folder/f'round-{round_num}.log'
-    log.write_text((cp.stdout or '')[-12000:]+'\nSTDERR:\n'+(cp.stderr or '')[-3000:],encoding='utf-8')
+def record_handoff(workdir,round_num,cmd,cp,changes,streamed=False):
+    log=private_round_log(workdir,round_num)
+    folder=log.parent
+    if not streamed:
+        log.write_text((cp.stdout or '')[-12000:]+'\nSTDERR:\n'+(cp.stderr or '')[-3000:],encoding='utf-8')
+        if os.name == 'posix':
+            log.chmod(0o600)
     snippet=(cp.stdout or '')[-3500:]
     handoff=folder/'handoff.md'
-    handoff.write_text(f'Round {round_num}; exit={cp.returncode}\nChanged files: {changes}\nLast model output:\n{snippet}\n',encoding='utf-8')
+    handoff.write_text(f'Round {round_num}; exit={cp.returncode}\n'
+                       f'Changed files: {changes}\n'
+                       f'Private full output: {log.name}\n'
+                       f'Provider diagnostic: {(cp.stderr or "")[:400]}\n'
+                       f'Last model output:\n{snippet}\n',encoding='utf-8')
+    if os.name == 'posix':
+        handoff.chmod(0o600)
     return handoff.read_text()
 
 
@@ -298,10 +426,7 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                 prompt=session_prompt(issue,k,handoff,allowed,binary_root)
                 cmd=command_for(provider,prompt)
                 note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
-                try:
-                    cp=run(cmd,cwd=work,timeout=1800,check=False)
-                except subprocess.TimeoutExpired as e:
-                    cp=subprocess.CompletedProcess(cmd,124,stdout=e.stdout.decode(errors='replace') if isinstance(e.stdout,bytes) else (e.stdout or ''),stderr='Session timed out')
+                cp=run_provider(cmd,work,private_round_log(work,k),timeout=ai_session_timeout())
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
                 try:
@@ -311,11 +436,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                 note(f'#{n} Codex/AI session finished: exit={cp.returncode}; checking changed files')
                 paths=validate_scope(work,allowed)
                 recovery.update(root,n,changed_files=len(paths))
-                handoff=record_handoff(work,k,cmd,cp,paths)
+                handoff=record_handoff(work,k,cmd,cp,paths,streamed=True)
                 recovery.update(root,n,phase='checkpoint',round=k)
                 if paths:
                     verified,checklog=verify(work)
                     handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
+                if cp.returncode==124:
+                    note(f'ALERT #{n}: AI provider TIMEOUT; private output and any local edits '
+                         f'are retained. Quarantining instead of repeating a stalled session.')
+                    return pause_failed_task(
+                        gh,root,n,token,provider,user,
+                        RuntimeError('Provider session timed out; inspect local session log before retry'))
                 if cp.returncode==0 and paths and verified:break
                 if cp.returncode!=0:note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
             paths=validate_scope(work,allowed)

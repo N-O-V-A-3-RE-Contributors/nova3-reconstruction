@@ -155,13 +155,73 @@ def _asm_include(path: Path) -> str:
     return '.include "' + raw + '"'
 
 
+def _donor_group_hints(plan: dict, binary_sha256: str) -> dict[int, dict]:
+    """Optional DWARF-guided *hypotheses*, never proof of source TU boundaries."""
+    if (not isinstance(plan, dict) or plan.get("schema") != "nova3.donor-plan/1"
+            or plan.get("retail_sha256") != binary_sha256):
+        raise MatchingError("donor plan schema or reference SHA mismatch")
+    rows = plan.get("candidates")
+    if not isinstance(rows, list) or len(rows) > 512:
+        raise MatchingError("invalid or oversized donor plan")
+    hints = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise MatchingError("malformed donor candidate")
+        addr, size, hint = (row.get(x) for x in
+                            ("retail_address", "retail_size", "group_hint"))
+        if (type(addr) is not int or type(size) is not int
+                or not isinstance(hint, str) or not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hint)
+                or row.get("translation_unit_proven") is not False):
+            raise MatchingError("unsafe or overstated donor translation-unit hint")
+        if addr in hints:
+            raise MatchingError("ambiguous donor address hint")
+        hints[addr] = dict(size=size, hint=hint, name=row.get("name"))
+    return hints
+
+
+def _validate_donor_addresses(data: bytes, hints: dict[int, dict]) -> None:
+    """Check *every* offered donor symbol against the current ELF ledger.
+
+    This is metadata correlation only.  Actual byte/range validation still
+    happens when ``select_functions`` stages a bounded chosen subset.
+    """
+    functions = defaultdict(list)
+    for row in build_ledger(data)["functions"]:
+        functions[row["address"]].append(row)
+    for address, donor in hints.items():
+        matches = functions.get(address, [])
+        if (len(matches) != 1 or matches[0]["size_conflict"]
+                or matches[0]["name"] != donor["name"]
+                or matches[0]["size"] != donor["size"]):
+            raise MatchingError("donor symbol disagrees with current reference ELF ledger at " +
+                                hex(address))
+
+
 def stage(data: bytes, binary: Path, out: Path, addresses: set[int] | None = None,
-          limit: int = 16) -> dict:
+          limit: int = 16, donor_plan: dict | None = None) -> dict:
     """Generate ignored, local-only ASM, global-asm C++ and synthetic ref recipes."""
     out = out.resolve()
     if out.exists() and any(out.iterdir()):
         raise MatchingError("output directory must be new or empty to avoid overwriting work")
+    hints = {}
+    if donor_plan is not None:
+        hints = _donor_group_hints(donor_plan, digest(data))
+        _validate_donor_addresses(data, hints)
+        if addresses is None:
+            if not hints:
+                raise MatchingError("donor plan contains no eligible functions")
+            # Donor candidates are already ranked by bounded pilot value.
+            # Select from that list rather than arbitrary first ELF symbols.
+            addresses = set(list(hints)[:limit])
     selected, excluded = select_functions(data, addresses, limit)
+    if donor_plan is not None:
+        for row in selected:
+            donor = hints.get(row["address"])
+            if donor is not None:
+                if donor["size"] != row["size"] or donor["name"] != row["name"]:
+                    raise MatchingError("donor name/size disagrees with reference ELF")
+                row["group"] = donor["hint"]
+                row["group_evidence"] = "INFERRED_DONOR_DWARF_OR_SYMBOL_SCOPE"
     groups = defaultdict(list)
     for row in selected:
         groups[row["group"]].append(row)
@@ -195,6 +255,8 @@ def stage(data: bytes, binary: Path, out: Path, addresses: set[int] | None = Non
                           base_path="objects/build/" + group + ".o"))
     manifest = dict(schema=SCHEMA, kind="synthetic-linked-byte-research",
                     binary_path=str(binary.resolve()), binary_sha256=digest(data),
+                    translation_units_verified=False,
+                    grouping_source=("donor-plan-hypotheses" if donor_plan else "symbol-scope-hypotheses"),
                     original_object_files_recovered=False,
                     original_relocations_recovered=False,
                     original_compiler_verified=False, source_matching_verified=False,
@@ -262,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
     sp.add_argument("--out", type=Path, default=ROOT / ".cache" / "objmatch")
     sp.add_argument("--limit", type=int, default=16)
     sp.add_argument("--address", action="append", type=lambda s: int(s, 0))
+    sp.add_argument("--donor-plan", type=Path,
+                    help="Optional local Cyrus/Premium donor hypotheses JSON")
     cp = sub.add_parser("profile", help="Record exact candidate cross-compiler identity")
     cp.add_argument("compiler", type=Path)
     cp.add_argument("--flag", action="append", default=[])
@@ -278,8 +342,11 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(json.dumps(result, indent=2))
         elif args.command == "stage":
+            donor = (json.loads(args.donor_plan.read_text(encoding="utf-8"))
+                     if args.donor_plan else None)
             result = stage(args.binary.read_bytes(), args.binary, args.out,
-                           set(args.address) if args.address else None, args.limit)
+                           set(args.address) if args.address else None, args.limit,
+                           donor_plan=donor)
             print("staged %d SYNTHETIC functions in %d inferred groups" %
                   (len(result["functions"]), len(result["units"])))
         elif args.command == "profile":
