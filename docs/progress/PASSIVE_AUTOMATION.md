@@ -15,7 +15,7 @@ inventory requires retrospective review. No historical evidence or recovered
 source is changed by this issue.
 
 CI uses `pull_request`/main `push`, `contents: read`, checkout without persisted
-credentials, source hygiene, Python tests, legacy inventory, Observatory checks,
+credentials, source hygiene, Python tests, legacy inventory, Control Center checks,
 and host CMake/CTest. It has no proprietary ELF or independent binary oracle.
 The new named fixture check exercises valid claims, invalid claims and the CLI;
 it does not scan/promote the historical evidence automatically.
@@ -27,7 +27,7 @@ its sysroot unavailable. `.comment` strings alone do not establish provenance.
 No historical NDK is installed or executed by this gate.
 
 Task #103 adds [optional compiler candidate onboarding](HISTORICAL_TOOLCHAIN.md)
-to first-run `nova3_easy.py` workers and the Observatory's **H / TOOLCHAIN**
+to first-run `nova3_easy.py` workers and the Control Center's **H / TOOLCHAIN**
 page. Observers and ordinary host-only tasks need no historical compiler.
 NDK r8e installation is a manual, consented no-sudo step; metadata execution
 requires an explicit compiler SHA pin. `PINNED_VERSION_TARGET_VERIFIED` means

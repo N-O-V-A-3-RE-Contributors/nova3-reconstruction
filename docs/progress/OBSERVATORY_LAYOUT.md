@@ -1,6 +1,6 @@
-# Observatory responsive layout
+# Control Center responsive layout
 
-The Observatory keeps framed cards, status words, colours and proportional task
+The Control Center keeps framed cards, status words, colours and proportional task
 bars while adapting to the live terminal size. Resizing does not select a page,
 type into search or confirm an action. The observer does not start a worker.
 
@@ -38,12 +38,12 @@ indicate more group/page labels outside the visible navigation window.
 | Team | W WORKERS, A ACTIVITY |
 | Administration | 0 OWNER OPS, ? HELP |
 
-Tab/Shift-Tab or Left/Right traverses all 14 pages in the established order.
+Tab/Shift-Tab or Left/Right traverses visible pages (14 for contributors, 15 for owners) in the established order.
 `{` / `}` selects the first page of the previous/next group. Direct shortcuts
 remain available even when their labels are outside the navigation window.
 On PULL REQUESTS, A retains its existing “mark all worker PRs” meaning; Tab or
 group navigation reaches ACTIVITY from there. The 0 shortcut requires the
-ADMIN/MAINTAIN role; other navigation can show the locked owner-page explanation.
+authenticated organization owner or repository ADMIN; other navigation can show the locked owner-page explanation.
 
 On TASKS, PULL REQUESTS and ACTIONS:
 

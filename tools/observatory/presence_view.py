@@ -1,4 +1,4 @@
-"""Read-only GitHub worker-presence viewer for the private Observatory.
+"""Read-only GitHub worker-presence viewer for the NOVA3 Control Center.
 
 A reporting worker owns exactly one editable comment on a dedicated status issue.
 This module never guesses that unreported machines are idle/offline.

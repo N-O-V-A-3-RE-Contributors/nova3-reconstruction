@@ -1,4 +1,4 @@
-# Observatory forecast policy and integration contract (#105)
+# Control Center forecast policy and integration contract (#105)
 
 `tools/observatory/forecast_model.py` is a Python 3.10+ standard-library-only,
 pure deterministic model. `forecast(snapshot: Snapshot, policy: Policy =
@@ -249,7 +249,7 @@ python -m unittest discover -s tools/observatory/tests -p test_forecast_model.py
 The focused tests use synthetic metadata only and exercise evidence gates,
 timeouts/retries, percentile calculations, cohort changes, blocked subsets,
 review CI, worker scaling, stale/future observations, invalid durations,
-readiness, deterministic output and JSON serialization. Full Observatory
+readiness, deterministic output and JSON serialization. Full Control Center
 discovery also runs existing tests that invoke `systemd-analyze verify`; this
 sandbox rejects its socket options, causing two unrelated discovery-test
 failures. Those files and system configuration are outside #105's allowlist.
@@ -257,7 +257,7 @@ There are no binary fixtures, toolchain/matching claims, new dependencies or
 GitHub changes. Resume with the focused tests and the integration steps above.
 
 Recorded on 2026-10-29 with Python 3.14.8: focused tests **35 passed**, exit 0;
-Observatory discovery with exactly the following two previously failing
+Control Center discovery with exactly the following two previously failing
 sandbox-dependent tests excluded: **107 passed**, exit 0.
 
 * `test_discovery_fix.Tests.test_known_bug_working_directory_quoted`

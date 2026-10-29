@@ -225,7 +225,7 @@ class OwnerGateTests(unittest.TestCase):
             self.assertEqual(c.identity.role, 'UNKNOWN' if role not in pa.ROLE_VALUES else role)
 
     def test_owner_roles_allow_only_the_official_url(self):
-        for role in ('ADMIN', 'MAINTAIN'):
+        for role in ('ADMIN',):
             c = self.controller(role)
             self.assertTrue(c.authorize_owner()[0])
             self.assertEqual(c.owner_member_url(),

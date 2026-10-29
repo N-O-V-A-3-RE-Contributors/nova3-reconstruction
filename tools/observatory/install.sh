@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Contributor-safe, no-sudo installation of the shared NOVA3 Observatory.
+# Contributor-safe, no-sudo installation of the NOVA3 Control Center.
+# The legacy name "NOVA3 Observatory" and its executable alias are retained.
 set -euo pipefail
 if [[ ${EUID:-$(id -u)} -eq 0 ]]; then
   echo 'Install as your own user, never with sudo.' >&2
@@ -12,7 +13,7 @@ case "${1:-}" in
   --setup-timer) SETUP_TIMER=1 ;;
   *) echo 'Usage: install.sh [--setup-timer]' >&2; exit 2 ;;
 esac
-for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
+for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py; do
   [[ -f "$SOURCE_DIR/$file" ]] || { echo "Missing $file" >&2; exit 1; }
 done
 PROVIDER_RUNTIME="$SOURCE_DIR/../../nova3_team/provider_runtime.py"
@@ -24,35 +25,58 @@ HISTORICAL_GUIDE="$SOURCE_DIR/../../docs/progress/HISTORICAL_TOOLCHAIN.md"
 [[ -f "$HISTORICAL_GUIDE" ]] || { echo 'Missing historical toolchain guide' >&2; exit 1; }
 LIVE_GUIDE="$SOURCE_DIR/../../docs/progress/OBSERVATORY_LIVE_INTEGRATION.md"
 FORECAST_GUIDE="$SOURCE_DIR/../../docs/progress/FORECAST_POLICY.md"
-[[ -f "$LIVE_GUIDE" && -f "$FORECAST_GUIDE" ]] || { echo 'Missing Observatory integration/forecast guides' >&2; exit 1; }
+[[ -f "$LIVE_GUIDE" && -f "$FORECAST_GUIDE" ]] || { echo 'Missing Control Center integration/forecast guides' >&2; exit 1; }
 python3 -c 'import curses,sys; assert sys.version_info >= (3,10)'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SOURCE_DIR/tests" -q
-TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/nova3-observatory"
+DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+OLD_TARGET="$DATA_HOME/nova3-observatory"
+TARGET="$DATA_HOME/nova3-control-center"
+STAGING="$DATA_HOME/.nova3-control-center.stage.$$"
 BINDIR="$HOME/.local/bin"
-install -d -m 700 "$TARGET" "$BINDIR"
-for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
-  install -m 600 "$SOURCE_DIR/$file" "$TARGET/$file"
+install -d -m 700 "$DATA_HOME" "$BINDIR"
+# Stage and health-check before replacing anything. The legacy directory is
+# preserved so an interrupted upgrade can always fall back to it.
+rm -rf -- "$STAGING"
+install -d -m 700 "$STAGING"
+trap 'rm -rf -- "$STAGING"' EXIT
+for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py; do
+  install -m 600 "$SOURCE_DIR/$file" "$STAGING/$file"
 done
-install -m 600 "$SOURCE_DIR/provider_accounts.py" "$TARGET/provider_accounts.py"
-install -m 600 "$PROVIDER_RUNTIME" "$TARGET/provider_runtime.py"
-install -m 600 "$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"
-install -m 600 "$HISTORICAL_GUIDE" "$TARGET/HISTORICAL_TOOLCHAIN.md"
-install -m 600 "$LIVE_GUIDE" "$TARGET/OBSERVATORY_LIVE_INTEGRATION.md"
-install -m 600 "$FORECAST_GUIDE" "$TARGET/FORECAST_POLICY.md"
+install -m 600 "$SOURCE_DIR/provider_accounts.py" "$STAGING/provider_accounts.py"
+install -m 600 "$PROVIDER_RUNTIME" "$STAGING/provider_runtime.py"
+install -m 600 "$HISTORICAL_HELPER" "$STAGING/historical_toolchain.py"
+install -m 600 "$HISTORICAL_GUIDE" "$STAGING/HISTORICAL_TOOLCHAIN.md"
+install -m 600 "$LIVE_GUIDE" "$STAGING/OBSERVATORY_LIVE_INTEGRATION.md"
+install -m 600 "$FORECAST_GUIDE" "$STAGING/FORECAST_POLICY.md"
+# Offline synthetic health check, outside the source tree and with -I (no PYTHONPATH).
+PYTHONDONTWRITEBYTECODE=1 python3 -I "$STAGING/observer.py" --demo --once >/dev/null
+install -d -m 700 "$TARGET"
+for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py provider_accounts.py provider_runtime.py historical_toolchain.py HISTORICAL_TOOLCHAIN.md OBSERVATORY_LIVE_INTEGRATION.md FORECAST_POLICY.md; do
+  install -m 600 "$STAGING/$file" "$TARGET/$file"
+done
+# Shared state (accounts.json, snapshot.json) intentionally stays in the old
+# XDG state path; install never deletes ~/.local/share/nova3-observatory.
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
-  'exec python3 "${XDG_DATA_HOME:-$HOME/.local/share}/nova3-observatory/observer.py" "$@"' \
+  'exec python3 "${XDG_DATA_HOME:-$HOME/.local/share}/nova3-control-center/observer.py" "$@"' \
+  > "$BINDIR/nova3-control"
+chmod 700 "$BINDIR/nova3-control"
+# Compatibility alias: existing shortcuts/systemd drop-ins keep working.
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'exec python3 "${XDG_DATA_HOME:-$HOME/.local/share}/nova3-control-center/observer.py" "$@"' \
   > "$BINDIR/nova3-observer"
 chmod 700 "$BINDIR/nova3-observer"
-# Exercise the installed sibling imports, offline and outside the source tree.
-PYTHONDONTWRITEBYTECODE=1 python3 -I "$TARGET/observer.py" --demo --once >/dev/null
-echo "Observatory installed: $BINDIR/nova3-observer"
+echo "NOVA3 Control Center installed: $BINDIR/nova3-control (alias: nova3-observer)"
+echo "Previous Observatory files remain at: $OLD_TARGET (state is not deleted)."
 echo 'Read-only contributor pages are available to anyone with repository access.'
-echo 'ADMIN/MAINTAIN GitHub permission is checked before every owner operation.'
+echo 'Organization-owner or repository ADMIN permission is rechecked before every administrative action.'
 echo 'Opening the dashboard will not restart your running AI worker.'
-echo 'A: local sanitized activity summaries. Whole-game ETA stays UNKNOWN without evidence.'
-echo 'Optional historical ARM compiler: press H in the TUI, or run nova3-observer --toolchain-setup.'
+echo 'A: separate process/lease/provider-log/structured-feed status plus owner local journal.'
+echo 'A 60-second structured-event gap is shown as RUNNING with a structured-event-quiet sub-badge.'
+echo 'Optional historical ARM compiler: press H in the TUI, or run nova3-control --toolchain-setup.'
 echo 'Read-only observers and ordinary host-only workers need no historical NDK.'
 echo 'No compiler is downloaded, installed or executed. Source matching remains NOT PROVEN.'
 if [[ "$SETUP_TIMER" -eq 1 ]]; then

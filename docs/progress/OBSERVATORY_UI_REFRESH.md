@@ -1,4 +1,4 @@
-# Observatory UI refresh — task #113
+# Control Center UI refresh — task #113
 
 The previous PULSE renderer put roughly twelve text rows inside one screen-sized
 border. It lost the four-panel hierarchy, coloured bars and useful distribution
@@ -81,7 +81,7 @@ git diff --check
   120x30), plus isolated `--demo --once`, passed.
 - Real curses PTY smoke: 56 renders each under `xterm-256color`, `vt100` and
   `dumb` passed. This checks capabilities, not Konsole visual fidelity.
-- Full Observatory: 150 run, 148 passed; one failure and one error in existing
+- Full Control Center: 150 run, 148 passed; one failure and one error in existing
   `test_discovery_fix` real-systemd checks. This sandbox denies SO_PASSRIGHTS /
   SO_PASSCRED socket operations before systemd can validate units. No unit
   verification or installer preflight was weakened to conceal the environment
@@ -112,7 +112,7 @@ Generated directly from the deterministic zero-match/missing-worker fixture in
 `test_ui_refresh.py`; no live worker, private paths or original game data.
 
 ```text
-  ◈ NOVA3 // OBSERVATORY                                                Thu 29 Oct 2026  09:00:00
+  ◈ NOVA3 // CONTROL CENTER                                                Thu 29 Oct 2026  09:00:00
   fixture/synthetic • LIVE READ-ONLY • GitHub role UNKNOWN
 ───────────────────────────────────────────────────────────────────────────────────────────────────
   [1:PULSE]  2:TASKS   3:PULL REQUESTS   4:ACTIONS   5:SERVICE LOGS   6:FORECAST   7:SOURCE MAP

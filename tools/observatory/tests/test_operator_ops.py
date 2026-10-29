@@ -26,7 +26,7 @@ class OperatorTests(unittest.TestCase):
   authorization.start()
   self.addCleanup(authorization.stop)
  def test_permission_policy_deny_by_default(self):
-  self.assertEqual(ops.OWNER_ROLES, frozenset({'ADMIN','MAINTAIN'}))
+  self.assertEqual(ops.OWNER_ROLES, frozenset({'ADMIN'}))
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'READ'}):
    self.assertEqual(ops.repo_permission('Org/repo'),'READ')
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'INVALID'}):
@@ -35,7 +35,7 @@ class OperatorTests(unittest.TestCase):
        patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
    with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
  def test_owner_privilege_requires_fresh_gh_role(self):
-  for role in ('ADMIN','MAINTAIN'):
+  for role in ('ADMIN',):
    with patch.object(ops,'gh_json',return_value={'viewerPermission':role}),\
         patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
     self.assertEqual(ops.require_owner_access('Org/repo'),role)

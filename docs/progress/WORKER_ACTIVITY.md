@@ -2,7 +2,7 @@
 
 The worker writes a small observational summary beside each private provider
 round log. It does not publish this summary, send it to GitHub/presence reporting,
-or contact an Observatory endpoint. Tool activity is not game progress, source
+or contact an Control Center endpoint. Tool activity is not game progress, source
 proof, a test-pass claim, or machine-code matching evidence. No game matching is
 claimed by this task (NOT MATCHED).
 
@@ -121,18 +121,18 @@ FIFO/symlink refusal, optional CLI support, provider fallback, local emitter
 integration, failure isolation, and simulated 60/120-second heartbeats with an
 exact 125-second timeout deadline. No live provider, GitHub or service was started.
 
-The broader Observatory suite ran 74 tests: 72 passed and two existing
+The broader Control Center suite ran 74 tests: 72 passed and two existing
 `test_discovery_fix` tests failed because sandboxed `systemd-analyze verify`
 cannot configure user-lookup/handoff socket options (`Operation not permitted`).
 Those tests exercise real systemd verification outside this task's allowlist;
 full CI success is pending an unrestricted CI runner. Source hygiene and diff
 whitespace checks passed. A clean host Debug build and all 13 CTests passed
 using CMake/Ninja under a temporary build directory. The launcher self-test,
-shell syntax checks and Observatory offline demo passed. The legacy audit's
+shell syntax checks and Control Center offline demo passed. The legacy audit's
 `/tmp` report attempt was rejected by its `.cache`-only policy; its read-only
 no-output mode then passed without writing outside the task allowlist.
 
-A later Observatory reader PR should discover summaries locally, bound reads
+A later Control Center reader PR should discover summaries locally, bound reads
 (e.g. 8 KiB), validate schema/enums/types, display snapshot age separately from
 activity age, and treat missing/malformed/stale files as unavailable. It should
 read no raw round logs, write no summaries, launch no workers, and send no feed

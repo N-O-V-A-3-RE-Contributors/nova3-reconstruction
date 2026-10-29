@@ -10,8 +10,9 @@ First-run `START-LINUX.sh` / `nova3_easy.py` setup offers optional historical
 **ARM GCC 4.4.3 candidate** guidance. Use
 `python3 nova3_easy.py --historical-toolchain instructions` to view it offline,
 or `--historical-toolchain skip` to continue ordinary host-only worker tasks.
-The Observatory installer (`bash tools/observatory/install.sh`) advertises its
-**H / TOOLCHAIN** page and `nova3-observer --toolchain-setup`; watching tasks
+The NOVA3 Control Center installer (`bash tools/observatory/install.sh`) advertises its
+**H / TOOLCHAIN** page and `nova3-control --toolchain-setup`
+(`nova3-observer` remains a compatibility alias); watching tasks
 requires no compiler. Nothing downloads or executes GCC automatically.
 See [no-sudo XDG installation and publisher archive checks](docs/progress/HISTORICAL_TOOLCHAIN.md).
 NDK r8e is a hypothesis: select GCC 4.4.3 explicitly rather than its GCC 4.6

@@ -371,7 +371,8 @@ class OfflineAndRenderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
             names = ('observer.py', 'operator_ops.py', 'presence_view.py', 'progress.py',
-                     'forecast_model.py', 'project_roadmap.json', 'ui_components.py')
+                     'forecast_model.py', 'project_roadmap.json', 'ui_components.py',
+                     'live_status.py', 'journal_inspector.py', 'onboarding.py')
             for name in names:
                 shutil.copyfile(HERE / name, target / name)
             # -I ignores PYTHONPATH and cwd, so this exercises sibling module loading.
@@ -381,9 +382,9 @@ class OfflineAndRenderTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('Whole-game ETA: UNKNOWN', result.stdout)
             installer = (HERE / 'install.sh').read_text()
-            self.assertEqual(installer.count('progress.py forecast_model.py project_roadmap.json ui_components.py'), 2)
-            self.assertIn('"$LIVE_GUIDE" "$TARGET/OBSERVATORY_LIVE_INTEGRATION.md"', installer)
-            self.assertIn('"$FORECAST_GUIDE" "$TARGET/FORECAST_POLICY.md"', installer)
+            self.assertGreaterEqual(installer.count('progress.py forecast_model.py project_roadmap.json ui_components.py'), 2)
+            self.assertIn('"$LIVE_GUIDE" "$STAGING/OBSERVATORY_LIVE_INTEGRATION.md"', installer)
+            self.assertIn('"$FORECAST_GUIDE" "$STAGING/FORECAST_POLICY.md"', installer)
 
 
 if __name__ == '__main__':

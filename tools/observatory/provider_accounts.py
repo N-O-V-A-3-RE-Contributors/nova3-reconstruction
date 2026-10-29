@@ -23,7 +23,7 @@ import subprocess
 import sys
 import tempfile
 
-# Observatory installs are standalone directories.  Load a sibling runtime if
+# Control Center installs are standalone directories.  Load a sibling runtime if
 # present (install.sh copies it), otherwise fall back to the repository package.
 _RUNTIME_NAME = 'nova3_private_provider_runtime'
 
@@ -52,7 +52,7 @@ provider_runtime = _load_runtime()
 MAX_GH_BYTES = 64 * 1024
 GH_TIMEOUT = 4.0
 ROLE_VALUES = frozenset({'ADMIN', 'MAINTAIN', 'WRITE', 'TRIAGE', 'READ', 'UNKNOWN'})
-OWNER_ROLES = frozenset({'ADMIN', 'MAINTAIN'})
+OWNER_ROLES = frozenset({'ADMIN'})
 _REPO_RE = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 _LOGIN_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}')
 _ACCOUNT_RE = re.compile(r'account\s+([A-Za-z0-9][A-Za-z0-9_.-]{0,62})', re.I)
@@ -215,7 +215,7 @@ class AccountsController:
 
     def __init__(self, repo: str, state_path: str | os.PathLike[str] | None = None, *,
                  probe=None, auth=None, identity_probe=None, role_resolver=None,
-                 opener=None, login_launcher=None):
+                 opener=None, login_launcher=None, owner_resolver=None):
         if not isinstance(repo, str) or not _REPO_RE.fullmatch(repo):
             raise ValueError('Repository must be OWNER/REPOSITORY.')
         self.repo = repo
@@ -224,6 +224,9 @@ class AccountsController:
         self._auth = auth or provider_runtime.check_auth
         self._identity_probe = identity_probe or self._probe_github_identity
         self._role_resolver = role_resolver or self._probe_repo_role
+        # Seam supplied by operator_ops.owner_access: organization owner OR repo
+        # ADMIN. Re-derived server-side; never a cached UI role.
+        self._owner_resolver = owner_resolver
         self._opener = opener
         # #134/#135 seam: a future verified login adapter can replace this
         # callable.  It must return a bounded result and must never hand the
@@ -461,6 +464,11 @@ class AccountsController:
         role = self._resolve_role()
         self.identity = GitHubIdentity(self.identity.state, self.identity.account,
                                        self.identity.scopes, self.identity.detail, role)
+        if self._owner_resolver is not None:
+            try:
+                return bool(self._owner_resolver()), role
+            except Exception:
+                return False, role
         return role in OWNER_ROLES, role
 
     def owner_member_url(self) -> str | None:
