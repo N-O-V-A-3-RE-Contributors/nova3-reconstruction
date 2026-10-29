@@ -525,10 +525,10 @@ class ConfigTests(unittest.TestCase):
                               env={"NOVA3_HERMES_MODEL": "worker/only"})
         self.assertEqual(planner.model, hr.DEFAULT_MODEL)
 
-    def test_tty_denies_worker_but_not_human_planner(self):
-        with self.assertRaises(hr.HermesError) as caught:
-            self.config(tty=lambda: True)
-        self.assertEqual(caught.exception.code, "tty")
+    def test_parent_tty_does_not_disable_headless_worker(self):
+        # The child never inherits the parent's stdin; interactive seeding is
+        # guarded by run_oneshot(still_tty=...), not by the caller's terminal.
+        self.assertEqual(self.config(tty=lambda: True).role, hr.Role.WORKER)
         self.assertEqual(self.config(role=hr.Role.PLANNER, tty=lambda: True).role,
                          hr.Role.PLANNER)
 

@@ -35,9 +35,11 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import Callable, Mapping, Sequence
 
 PROBE_TIMEOUT = 5.0
+MAX_PROBE_AGE = 300  # seconds; execution re-probes a staler readiness record
 MAX_PROBE_BYTES = 64 * 1024
 MAX_CAPTURE_BYTES = 8 * 1024 * 1024
 DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash-1017"
@@ -137,6 +139,10 @@ class HermesStatus:
     capabilities: tuple[str, ...] = ()
     reason: str = ""
     install_url: str = INSTALL_URL
+    # Unix seconds when this record was produced. Execution re-probes when the
+    # record is absent or older than MAX_PROBE_AGE; a cached "available" string
+    # is never proof that the binary/flags still exist.
+    probed_at: int | None = None
 
     @property
     def available(self) -> bool:
@@ -147,29 +153,32 @@ def probe(executable: str = "hermes", *, run: Callable[..., object] | None = Non
           timeout: float = PROBE_TIMEOUT,
           which: Callable[[str], str | None] | None = None) -> HermesStatus:
     """Bounded capability probe. Never logs in, never submits a prompt."""
+    stamp = int(time.time())
     path = (which or shutil.which)(executable)
     if not path:
         return HermesStatus(RuntimeState.MISSING,
-                            reason=f"Hermes executable not found on PATH: {executable}")
+                            reason=f"Hermes executable not found on PATH: {executable}",
+                            probed_at=stamp)
     runner = run or subprocess.run
     try:
         completed = runner([path, "chat", "--help"], capture_output=True, text=True,
                            timeout=timeout)
     except subprocess.TimeoutExpired:
         return HermesStatus(RuntimeState.PROBE_FAILED, path,
-                            reason="Hermes help probe timed out")
+                            reason="Hermes help probe timed out", probed_at=stamp)
     except OSError:
         return HermesStatus(RuntimeState.PROBE_FAILED, path,
-                            reason="Hermes help probe could not start")
+                            reason="Hermes help probe could not start", probed_at=stamp)
     if getattr(completed, "returncode", 1) != 0:
         return HermesStatus(RuntimeState.PROBE_FAILED, path,
-                            reason=f"Hermes help probe exited {completed.returncode}")
+                            reason=f"Hermes help probe exited {completed.returncode}",
+                            probed_at=stamp)
     help_text = (completed.stdout or "")[:MAX_PROBE_BYTES]
     capabilities = tuple(token for token in REQUIRED_CAPABILITIES if token in help_text)
     missing = [token for token in REQUIRED_CAPABILITIES if token not in help_text]
     if missing:
         return HermesStatus(RuntimeState.INCOMPATIBLE, path, capabilities=capabilities,
-                            reason="installed Hermes lacks required flags")
+                            reason="installed Hermes lacks required flags", probed_at=stamp)
     version = None
     try:
         version_run = runner([path, "--version"], capture_output=True, text=True,
@@ -178,7 +187,16 @@ def probe(executable: str = "hermes", *, run: Callable[..., object] | None = Non
         version = match.group(1) if match else None
     except (subprocess.TimeoutExpired, OSError):
         version = None  # capability probe already passed; version is advisory
-    return HermesStatus(RuntimeState.AVAILABLE, path, version, capabilities)
+    return HermesStatus(RuntimeState.AVAILABLE, path, version, capabilities, probed_at=stamp)
+
+
+def fresh(status: object, *, now: int | None = None) -> bool:
+    """True when a readiness record was produced recently enough to reuse."""
+    stamp = getattr(status, "probed_at", None)
+    if type(stamp) is not int or stamp <= 0:
+        return False
+    now = int(time.time()) if now is None else now
+    return 0 <= now - stamp <= MAX_PROBE_AGE
 
 
 @dataclass(frozen=True)
@@ -449,8 +467,11 @@ def load_config(role: Role, *, env: Mapping[str, str] | None = None,
     if not isinstance(name, str) or not name or len(name) > 255 or "\0" in name:
         raise HermesError("config", "invalid Hermes executable name")
 
-    if role is Role.WORKER and tty is not None and tty():
-        raise HermesError("tty", "interactive TTY present; a worker session must be headless")
+    # Deliberately no parent-TTY rejection: the provider child never inherits
+    # the worker's stdin (run_provider uses DEVNULL), so a terminal on the
+    # worker itself cannot hang the session. Interactive seeding is guarded at
+    # the actual library entry point (run_oneshot(still_tty=...)).
+    del tty
 
     budget = Budget(max_turns=max_turns, run_budget_seconds=timeout_seconds).validate()
     config = HermesConfig(role, provider, model, budget, timeout_seconds, name)

@@ -300,9 +300,11 @@ def hermes_command(prompt, work, aux_dir, status=None, config=None):
     """
     config = config or hermes_runtime.load_config(
         hermes_runtime.Role.WORKER, status=status,
-        timeout_seconds=ai_session_timeout(),
-        tty=lambda: sys.stdin.isatty())
-    if status is None:
+        timeout_seconds=ai_session_timeout())
+    # Re-probe at the launch boundary. A readiness record captured when the
+    # worker started (or an "available" string) is not proof that the binary
+    # and required flags still exist; worker rounds can run for hours.
+    if status is None or not hermes_runtime.fresh(status):
         status = hermes_runtime.probe(config.executable)
     ready = hermes_runtime.assert_ready(status, role=config.role)
     prompt_path = hermes_runtime.materialise_prompt(aux_dir, prompt)

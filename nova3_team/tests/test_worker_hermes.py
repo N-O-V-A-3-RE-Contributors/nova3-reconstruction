@@ -24,7 +24,8 @@ HELP = (
 
 def status(path="/opt/hermes/bin/hermes"):
     return hr.HermesStatus(hr.RuntimeState.AVAILABLE, path, None,
-                           tuple(hr.REQUIRED_CAPABILITIES))
+                           tuple(hr.REQUIRED_CAPABILITIES),
+                           probed_at=int(__import__("time").time()))
 
 
 class FakeGh:
@@ -100,15 +101,27 @@ class HermesCommandTests(unittest.TestCase):
         self.assertFalse(self.aux.exists())
         self.assertFalse((self.aux / "hermes-prompt.md").exists())
 
-    def test_interactive_tty_denies_before_prompt_file(self):
+    def test_interactive_terminal_still_builds_headless_invocation(self):
+        # The provider child never inherits the worker's stdin, so a terminal on
+        # the worker must not disable the backend (the documented interactive
+        # `worker run --provider hermes` mode).
         with mock.patch.object(worker.sys.stdin, "isatty", return_value=True):
-            with self.assertRaises(hr.HermesError) as caught:
-                self.build()
-        self.assertEqual(caught.exception.code, "tty")
-        self.assertFalse((self.aux / "hermes-prompt.md").exists())
+            invocation = self.build()
+        self.assertIn("--query-file", invocation.argv)
+        self.assertTrue((self.aux / "hermes-prompt.md").exists())
+
+    def test_stale_readiness_is_reprobed_at_launch(self):
+        stale = hr.HermesStatus(hr.RuntimeState.AVAILABLE, "/gone/hermes", None,
+                                tuple(hr.REQUIRED_CAPABILITIES),
+                                probed_at=1)
+        with mock.patch.object(hr, "probe", return_value=status()) as probe:
+            invocation = worker.hermes_command("task", self.work, self.aux, stale)
+        probe.assert_called_once()
+        self.assertEqual(invocation.argv[0], "/opt/hermes/bin/hermes")
 
     def test_unavailable_status_denies_before_prompt_file(self):
-        missing = hr.HermesStatus(hr.RuntimeState.MISSING, reason="absent")
+        missing = hr.HermesStatus(hr.RuntimeState.MISSING, reason="absent",
+                                  probed_at=int(__import__("time").time()))
         with self.assertRaises(hr.HermesError) as caught:
             worker.hermes_command("task", self.work, self.aux, missing)
         self.assertEqual(caught.exception.code, "unverified")

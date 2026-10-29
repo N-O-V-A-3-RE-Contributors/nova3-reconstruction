@@ -90,8 +90,16 @@ Guarantees enforced in code and tests:
   equals the worker timeout, so the child cannot outlive its supervisor.
 * Diagnostics never echo vendor stderr, env vars or secrets; model output is
   redacted before it is returned or persisted.
-* Interactive TTY detection refuses to start a worker session that would hang
-  an unattended job.
+* Launch is headless by construction: the provider child gets `stdin=DEVNULL`,
+  and `run_oneshot(still_tty=...)` refuses interactive seeding at the library
+  boundary. A terminal on the parent worker is irrelevant and does not disable
+  the backend.
+* Readiness is re-probed at the launch boundary when the record is older than
+  five minutes; an `available` string captured at worker start is not proof
+  that the binary and flags still exist.
+* The `hermes` registry entry is registered only when `hermes_runtime.py` is
+  bundled. A standalone install without it still exposes every other provider
+  and reports `hermes` as unknown rather than failing the whole registry.
 
 ## Configuration (fail-closed)
 
@@ -108,7 +116,7 @@ Guarantees enforced in code and tests:
 Planner configuration is read from a separate `NOVA3_HERMES_PLANNER_*` prefix;
 worker and planner settings cannot bleed into each other, and no session state
 is shared. Every failure raises a fixed diagnostic code — `unverified`,
-`capabilities`, `tty`, `provider`, `model`, `role`, `config`, `prompt` — and
+`capabilities`, `provider`, `model`, `role`, `config`, `prompt` — and
 never falls back to a default or a partially configured launch. A readiness
 record that is `missing`, `probe_failed` or `incompatible` denies execution.
 

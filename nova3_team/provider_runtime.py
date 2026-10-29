@@ -21,7 +21,10 @@ from types import MappingProxyType
 from typing import Mapping
 
 
-from . import hermes_runtime
+try:  # The Hermes backend is optional; its absence must not disable other providers.
+    from . import hermes_runtime
+except ImportError:  # pragma: no cover - exercised by the standalone-install test
+    hermes_runtime = None
 
 PROBE_TIMEOUT = 3.0
 MAX_PROBE_BYTES = 64 * 1024
@@ -188,24 +191,31 @@ _SPECS = (
         permission_profile='copilot -p --allow-tool write --deny-tool shell '
                            '(documented tool kinds write/shell; shell denied)',
     ),
-    ProviderSpec(
-        id='hermes', display_name='Hermes Agent', executable='hermes',
-        docs_url=hermes_runtime.DOCS_URL,
-        install_url=hermes_runtime.INSTALL_URL,
-        login_guidance='Authenticate with the vendor-native Hermes flow locally; '
-                       'no API key belongs in this repository.',
-        # Hermes is driven through its file-based headless adapter, not an
-        # inline -p prompt. Registered here for discovery/readiness; argv is
-        # built only by nova3_team.hermes_runtime.
-        help_args=('chat', '--help'),
-        required_help=hermes_runtime.REQUIRED_CAPABILITIES,
-        permission_profile='hermes chat --query-file <private prompt> --oneshot --quiet '
-                           '--format stream-json --provider <pinned> --model <pinned> '
-                           '--toolsets file,terminal,code_execution,todo --max-turns N '
-                           '--run-budget S (no --yolo/--accept-hooks/--api-key)',
-        version_required=False,
-    ),
 )
+
+# Hermes is registered only when its adapter module is present. A bundle that
+# ships provider_runtime.py without hermes_runtime.py must still expose every
+# other provider instead of failing the whole registry import.
+if hermes_runtime is not None:
+    _SPECS += (
+        ProviderSpec(
+            id='hermes', display_name='Hermes Agent', executable='hermes',
+            docs_url=hermes_runtime.DOCS_URL,
+            install_url=hermes_runtime.INSTALL_URL,
+            login_guidance='Authenticate with the vendor-native Hermes flow locally; '
+                           'no API key belongs in this repository.',
+            # Hermes is driven through its file-based headless adapter, not an
+            # inline -p prompt. Registered here for discovery/readiness; argv is
+            # built only by nova3_team.hermes_runtime.
+            help_args=('chat', '--help'),
+            required_help=hermes_runtime.REQUIRED_CAPABILITIES,
+            permission_profile='hermes chat --query-file <private prompt> --oneshot --quiet '
+                               '--format stream-json --provider <pinned> --model <pinned> '
+                               '--toolsets file,terminal,code_execution,todo --max-turns N '
+                               '--run-budget S (no --yolo/--accept-hooks/--api-key)',
+            version_required=False,
+        ),
+    )
 
 # Stable, ordered, read-only API for the subsequent account manager.
 PROVIDERS: Mapping[str, ProviderSpec] = MappingProxyType({s.id: s for s in _SPECS})
@@ -418,6 +428,8 @@ def readiness(provider_id: str, *, status: ProviderStatus | None = None,
         'capabilities': list(status.capabilities),
     }
     if provider_id == 'hermes':
+        if hermes_runtime is None:
+            raise ProviderUnavailable('Hermes adapter is not installed')
         record.update(hermes_runtime.readiness(
             hermes_runtime.status_from_provider(status),
             model=model or hermes_runtime.DEFAULT_MODEL,
