@@ -665,6 +665,15 @@ class PlanningMemory:
         except PlanningMemoryError:
             if not rebuild_if_invalid:
                 raise
+            # Preserve the corrupt/truncated handoff before overwriting it; it
+            # may be the only copy a user has of an imported continuation.
+            if self.snapshot_path.exists():
+                backup = self.snapshot_path.with_name(
+                    f"{self.snapshot_path.name}.corrupt-{time.time_ns()}")
+                try:
+                    os.replace(self.snapshot_path, backup)
+                except OSError:
+                    pass
             with self._read() as conn:
                 payload = self._snapshot_payload_conn(conn)
             self._write_snapshot_file(payload)
@@ -1078,7 +1087,9 @@ class PlanningMemory:
         decision: str = "accepted",
         rationale: str = "",
         writer: str = "owner",
-        writer_kind: str = "human",
+        # Fail closed: an omitted kind is untrusted model output. A human/tool
+        # caller must assert writer_kind explicitly.
+        writer_kind: str = "model",
         importance: int = 80,
         **kwargs: object,
     ) -> dict:
@@ -1146,7 +1157,8 @@ class PlanningMemory:
         *,
         evidence: Sequence[Mapping[str, object]],
         verifier: str = "owner",
-        verifier_kind: str = "human",
+        # Fail closed: promotion requires an explicit human/tool assertion.
+        verifier_kind: str = "model",
         note: str = "",
     ) -> dict:
         """Promote a claim to verified. Models may never do this."""
@@ -1838,6 +1850,26 @@ class PlanningMemory:
         for entry in body.get("ledger", []):
             if not isinstance(entry, Mapping):
                 continue
+            # Imported envelopes are untrusted input even when their checksum is
+            # valid (the checksum is unkeyed). Re-validate every field instead
+            # of copying whatever the file claims.
+            kind = entry.get("kind", "fact")
+            if kind not in KINDS:
+                raise PlanningMemoryError("envelope-invalid", "unknown ledger kind")
+            status = entry.get("status", DEFAULT_STATUS[kind])
+            if status not in STATUS_BY_KIND[kind]:
+                raise PlanningMemoryError("envelope-invalid", "invalid ledger status")
+            writer_kind = str(entry.get("writer_kind", "model"))
+            if writer_kind not in ("human", "model", "tool", "imported"):
+                writer_kind = "model"
+            if writer_kind == "model" and status in MODEL_INELIGIBLE.get(kind, frozenset()):
+                # Model-supplied verification/acceptance never survives import.
+                status = DEFAULT_STATUS[kind]
+            trust = "trusted" if writer_kind in TRUSTED_WRITERS else "untrusted"
+            text, redactions, flags = sanitize(entry.get("text", ""))
+            rationale, r_redactions, r_flags = sanitize(entry.get("rationale", ""))
+            evidence_text, e_redactions, e_flags = sanitize(
+                _canonical(entry.get("evidence", [])))
             new_id = str(entry.get("entry_id"))
             if conn.execute("SELECT 1 FROM ledger WHERE entry_id=?", (new_id,)).fetchone():
                 new_id = "mem_import_" + _digest({"id": new_id, "s": target_id})[:16]
@@ -1848,17 +1880,22 @@ class PlanningMemory:
                 " updated_at, supersedes, superseded_by, evidence, digest, flags, verified_by,"
                 " verified_at, stale_after, tags)"
                 " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (new_id, target_id, entry.get("kind", "fact"), entry.get("status", "unverified"),
-                 entry.get("text", ""), entry.get("rationale", ""),
-                 int(entry.get("importance", 50)), float(entry.get("confidence", 0.5)),
-                 str(entry.get("writer", "imported")), str(entry.get("writer_kind", "model")),
-                 str(entry.get("trust", "untrusted")),
+                (new_id, target_id, kind, status,
+                 text, rationale,
+                 max(0, min(100, int(entry.get("importance", 50)))),
+                 max(0.0, min(1.0, float(entry.get("confidence", 0.5)))),
+                 sanitize(str(entry.get("writer", "imported")), limit=80)[0], writer_kind,
+                 trust,
                  _canonical(entry.get("provenance", {})), int(entry.get("created_at", now)),
                  int(entry.get("updated_at", now)), None, None,
-                 _canonical(entry.get("evidence", [])), str(entry.get("digest", "")),
-                 _canonical(entry.get("flags", [])), entry.get("verified_by"),
-                 entry.get("verified_at"), entry.get("stale_after"),
-                 _canonical(entry.get("tags", []))),
+                 evidence_text, str(entry.get("digest", "")),
+                 _canonical(sorted(set(
+                     tuple(flags) + tuple(r_flags) + tuple(e_flags)
+                     + tuple(str(f) for f in entry.get("flags", []) if isinstance(f, str))))),
+                 entry.get("verified_by") if writer_kind != "model" else None,
+                 entry.get("verified_at") if writer_kind != "model" else None,
+                 entry.get("stale_after"),
+                 _canonical([str(t) for t in entry.get("tags", []) if isinstance(t, str)])),
             )
         # link supersession chains after all entries exist
         for entry in body.get("ledger", []):
@@ -2043,7 +2080,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                           choices=["accepted", "rejected", "proposed"])
     decision.add_argument("--rationale", default="")
     decision.add_argument("--writer", default="owner")
-    decision.add_argument("--writer-kind", default="human", choices=["model", "human", "tool"])
+    decision.add_argument("--writer-kind", default="model", choices=["model", "human", "tool"])
 
     ctx = sub.add_parser("context", help="render the deterministic context envelope")
     store_args(ctx)
@@ -2072,7 +2109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     verify.add_argument("--evidence", action="append", required=True,
                         help="locator=sha256")
     verify.add_argument("--verifier", default="owner")
-    verify.add_argument("--verifier-kind", default="human", choices=["human", "tool"])
+    verify.add_argument("--verifier-kind", required=True, choices=["human", "tool"])
 
     sub.add_parser("status", help="store status and schema version")
     sub.add_parser("doctor", help="validate store, snapshot and containment")
@@ -2154,7 +2191,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "doctor":
             info = memory.status()
             try:
-                snapshot = memory.load_snapshot()
+                # Diagnostic only: never rewrite/replace a corrupt handoff here.
+                snapshot = memory.load_snapshot(rebuild_if_invalid=False)
                 info["snapshot_valid"] = True
                 info["snapshot_checksum"] = snapshot["checksum"]
             except PlanningMemoryError as exc:
