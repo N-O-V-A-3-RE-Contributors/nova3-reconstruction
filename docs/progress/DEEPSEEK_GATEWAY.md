@@ -75,7 +75,10 @@ reviewed/implemented before use, never silently ignored. The whole reviewed
 schema is audited up front, including unused properties, branches and
 definitions, so an unreviewed constraint cannot hide in a subschema the
 generated value never reaches. Schema bytes are decoded with duplicate-key
-rejection. Inside anyOf/oneOf/allOf, only a value/branch mismatch counts as a
+rejection. (The probe's config/endpoint metadata parsing remains plain
+`json.loads`; it is outside this change's file allowlist and should get the
+same duplicate-key hook in a follow-up.) Inside anyOf/oneOf/allOf, only a
+value/branch mismatch counts as a
 non-match; unsupported constraints, invalid/remote schemas, missing refs and
 depth exhaustion abort the whole validation. `enum`/`const` compare by strict
 JSON type identity (`true` is not `1`, `1.0` is not `1`), intentionally
