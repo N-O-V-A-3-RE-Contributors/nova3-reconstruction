@@ -235,6 +235,16 @@ class OwnerGateTests(unittest.TestCase):
             self.assertFalse(denied.authorize_owner()[0], role)
             self.assertIsNone(denied.owner_member_url())
 
+    def test_safe_url_rejects_userinfo_and_non_https(self):
+        for bad in ('https://github.com:443@evil.example/x',
+                    'https://user:pass@github.com/x',
+                    'http://github.com/x', 'https://evil.example/x',
+                    '//github.com/x', 'https://github.com.evil.example/x'):
+            self.assertFalse(pa.safe_url(bad), bad)
+        for good in ('https://github.com/o/r/settings/access',
+                     'https://opencode.ai/docs/', 'https://docs.github.com/en'):
+            self.assertTrue(pa.safe_url(good), good)
+
     def test_role_failure_fails_closed(self):
         c = pa.AccountsController('owner/repo', role_resolver=mock.Mock(side_effect=RuntimeError('offline')))
         allowed, role = c.authorize_owner()
