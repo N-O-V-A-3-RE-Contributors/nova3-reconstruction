@@ -226,11 +226,15 @@ class QueueApprovalGate:
         )
 
     def _evidence(self, issue_number: int, comment: Mapping[str, object], nonce: str,
-                  now_s: int, reader: int, *, include_issue: bool = True) -> policy.Evidence:
+                  now_s: int, reader: int, *, include_issue: bool = True,
+                  issue_payload: Mapping[str, object] | None = None) -> policy.Evidence:
         base = f'/repos/{self.repository.owner}/{self.repository.name}'
         repository = self._receipt(base, self.collector.repository(), nonce, now_s, reader)
-        issue = (self._receipt(f'{base}/issues/{issue_number}', self.collector.issue(issue_number),
-                               nonce, now_s, reader) if include_issue else None)
+        if include_issue:
+            payload = issue_payload if issue_payload is not None else self.collector.issue(issue_number)
+            issue = self._receipt(f'{base}/issues/{issue_number}', payload, nonce, now_s, reader)
+        else:
+            issue = None
         comment_id = comment.get('id')
         if type(comment_id) is not int or comment_id <= 0:
             raise EvidenceUnavailable('invalid approval comment')
@@ -269,14 +273,21 @@ class QueueApprovalGate:
             now_s = self._now()
             reader = self.collector.identity()
             issue_payload = self.collector.issue(number)
+            # A live lease is an appended envelope inside the editable issue
+            # body. Approvals bind the task text, not the envelope, so strip it
+            # before re-hashing; otherwise a claimed task can never re-admit
+            # after a worker restart.
+            task_text_sha = task_text_sha256(issue_payload.get('body'))
+            stripped = dict(issue_payload)
+            stripped['body'] = task_text(issue_payload.get('body'))
             decision = policy.verify_owner_approval(
-                request, self._evidence(number, comment, request.nonce, now_s, reader), now=now_s)
+                request, self._evidence(number, comment, request.nonce, now_s, reader,
+                                        issue_payload=stripped), now=now_s)
             if not decision.allowed:
                 return QueueDecision(False, decision.reason.value, comment_id)
-            binding = policy.request_binding(request, issue_payload)
+            binding = policy.request_binding(request, stripped)
             return QueueDecision(
-                True, policy.Reason.ALLOWED.value, comment_id, binding,
-                task_text_sha256(issue_payload.get('body')),
+                True, policy.Reason.ALLOWED.value, comment_id, binding, task_text_sha,
             )
         except Exception:
             # Fixed reason only: never echo a payload, task text or credential.
@@ -401,7 +412,7 @@ def handle_event(gh, event, gate) -> bool:
     if not parsed or actor.endswith('[bot]'):
         return True
     action = parsed.group(1).lower()
-    if action not in ('claim', 'release'):
+    if action not in ('claim', 'release', 'submitted'):
         process_comment(gh, event)
         return True
     number = event['issue']['number']
@@ -423,9 +434,12 @@ def handle_event(gh, event, gate) -> bool:
             return False
         process_comment(gh, event, admission=decision)
         return True
+    # `release` and `submitted` both end the lease and change the steerable
+    # state; `submitted` must not be reachable by rewriting the editable lease
+    # into a fresh claim. Revalidate the recorded owner/admin approval first.
     decision = gate.revalidate(issue, lease)
     if not decision.allowed:
-        sys.stderr.write(f'NOVA3 queue release denied #{number}: {decision.reason}\n')
+        sys.stderr.write(f'NOVA3 queue {action} denied #{number}: {decision.reason}\n')
         quarantine(gh, issue, decision.reason)
         return False
     process_comment(gh, event, admission=decision)
