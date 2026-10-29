@@ -575,6 +575,47 @@ class AccessPolicyTests(unittest.TestCase):
         self.assertFalse(p.verify_owner_approval(replace(request, executor_user_id=101), evidence, now=NOW).allowed)
         self.assertFalse(p.verify_owner_approval(replace(request, action=p.Action.READ_STATUS), evidence, now=NOW).allowed)
 
+    def test_verify_approval_record_revalidates_live_author_and_binding(self):
+        # Pre-publish revalidation uses the binding captured at admission because
+        # the coordinator's lease has since changed the issue body.
+        request, evidence = fixture(nonce="c" * 64, executor=None)
+        binding = p.request_binding(request, evidence.issue.payload)
+        approval = evidence.approvals[0]
+        kwargs = dict(reader=101, now=NOW, organization=True, replay=evidence.replay)
+        result = p.verify_approval_record(
+            binding, approval, request, issue_updated_at=evidence.issue.payload["updated_at"], **kwargs)
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.role, p.Role.OWNER)
+        bad_bindings = (
+            {},
+            {key: value for key, value in binding.items() if key != "nonce"},
+            {**binding, "task_spec_sha256": "0" * 64},
+            {**binding, "version": 1},
+            {**binding, "origin": "https://evil.invalid"},
+            {**binding, "executor_user_id": 101},
+            {**binding, "action": "merge_pr"},
+            {**binding, "operation_arguments": {"priority": 1}},
+            {**binding, "repository_id": 42},
+        )
+        for bad in bad_bindings:
+            with self.subTest(binding=bad):
+                self.assertFalse(p.verify_approval_record(bad, approval, request, **kwargs).allowed)
+        author = replace(approval.author, permission=changed(approval.author.permission, permission="maintain"))
+        self.assertEqual(
+            p.verify_approval_record(binding, replace(approval, author=author), request, **kwargs).reason,
+            p.Reason.APPROVAL_REQUIRED)
+        self.assertEqual(
+            p.verify_approval_record(binding, approval, request, issue_updated_at=iso(NOW - 1),
+                                     **kwargs).reason, p.Reason.APPROVAL_REQUIRED)
+        for replay, reason in ((replace(evidence.replay, consumed=frozenset({f"github:{REPO.id}:comment:900"})), p.Reason.REPLAY),
+                               (replace(evidence.replay, revoked_comments=frozenset({900})), p.Reason.REPLAY),
+                               (None, None)):
+            denied = p.verify_approval_record(binding, approval, request,
+                                              **{**kwargs, "replay": replay})
+            self.assertEqual(denied.allowed, reason is None)
+            if reason is not None:
+                self.assertEqual(denied.reason, reason)
+
     def test_no_secret_environment_file_network_subprocess_access_or_logs(self):
         request, evidence = fixture()
         sentinel = "FAKE_TEST_SECRET_DO_NOT_ECHO"
