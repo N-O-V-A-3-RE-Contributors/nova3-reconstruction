@@ -34,6 +34,11 @@ def endpoint_data():
                 input_per_million="0.038", output_per_million="0.50", balance_usd="1")
 
 
+def validate(value, schema):
+    """Validate a value against a schema rooted at itself."""
+    return g._validate_schema(value, schema, schema)
+
+
 def review(schema=None):
     # Intentionally synthetic version/schema, never a supported live version.
     raw = json.dumps(schema or {"type": "object", "properties": {}}).encode()
@@ -166,6 +171,130 @@ class GatewayTests(unittest.TestCase):
                        {"properties": {"model": {"enum": ["wrong"]}}}):
             with self.subTest(schema=schema), self.assertRaises(g.GatewayError):
                 g.opencode_settings(self.config, self.endpoint, review(schema), self.native, now=NOW)
+
+    def test_enum_and_const_compare_by_json_type_identity(self):
+        # bool is not 1/0 and int is not float for enum/const in this gate.
+        rejected = (
+            ({"x": True}, {"properties": {"x": {"enum": [1]}}}),
+            ({"x": False}, {"properties": {"x": {"enum": [0]}}}),
+            ({"x": True}, {"properties": {"x": {"const": 1}}}),
+            ({"x": 1}, {"properties": {"x": {"const": True}}}),
+            ({"x": 1.0}, {"properties": {"x": {"const": 1}}}),
+            ({"x": 1}, {"properties": {"x": {"enum": [1.0]}}}),
+            ({"x": {"a": True}}, {"properties": {"x": {"enum": [{"a": 1}]}}}),
+            ({"x": [1]}, {"properties": {"x": {"const": [1.0]}}}),
+        )
+        for value, schema in rejected:
+            with self.subTest(value=value, schema=schema), self.assertRaises(g.GatewayError) as caught:
+                validate(value, schema)
+            self.assertEqual(caught.exception.args, ("settings_schema_mismatch",))
+        accepted = (
+            ({"x": 1}, {"properties": {"x": {"enum": [1]}}}),
+            ({"x": 1}, {"properties": {"x": {"const": 1}}}),
+            ({"x": 1.0}, {"properties": {"x": {"enum": [1.0]}}}),
+            ({"x": True}, {"properties": {"x": {"const": True}}}),
+            ({"x": 1}, {"properties": {"x": {"type": "number"}}}),
+            ({"x": 1.0}, {"properties": {"x": {"type": "number"}}}),
+        )
+        for value, schema in accepted:
+            with self.subTest(value=value, schema=schema):
+                validate(value, schema)
+
+    def test_anyof_branch_schema_errors_propagate_not_swallowed(self):
+        # Only a value/branch mismatch may count as a non-match. Unsupported
+        # constraints, denied refs and depth exhaustion are schema-level errors.
+        cases = (
+            ({"oneOf": [{"type": "string", "format": "x-unknown"}, {"type": "object"}]},
+             "unsupported_schema_constraint"),
+            ({"oneOf": [{"$ref": "https://evil.invalid/schema"}, {"type": "object"}]},
+             "remote_schema_denied"),
+            ({"oneOf": [{"$ref": "#/$defs/missing"}, {"type": "object"}]},
+             "schema_reference_missing"),
+            ({"anyOf": [{"type": 42}, {"type": "object"}]}, "invalid_schema"),
+            ({"allOf": [{"type": "object"}, {"properties": 42}]}, "invalid_schema"),
+            ({"oneOf": [{"$ref": "#/$defs/loop"}, {"type": "object"}],
+              "$defs": {"loop": {"$ref": "#/$defs/loop"}}}, "schema_depth_denied"),
+        )
+        for schema, code in cases:
+            with self.subTest(code=code), self.assertRaises(g.GatewayError) as caught:
+                validate({}, schema)
+            self.assertEqual(caught.exception.args, (code,))
+
+    def test_unused_subschema_constraints_are_audited_before_acceptance(self):
+        # Schema review must not be bypassed by a constraint the generated value
+        # never reaches (unused property, unreached branch, unused definition).
+        cases = (
+            ({"properties": {"unused": {"format": "x-unknown"}}},
+             "unsupported_schema_constraint"),
+            ({"properties": {"unused": {"$ref": "https://evil.invalid/schema"}}},
+             "remote_schema_denied"),
+            ({"properties": {"unused": {"$ref": "#/$defs/absent"}}},
+             "schema_reference_missing"),
+            ({"properties": {"unused": {"properties": 42}}}, "invalid_schema"),
+            ({"properties": {"unused": {"type": ["string", "bogus"]}}}, "invalid_schema"),
+            ({"properties": {"unused": {"items": 42}}}, "invalid_schema"),
+            ({"properties": {"unused": {"additionalProperties": 42}}}, "invalid_schema"),
+            ({"$defs": {"unused": {"patternProperties": {}}}},
+             "unsupported_schema_constraint"),
+        )
+        for schema, code in cases:
+            with self.subTest(code=code), self.assertRaises(g.GatewayError) as caught:
+                validate({}, schema)
+            self.assertEqual(caught.exception.args, (code,))
+
+    def test_duplicate_json_keys_in_reviewed_schema_rejected(self):
+        raws = (b'{"properties":{},"properties":{}}',
+                b'{"properties":{"model":{"type":"string","type":"object"}}}')
+        for raw in raws:
+            data = dict(schema="nova3.gateway-review/1", version="0.0.0",
+                        schema_sha256=hashlib.sha256(raw).hexdigest(), checked_at=NOW,
+                        router_options=sorted(g.OPTIONS), native_auth_list_reviewed=True,
+                        semantics_reviewed=True)
+            with self.subTest(raw=raw), self.assertRaises(g.GatewayError) as caught:
+                g.Review.parse(data, raw)
+            self.assertEqual(caught.exception.args, ("duplicate_json_key",))
+
+    def test_generated_settings_validate_against_reviewed_shape(self):
+        # Realistic reviewed-shape schema, including strict enum/const and
+        # int/float number handling; the generated settings must still pass.
+        provider = {"type": "object", "additionalProperties": False,
+                    "required": ["order", "only", "allow_fallbacks", "zdr",
+                                 "require_parameters", "quantizations", "max_price"],
+                    "properties": {
+                        "order": {"type": "array", "items": {"const": "wafer"}},
+                        "only": {"type": "array", "items": {"const": "wafer"}},
+                        "allow_fallbacks": {"const": False},
+                        "zdr": {"const": True},
+                        "require_parameters": {"const": True},
+                        "quantizations": {"type": "array", "items": {"enum": ["fp8"]}},
+                        "max_price": {"type": "object", "additionalProperties": False,
+                                      "required": ["prompt", "completion"],
+                                      "properties": {"prompt": {"type": "number"},
+                                                     "completion": {"type": "number"}}}}}
+        schema = {"type": "object",
+                  "required": ["model", "small_model", "provider"],
+                  "properties": {
+                      "model": {"const": "openrouter/" + g.MODEL},
+                      "small_model": {"enum": ["openrouter/" + g.MODEL]},
+                      "provider": {"type": "object", "additionalProperties": False,
+                                   "required": ["openrouter"],
+                                   "properties": {"openrouter": {
+                                       "type": "object", "additionalProperties": False,
+                                       "required": ["options", "models"],
+                                       "properties": {
+                                           "options": {"type": "object",
+                                                       "required": ["baseURL"],
+                                                       "properties": {"baseURL": {"const": g.ROUTER}}},
+                                           "models": {"type": "object", "additionalProperties": {
+                                               "type": "object", "additionalProperties": False,
+                                               "required": ["options"],
+                                               "properties": {"options": {
+                                                   "type": "object", "additionalProperties": False,
+                                                   "required": ["provider"],
+                                                   "properties": {"provider": provider}}}}}}}}}}}
+        settings = g.opencode_settings(self.config, self.endpoint, review(schema),
+                                       self.native, now=NOW)
+        validate(settings, schema)
 
     def test_native_offline_no_execution(self):
         with mock.patch.object(g.shutil, "which") as which, mock.patch.object(g, "_native_command") as command:

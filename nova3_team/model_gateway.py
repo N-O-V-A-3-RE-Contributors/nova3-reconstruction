@@ -3,6 +3,16 @@
 Evidence is an operator-reviewed, short-lived metadata snapshot, not an API
 response or proof that an endpoint was actually selected. No credential files,
 prompts, subprocess output, or source files are telemetry inputs.
+
+Schema-validation policy: the reviewed schema is audited in full before any
+value is accepted (unused properties/branches/definitions included), untrusted
+JSON rejects duplicate keys, and only a value/branch mismatch may make an
+anyOf/oneOf/allOf branch count as a non-match. ``enum``/``const`` compare by
+strict JSON type identity: Python's ``True == 1``, ``False == 0`` and
+``1.0 == 1`` must never satisfy a reviewed literal. This is deliberately
+stricter than JSON Schema's numeric equivalence for ``enum``/``const``;
+``type: number`` still accepts both int and float. Rejecting a value is
+fail-closed, so the stricter choice is safe for a gate.
 """
 from __future__ import annotations
 
@@ -125,13 +135,109 @@ class Review:
         if hashlib.sha256(schema_bytes).hexdigest() != d["schema_sha256"]:
             raise GatewayError("schema_mismatch")
         try:
-            schema = json.loads(schema_bytes)
+            schema = json.loads(schema_bytes, object_pairs_hook=_unique_object)
+        except GatewayError:
+            raise
         except (ValueError, UnicodeError):
             raise GatewayError("invalid_schema") from None
         if not isinstance(schema, dict) or "properties" not in schema:
             raise GatewayError("invalid_schema")
         return cls(d["version"], d["schema_sha256"],
                    _integer(d["checked_at"], 0, 10**11), schema)
+
+
+_SCHEMA_KEYWORDS = frozenset({
+    "$ref", "$schema", "$id", "$defs", "definitions", "title", "description",
+    "default", "examples", "deprecated", "type", "properties",
+    "additionalProperties", "required", "items", "enum", "const", "anyOf",
+    "allOf", "oneOf"})
+_JSON_TYPE_NAMES = frozenset({"object", "array", "string", "boolean", "integer",
+                              "number", "null"})
+_MISMATCH = "settings_schema_mismatch"
+
+
+def _unique_object(pairs: list[tuple]) -> dict:
+    """Reject duplicate keys so untrusted JSON has one unambiguous meaning."""
+    result: dict = {}
+    for key, value in pairs:
+        if key in result:
+            raise GatewayError("duplicate_json_key")
+        result[key] = value
+    return result
+
+
+def _json_identical(left: Any, right: Any) -> bool:
+    """JSON type identity, not Python equality (True != 1, 1.0 != 1)."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return (left.keys() == right.keys() and
+                all(_json_identical(left[key], right[key]) for key in left))
+    if isinstance(left, list):
+        return (len(left) == len(right) and
+                all(_json_identical(a, b) for a, b in zip(left, right)))
+    return left == right
+
+
+def _resolve_reference(ref: Any, root: dict) -> Any:
+    """Resolve a local JSON pointer only; remote/implicit network is denied."""
+    if not isinstance(ref, str) or not ref.startswith("#/"):
+        raise GatewayError("remote_schema_denied")
+    target: Any = root
+    try:
+        for part in ref[2:].split("/"):
+            target = target[part.replace("~1", "/").replace("~0", "~")]
+    except (KeyError, TypeError):
+        raise GatewayError("schema_reference_missing") from None
+    return target
+
+
+def _audit_schema(schema: Any, root: dict, depth: int = 0) -> None:
+    """Structurally audit every subschema, including unused ones.
+
+    The value walk alone only inspects properties/branches the generated value
+    reaches, so an unreviewed constraint in an unused definition could be
+    silently accepted. Audit is bounded and does not follow ``$ref`` (targets
+    live in the same root and are audited where defined), so recursive schemas
+    remain usable for finite values.
+    """
+    if depth > 48:
+        raise GatewayError("schema_depth_denied")
+    if schema is True or schema is False:
+        return
+    if not isinstance(schema, dict):
+        raise GatewayError("invalid_schema")
+    if set(schema) - _SCHEMA_KEYWORDS:
+        raise GatewayError("unsupported_schema_constraint")
+    for key in ("properties", "$defs", "definitions"):
+        if key in schema:
+            children = schema[key]
+            if not isinstance(children, dict):
+                raise GatewayError("invalid_schema")
+            for child in children.values():
+                _audit_schema(child, root, depth + 1)
+    for key in ("additionalProperties", "items"):
+        if key in schema:
+            _audit_schema(schema[key], root, depth + 1)
+    if "type" in schema:
+        names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
+        if (not names or not all(isinstance(x, str) for x in names) or
+                any(x not in _JSON_TYPE_NAMES for x in names)):
+            raise GatewayError("invalid_schema")
+    if "required" in schema:
+        if (not isinstance(schema["required"], list) or
+                not all(isinstance(x, str) for x in schema["required"])):
+            raise GatewayError("invalid_schema")
+    for key in ("anyOf", "oneOf", "allOf"):
+        if key in schema:
+            if not isinstance(schema[key], list) or not schema[key]:
+                raise GatewayError("invalid_schema")
+            for child in schema[key]:
+                _audit_schema(child, root, depth + 1)
+    if "enum" in schema and (not isinstance(schema["enum"], list) or not schema["enum"]):
+        raise GatewayError("invalid_schema")
+    if "$ref" in schema:
+        _resolve_reference(schema["$ref"], root)
 
 
 def _validate_schema(value: Any, schema: Any, root: dict, depth: int = 0) -> None:
@@ -142,6 +248,8 @@ def _validate_schema(value: Any, schema: Any, root: dict, depth: int = 0) -> Non
     """
     if depth > 48:
         raise GatewayError("schema_depth_denied")
+    if depth == 0:
+        _audit_schema(schema, root)
     if schema is True:
         return
     if schema is False or not isinstance(schema, dict):
@@ -166,16 +274,7 @@ def _validate_schema(value: Any, schema: Any, root: dict, depth: int = 0) -> Non
         if key in schema and (not isinstance(schema[key], list) or not schema[key]):
             raise GatewayError("invalid_schema")
     if "$ref" in schema:
-        ref = schema["$ref"]
-        if not isinstance(ref, str) or not ref.startswith("#/"):
-            raise GatewayError("remote_schema_denied")
-        target = root
-        try:
-            for part in ref[2:].split("/"):
-                target = target[part.replace("~1", "/").replace("~0", "~")]
-        except (KeyError, TypeError):
-            raise GatewayError("schema_reference_missing") from None
-        _validate_schema(value, target, root, depth + 1)
+        _validate_schema(value, _resolve_reference(schema["$ref"], root), root, depth + 1)
     for key in ("anyOf", "oneOf", "allOf"):
         if key in schema:
             matches = 0
@@ -183,8 +282,12 @@ def _validate_schema(value: Any, schema: Any, root: dict, depth: int = 0) -> Non
                 try:
                     _validate_schema(value, choice, root, depth + 1)
                     matches += 1
-                except GatewayError:
-                    pass
+                except GatewayError as error:
+                    # Only a value/branch mismatch is a non-match. Unsupported
+                    # constraints, invalid/remote schemas and depth exhaustion
+                    # are schema-level failures and must abort validation.
+                    if error.args != (_MISMATCH,):
+                        raise
             if ((key == "allOf" and matches != len(schema[key])) or
                     (key == "oneOf" and matches != 1) or
                     (key == "anyOf" and matches == 0)):
@@ -197,10 +300,10 @@ def _validate_schema(value: Any, schema: Any, root: dict, depth: int = 0) -> Non
         names = schema["type"] if isinstance(schema["type"], list) else [schema["type"]]
         if not any(types.get(name, False) for name in names):
             raise GatewayError("settings_schema_mismatch")
-    if "enum" in schema and value not in schema["enum"]:
-        raise GatewayError("settings_schema_mismatch")
-    if "const" in schema and value != schema["const"]:
-        raise GatewayError("settings_schema_mismatch")
+    if "enum" in schema and not any(_json_identical(value, candidate) for candidate in schema["enum"]):
+        raise GatewayError(_MISMATCH)
+    if "const" in schema and not _json_identical(value, schema["const"]):
+        raise GatewayError(_MISMATCH)
     if isinstance(value, dict):
         if set(schema.get("required", [])) - set(value):
             raise GatewayError("settings_schema_mismatch")

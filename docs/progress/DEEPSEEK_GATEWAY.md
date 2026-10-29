@@ -71,8 +71,17 @@ All source matching claims remain **NOT MATCHED**. Test schemas and version
 The local JSON Schema validator deliberately supports only types, objects,
 arrays, required/properties/additionalProperties/items, enum/const, local refs
 and anyOf/allOf/oneOf. Unsupported schema versions or constraints must be
-reviewed/implemented before use, never silently ignored. Permissive provider
-option maps cannot prove routing semantics; human API review remains necessary.
+reviewed/implemented before use, never silently ignored. The whole reviewed
+schema is audited up front, including unused properties, branches and
+definitions, so an unreviewed constraint cannot hide in a subschema the
+generated value never reaches. Schema bytes are decoded with duplicate-key
+rejection. Inside anyOf/oneOf/allOf, only a value/branch mismatch counts as a
+non-match; unsupported constraints, invalid/remote schemas, missing refs and
+depth exhaustion abort the whole validation. `enum`/`const` compare by strict
+JSON type identity (`true` is not `1`, `1.0` is not `1`), intentionally
+stricter than JSON Schema numeric equivalence because rejecting is fail-closed;
+`type: number` still accepts int and float. Permissive provider option maps
+cannot prove routing semantics; human API review remains necessary.
 
 ## No-cost probe
 
@@ -210,14 +219,12 @@ fallback. Provider/runtime #127 and scheduler #126 may consume these APIs later;
 
 ## Verification and handoff
 
-On 2026-10-29, Python 3.14.8:
+On 2026-10-30, Python 3.14.8, after the schema-validation hardening in PR #144:
 
 | Command | Actual result |
 | --- | --- |
-| `PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s nova3_team/tests -q` | 530 tests passed, exit 0 (includes 30 gateway tests). |
-| `PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_model_gateway -q` | Final targeted verification: 30 tests passed, exit 0. |
-| `PYTHONDONTWRITEBYTECODE=1 python -m nova3_team.guard --repo . --all` | 421 existing repository files checked, exit 0. |
-| `PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s tools/observatory/tests -q` | 150 tests, 148 passed, 1 failure + 1 error, exit 1. Existing `test_discovery_fix` calls `systemd-analyze verify`; sandbox denies SO_PASSRIGHTS/SO_PASSCRED. Same blocker already recorded in project progress docs; no out-of-scope repair. |
+| `PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s nova3_team/tests -q` | 535 tests passed, 6 skipped, exit 0. |
+| `PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_model_gateway -q` | 35 gateway tests passed, exit 0. |
 
 Gateway tests cover model downgrade, provider/rate/precision/context drift, ZDR
 and account privacy failures, unknown metadata, stale evidence, native credential
@@ -225,6 +232,9 @@ failure/absence/ambiguity, low balance, timeouts, noisy-output bounds/redaction,
 schema/version mismatch, no fallbacks, private/exclusive writes, symlinks,
 offline no-execution/no-network, budget approval, one attempt, metrics/tool/CI
 failure, and synthetic Codex comparison. No real OpenCode command is executed.
+Schema tests also cover strict `enum`/`const` type identity, propagation of
+schema-level errors out of anyOf/oneOf/allOf, duplicate JSON keys, and auditing
+of unsupported constraints in unused subschemas.
 
 Next authorized session: install/review exact OpenCode, verify the official
 schemas and live endpoint/account metadata, populate truthful review evidence,
