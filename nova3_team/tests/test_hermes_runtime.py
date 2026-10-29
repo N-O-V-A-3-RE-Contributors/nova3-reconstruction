@@ -394,5 +394,59 @@ class CliTests(unittest.TestCase):
         self.assertEqual(code, 2)
 
 
+class IntegrationChainTests(unittest.TestCase):
+    """One synthetic end-to-end chain: context -> Hermes -> draft -> owner gate."""
+
+    def test_hermes_proposal_cannot_queue_itself(self):
+        from nova3_team import planning_bridge as pb
+        from nova3_team.tests.test_planning_bridge import FakeTransport, spec_payload, NOW
+
+        # 1. Sanitised context the planner may see.
+        snapshot = pb.build_context(
+            repository={"full_name": "N-O-V-A-3-RE-Contributors/nova3-reconstruction",
+                        "default_branch": "main"},
+            issues=[{"number": 135, "title": "Queue gate", "state": "open",
+                     "labels": [{"name": "nova:review"}], "body": "Requires #134."}],
+            pulls=[], policy_version=1,
+        )
+        pb.assert_sanitized(snapshot)
+
+        # 2. Planner prompt points at the snapshot, not at private data.
+        prompt = hr.planner_prompt("/tmp/snapshot.json", question="What unblocks #136?")
+        self.assertIn("/tmp/snapshot.json", prompt)
+
+        # 3. A model reply containing a valid proposal is only a draft.
+        payload = spec_payload(key="hermes-draft", title="Hermes-proposed hardening",
+                               allowed_paths=["nova3_team/worker.py"])
+        proposal, reason = hr.extract_proposal(
+            "Here is my plan.\n```json\n" + json.dumps(payload) + "\n```\n")
+        self.assertEqual(reason, "ok")
+        spec = pb.validate_proposal(proposal)
+
+        # 4. Publishing is dry-run by default and never carries nova:queued.
+        transport = FakeTransport()
+        result = pb.publish_draft(transport, "N-O-V-A-3-RE-Contributors",
+                                  "nova3-reconstruction", spec, apply=False)
+        self.assertEqual(result["action"], "would-create")
+        self.assertNotIn("nova:queued", result["labels"])
+        self.assertEqual(transport.mutations, [])
+
+        # 5. Queueing requires an owner approval plus explicit consent; a
+        #    model claim alone is denied.
+        denied = pb.queue_transition(
+            transport, FakeReplayForChain(), "N-O-V-A-3-RE-Contributors",
+            "nova3-reconstruction", transport.issue_number,
+            nonce="c" * 64, task_spec_sha256=spec.fingerprint, apply=True,
+            confirm=lambda binding: False, clock=lambda: NOW,
+        )
+        self.assertEqual(denied["action"], "denied")
+        self.assertEqual(transport.mutations, [])
+
+
+class FakeReplayForChain:
+    def reserve(self, keys):
+        raise AssertionError("a denied transition must never reserve keys")
+
+
 if __name__ == "__main__":
     unittest.main()
