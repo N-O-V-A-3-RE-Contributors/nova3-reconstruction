@@ -596,7 +596,7 @@ def _validate_binding(binding: object) -> None:
 
 def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvidence,
                            request: Request, *, reader: int, now: int,
-                           organization: bool, replay: ReplayState | None) -> Decision:
+                           organization: bool, replay: ReplayState) -> Decision:
     """Re-verify one owner/admin approval against a previously checked binding.
 
     Used by pre-publish worker revalidation, where the issue body has since been
@@ -636,22 +636,23 @@ def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvid
                 or _person(comment["user"]) != (author_id, author_login)
                 or record["actor_id"] != author_id or record["actor_login"] != author_login):
             return deny(Reason.APPROVAL_REQUIRED)
-        if replay is not None:
-            if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
+        # Replay state is mandatory: a caller must not be able to skip
+        # revocation/consumption checks by passing None.
+        if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
+            raise _Denied()
+        _fresh(replay.fetched_at, now)
+        if type(replay.consumed) is not frozenset or type(replay.revoked_comments) is not frozenset:
+            raise _Denied()
+        for key in replay.consumed:
+            if not isinstance(key, str) or not re.fullmatch(
+                    r"github:[1-9][0-9]*:(?:comment:[1-9][0-9]*|request:[0-9a-f]{64})", key):
                 raise _Denied()
-            _fresh(replay.fetched_at, now)
-            if type(replay.consumed) is not frozenset or type(replay.revoked_comments) is not frozenset:
-                raise _Denied()
-            for key in replay.consumed:
-                if not isinstance(key, str) or not re.fullmatch(
-                        r"github:[1-9][0-9]*:(?:comment:[1-9][0-9]*|request:[0-9a-f]{64})", key):
-                    raise _Denied()
-            for ident in replay.revoked_comments:
-                _positive(ident)
-            if (f"github:{request.repository.id}:comment:{comment['id']}" in replay.consumed
-                    or f"github:{request.repository.id}:request:{request.nonce}" in replay.consumed
-                    or comment["id"] in replay.revoked_comments):
-                return deny(Reason.REPLAY)
+        for ident in replay.revoked_comments:
+            _positive(ident)
+        if (f"github:{request.repository.id}:comment:{comment['id']}" in replay.consumed
+                or f"github:{request.repository.id}:request:{request.nonce}" in replay.consumed
+                or comment["id"] in replay.revoked_comments):
+            return deny(Reason.REPLAY)
         return Decision(True, Role.OWNER, Reason.ALLOWED, operation_digest(dict(binding)))
     except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return deny(Reason.INVALID_EVIDENCE)
