@@ -35,7 +35,6 @@ class OperatorTests(unittest.TestCase):
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'WRITE'}),\
        patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
    with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
-
  def _auth_responses(self, role, *, membership=None, identity=None, fail=False):
   identity=identity or {'login':'crjase','id':101,'type':'User'}
   def fake(*args, **kwargs):

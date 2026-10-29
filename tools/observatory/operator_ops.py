@@ -173,6 +173,7 @@ def require_owner_access(repo: str) -> str:
         raise CommandFailure('Owner operation locked: ' + status['reason'])
     return ORG_OWNER if status['organization_owner'] else status['role']
 
+
 def load_pr(repo: str, number: int) -> dict:
     pr = gh_json('pr','view',str(number),'-R',repo,'--json',FIELDS)
     if not isinstance(pr,dict) or pr.get('number') != number:
