@@ -94,7 +94,9 @@ Collect these REST payloads directly, without model transformation:
 * `/repos/{owner}/{repo}/issues/{number}` and
   `/repos/{owner}/{repo}/issues/comments/{comment_id}`: exact current snapshots.
   Verify endpoint identity, comment numeric ID and `issue_url`, authenticated
-  comment author, timestamps and current body. Deleted or edited comments deny.
+  comment author, timestamps and current body. The issue payload must itself
+  name this exact `repository_url` and issue `url`; the receipt path alone is
+  not proof of repository identity. Deleted or edited comments deny.
 
 Each receipt records its exact path, origin, authenticating reader's numeric
 ID, executor-generated boundary nonce and trusted fetch time. Every required
@@ -171,6 +173,34 @@ Entire issue bodies are bound: the current lease-writing coordinator cannot
 edit a body after approval without invalidating it. Integration must address
 lease storage/re-approval explicitly; never silently exclude mutable task text.
 
+## Standing task approval for queue admission
+
+`verify_owner_approval(request, evidence, now=...)` is the integration primitive
+for coordinator/worker queue gates. The evaluating process is **not** the
+approver and needs no repository role of its own; the GitHub comment written by
+a currently verified repository ADMIN or organization owner is the human act
+being verified. This avoids pretending a bot/service token is the owner.
+
+The request must be a steering action (queue admission uses `approve_queue`)
+with `executor_user_id = None`: one approval admits exactly one immutable task
+revision (repository ID, issue ID/number, title, body, `updated_at`, operation
+arguments, action, nonce), not a specific worker. Approval records that are
+edited, rewritten by another author, bound to another repository/issue/revision,
+issued before the current revision, expired, revoked or already consumed deny
+with `APPROVAL_REQUIRED`, `REPLAY` or `INVALID_EVIDENCE`. No `Consent` object is
+required here because this is a third-party verification of an already
+published human approval, not the owner's own one-shot execution path (which
+still uses `authorize` and requires consent).
+
+The returned decision deliberately has no `consume_keys`: the grant is standing
+for that revision so a legitimate worker release can requeue the same unchanged
+task. Callers **must** deduplicate transitions in their own durable ledger
+(for example `(repository, issue, task_spec_sha256, transition, token)`), reject
+concurrent duplicate claims through the existing lease, and re-verify with
+fresh evidence immediately before the transition. A new task revision always
+requires a new owner/admin approval; existing `nova:queued` labels alone are
+never grandfathered.
+
 ## Coordinator assignments and revocation
 
 For `run_assigned_work`, require both the owner's/admin's current approval of
@@ -240,13 +270,13 @@ Run offline, without installing dependencies or invoking existing workers:
 PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_access_policy -v
 ```
 
-Policy suite: **44 policy tests passed**, exit 0. Full offline discovery suite:
+Policy suite: **46 policy tests passed**, exit 0. Full offline discovery suite:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s nova3_team/tests -q
 ```
 
-**544 tests run, 6 skipped**, exit 0.
+**546 tests run, 6 skipped**, exit 0.
 
 Tests use only
 synthetic API payloads, fixed time and fake numeric IDs. Coverage includes all
@@ -256,7 +286,8 @@ markers/authors, prompt injection, edited tasks/approvals, exact operation,
 argument and repository binding, digest/argument substitution, nested
 bool-vs-int type confusion, unreadable approval-author evidence, duplicate
 approvals, rate limits/unauthenticated API, revocation, expiry, explicit
-consent, signed-App assignments and one-use keys.
+consent, signed-App assignments and one-use keys, issue-payload repository
+attestation and standing task-level owner approval verification.
 Secret handling checks assert no filesystem/network/subprocess/environment
 reads or output from decisions. No paid calls, live GitHub checks or protected
 settings changes were performed. No original game inputs were accessed.

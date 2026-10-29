@@ -79,6 +79,10 @@ class FakeTransport:
                 "title": "Owner-approved queue enforcement",
                 "body": issue_body, "state": "open", "updated_at": iso(issue_updated),
                 "labels": labels or [{"name": "nova:review"}],
+                # Real GitHub issue payloads attest their own repository; the
+                # hardened access policy rejects payloads without these.
+                "repository_url": f"https://api.github.com/repos/{repo_login}/{NAME}",
+                "url": f"https://api.github.com/repos/{repo_login}/{NAME}/issues/{issue_number}",
             }
         }
         self.issue_number = issue_number
@@ -446,6 +450,20 @@ class QueueAuthorizationTests(unittest.TestCase):
     def test_wrong_repository_is_denied(self):
         transport, _, _ = approved_transport()
         transport.repo_payload["id"] = 999
+        result = pb.queue_transition(
+            transport, FakeReplay(), OWNER, NAME, transport.issue_number,
+            nonce="b" * 64, task_spec_sha256="a" * 64, apply=True,
+            confirm=lambda binding: True, clock=lambda: NOW,
+        )
+        self.assertEqual(result["action"], "denied")
+        self.assertEqual(result["reason"], "invalid_or_unavailable_evidence")
+
+    def test_issue_payload_must_attest_this_repository(self):
+        # A mixed-up collection that returns another repo's issue must not bind.
+        transport, _, _ = approved_transport()
+        issue = transport.issues[transport.issue_number]
+        issue["repository_url"] = "https://api.github.com/repos/someone/else"
+        issue["url"] = "https://api.github.com/repos/someone/else/issues/200"
         result = pb.queue_transition(
             transport, FakeReplay(), OWNER, NAME, transport.issue_number,
             nonce="b" * 64, task_spec_sha256="a" * 64, apply=True,

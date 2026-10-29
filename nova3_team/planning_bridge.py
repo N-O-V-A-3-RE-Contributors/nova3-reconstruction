@@ -748,12 +748,21 @@ class PolicyQueueGate:
                              self.transport.permission(owner, name, login),
                              reader, boundary, now),
         )
-        request, binding = build_request(
-            owner, name, repo_payload, issue_payload,
-            action=access_policy.Action.APPROVE_QUEUE,
-            operation_arguments=operation_arguments, nonce=nonce,
-            executor_user_id=reader,
-        )
+        request, binding = None, {}
+        try:
+            request, binding = build_request(
+                owner, name, repo_payload, issue_payload,
+                action=access_policy.Action.APPROVE_QUEUE,
+                operation_arguments=operation_arguments, nonce=nonce,
+                executor_user_id=reader,
+            )
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
+            # A payload that cannot be bound (wrong repo, missing attestation,
+            # malformed issue) is a denial, never a traceback in the CLI.
+            return access_policy.Decision(
+                False, access_policy.Role.UNAUTHENTICATED,
+                access_policy.Reason.INVALID_EVIDENCE,
+            ), {}
         # Exactly one owner-written approval comment must match this binding.
         approvals: list[access_policy.ApprovalEvidence] = []
         for stub in self.transport.issue_comments(owner, name, number):
