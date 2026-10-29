@@ -15,6 +15,9 @@ esac
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
   [[ -f "$SOURCE_DIR/$file" ]] || { echo "Missing $file" >&2; exit 1; }
 done
+PROVIDER_RUNTIME="$SOURCE_DIR/../../nova3_team/provider_runtime.py"
+[[ -f "$SOURCE_DIR/provider_accounts.py" && -f "$PROVIDER_RUNTIME" ]] || {
+  echo 'Missing Accounts/provider runtime module' >&2; exit 1; }
 HISTORICAL_HELPER="$SOURCE_DIR/../../nova3_team/historical_toolchain.py"
 [[ -f "$HISTORICAL_HELPER" ]] || { echo 'Missing historical toolchain onboarding helper' >&2; exit 1; }
 HISTORICAL_GUIDE="$SOURCE_DIR/../../docs/progress/HISTORICAL_TOOLCHAIN.md"
@@ -30,6 +33,8 @@ install -d -m 700 "$TARGET" "$BINDIR"
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
   install -m 600 "$SOURCE_DIR/$file" "$TARGET/$file"
 done
+install -m 600 "$SOURCE_DIR/provider_accounts.py" "$TARGET/provider_accounts.py"
+install -m 600 "$PROVIDER_RUNTIME" "$TARGET/provider_runtime.py"
 install -m 600 "$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"
 install -m 600 "$HISTORICAL_GUIDE" "$TARGET/HISTORICAL_TOOLCHAIN.md"
 install -m 600 "$LIVE_GUIDE" "$TARGET/OBSERVATORY_LIVE_INTEGRATION.md"

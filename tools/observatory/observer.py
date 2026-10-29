@@ -65,6 +65,18 @@ if _ui_spec is None or _ui_spec.loader is None:
 ui_components = _importlib_util.module_from_spec(_ui_spec)
 sys.modules[_ui_spec.name] = ui_components
 _ui_spec.loader.exec_module(ui_components)
+try:
+    _accounts_spec = _importlib_util.spec_from_file_location(
+        "nova3_private_observer_accounts", Path(__file__).resolve().parent / "provider_accounts.py")
+    if _accounts_spec is None or _accounts_spec.loader is None:
+        raise ImportError('accounts module missing')
+    provider_accounts = _importlib_util.module_from_spec(_accounts_spec)
+    sys.modules[_accounts_spec.name] = provider_accounts
+    _accounts_spec.loader.exec_module(provider_accounts)
+except (ImportError, OSError, AttributeError):
+    # Minimal standalone bundles (and older installs) keep every original page;
+    # the Accounts page reports that the optional module must be reinstalled.
+    provider_accounts = None
 
 VERSION = "3.0.0"
 DEFAULT_REPO = "N-O-V-A-3-RE-Contributors/nova3-reconstruction"
@@ -96,18 +108,19 @@ SERVICE_INTERVAL = 6
 MAX_ISSUES = 1000
 MAX_PRS = 500
 MAX_RUNS = 80
-TAB_KEYS = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'W', 'H', 'A', '?')
-TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "ACTIVITY", "HELP"]
+TAB_KEYS = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'W', 'H', 'A', 'U', '?')
+TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "ACTIVITY", "ACCOUNTS", "HELP"]
 # Keep the established page order/shortcuts independent of the group navigator.
 TAB_GROUPS = (
     ('Overview', (0, 5, 8)),
     ('Pipeline', (1, 2, 3, 4)),
     ('Research', (6, 7, 11)),
-    ('Team', (10, 12)),
-    ('Administration', (9, 13)),
+    ('Team', (10, 12, 13)),
+    ('Administration', (9, 14)),
 )
 TAB_SHORT = ('Pulse', 'Tasks', 'PRs', 'Actions', 'Logs', 'Forecast', 'Source',
-             'APK', 'Roadmap', 'Owner', 'Workers', 'Tools', 'Activity', 'Help')
+             'APK', 'Roadmap', 'Owner', 'Workers', 'Tools', 'Activity', 'Accounts', 'Help')
+ACCOUNTS_TAB = 13
 
 # One selected repository, two listing levels, never recursive/home-wide scans.
 ACTIVITY_MAX_ENTRIES = 1024
@@ -1178,6 +1191,13 @@ class Observatory:
         self.stdscr = None
         self.snap = Snapshot()
         self.C = {}
+        state_dir = getattr(collector, 'state_dir', None)
+        self.accounts = (provider_accounts.AccountsController(
+            collector.repo,
+            (Path(state_dir) / 'accounts.json') if state_dir else None,
+            role_resolver=lambda: operator_ops.repo_permission(collector.repo),
+            opener=self._open_external) if provider_accounts is not None else None)
+        self.accounts_login = None
         encoding = getattr(sys.stdout, 'encoding', None) or 'ascii'
         try:
             '╭─█'.encode(encoding)
@@ -1329,6 +1349,8 @@ class Observatory:
             self.draw_toolchain(top, bottom, w)
         elif self.tab == 12:
             self.draw_activity(top, bottom, w)
+        elif self.tab == ACCOUNTS_TAB:
+            self.draw_accounts(top, bottom, w)
         else:
             self.draw_help(top, bottom, w)
         self.put(h-3, 0, "─"*(w-1), "muted")
@@ -1340,7 +1362,8 @@ class Observatory:
             bottom_left = f" systemd {service_state} [{health}] | Whole-game ETA: UNKNOWN"
         self.put(h-2, 1, bottom_left, "yellow" if not gh_ok else "muted", w-3)
         context = ('/ search D details' if self.tab in (1, 2, 3) else
-                   'PgUp/Dn cards' if self.tab in (0, 9) else 'Up/Down scroll')
+                   'PgUp/Dn cards' if self.tab in (0, 9) else
+                   'J/K select T test E enable' if self.tab == ACCOUNTS_TAB else 'Up/Down scroll')
         foot = f"Tab pages  {{ }} groups  {context}  ? help  Q quit"
         if not self.layout.compact:
             foot += ' | 1-9,0 W H A shortcuts | G sync | ' + (
@@ -1926,6 +1949,76 @@ class Observatory:
                         f"Last signal: {age} | device {item['worker'][:8]}",
                         ('Observed heartbeat only; no credential access.', 'muted')])
 
+    def draw_accounts(self, y, end, w):
+        R = ui_components.Rect
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
+        area = R(y, 1, end-y, w-2)
+        if self.accounts is None:
+            self.card(area, 'ACCOUNTS', 'UNAVAILABLE', 'yellow').lines([
+                ('Accounts module is not installed in this Observatory bundle.', 'yellow'),
+                'Reinstall with tools/observatory/install.sh to add provider readiness.',
+                ('No provider CLI, GitHub login or credential was touched.', 'muted')])
+            return
+        if layout.compact or w < 110:
+            provider_rect, github_rect = ui_components.grid(area, columns=1, rows=2)
+        else:
+            provider_rect, github_rect = ui_components.grid(area, columns=2, rows=1)
+        rows = self.accounts.rows()
+        ready = sum(row.ready for row in rows)
+        enabled = sum(row.enabled for row in rows)
+        provider_card = self.card(provider_rect, 'AI PROVIDER ACCOUNTS',
+                                  f'{ready}/{len(rows)} READY', 'green' if ready else 'yellow')
+        table = [f'{ready}/{len(rows)} ready | {enabled} enabled | local CLIs only',
+                 ('UP/DOWN select | T test | E enable | L login | R probe', 'muted')]
+        for index, row in enumerate(rows):
+            marker = '>' if index == self.accounts.selected else ' '
+            check = 'x' if row.enabled else ' '
+            table.append((f'{marker}[{check}] {row.display_name[:20]:<20} '
+                          f'{row.install_state.value:<13} {row.label}', self.severity(row.label)))
+        if not rows:
+            table.append(('Provider registry is unavailable.', 'red'))
+        capacity = max(1, provider_card.inner.h)
+        selected_line = 2 + self.accounts.selected
+        offset = max(0, self.scroll['accounts'])
+        if selected_line < offset:
+            offset = selected_line
+        elif selected_line >= offset + capacity:
+            offset = selected_line - capacity + 1
+        offset = min(offset, max(0, len(table) - capacity))
+        self.scroll['accounts'] = offset
+        provider_card.lines(table[offset:offset + capacity])
+
+        identity = self.accounts.identity
+        members = self.accounts.members
+        owner = identity.role in provider_accounts.OWNER_ROLES and not self.collector.demo
+        github_rows = [
+            (f'GitHub identity: {identity.label}', self.severity(identity.label)),
+            (('Owner actions: ' + (identity.role + ' (O opens official settings)'
+                                   if owner else 'LOCKED (ADMIN/MAINTAIN required)')),
+             'cyan' if owner else 'yellow'),
+            (f'Members ({members.state}): M loads read-only collaborators', 'cyan'),
+            (f'Invite / remove / role changes: {self.accounts.invitation_url}', 'yellow'),
+            (f'Account: {identity.account or "UNKNOWN"} | Scopes: {identity.scope_label}', 'muted'),
+        ]
+        if members.members:
+            github_rows += [f'  {member.login:<26} {member.role}' for member in members.members[:12]]
+        else:
+            github_rows.append(('  ' + members.detail, 'muted'))
+        github_rows.append(('Official GitHub page only; this screen never invites or removes.', 'muted'))
+        selected_row = self.accounts.selected_row()
+        if selected_row is not None:
+            guidance = textwrap.wrap('Login: ' + selected_row.guidance,
+                                     max(16, github_rect.w - 6))
+            github_rows += [('', 'normal')] + [(line, 'muted') for line in guidance]
+        report = self.accounts.last_test
+        if report is not None:
+            github_rows += [(f'Last test: {report.summary}', 'green' if report.ok else 'yellow'),
+                            (report.detail, 'muted')]
+        github_card = self.card(github_rect, 'GITHUB IDENTITY / MEMBERS',
+                                'READ ONLY', 'cyan')
+        self.scroll['accounts_info'] = github_card.scrolled(
+            github_rows, self.scroll['accounts_info'])
+
     def draw_help(self, y, end, w):
         card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'OPERATOR GUIDE', 'UP/DOWN')
         lines = [
@@ -1944,6 +2037,9 @@ class Observatory:
             ("LOGS", "E cycles log filters   PgUp/PgDn scroll back   End jumps to live tail"),
             ("FORECAST", "Evidence-gated stage work; up/down scroll. Slots +/- do not establish throughput."),
             ("ACTIVITY", "A opens local sanitized JSON observations. No internal thoughts or raw logs."),
+            ("ACCOUNTS", "U shows optional AI provider readiness and read-only GitHub identity. R probes local CLIs."),
+            ("ACCOUNT KEYS", "Up/Down select, T test connection, E enable/disable, L official login guidance, M members."),
+            ("ACCOUNT SAFETY", "No passwords/tokens collected. Owner settings open only after a fresh ADMIN/MAINTAIN check."),
             ("APPEARANCE", "T switches highlight palette   Q exits TUI (worker stays running)"),
             ("OWNER OPS", "0 opens private controls: timer, one-shot scans, bulk PR merge, diagnostics."),
             ("BULK MERGE", "On PR page B marks a PR, A marks all, Z clears; C checks GitHub then confirms."),
@@ -1969,6 +2065,99 @@ class Observatory:
     def show_notice(self, msg):
         self.notice = msg
         self.notice_until = time.monotonic() + 8
+
+    def _open_external(self, url):
+        """Suspend curses, hand one validated URL to the browser, restore."""
+        if not provider_accounts.safe_url(url):
+            return False
+        try:
+            curses.def_prog_mode()
+            curses.endwin()
+        except curses.error:
+            pass
+        opened = False
+        try:
+            opened = bool(webbrowser.open(url, new=2))
+        finally:
+            try:
+                curses.reset_prog_mode()
+            except curses.error:
+                pass
+            try:
+                self.stdscr.refresh()
+            except curses.error:
+                pass
+        return opened
+
+    def handle_accounts(self, key) -> bool:
+        """Keys local to the Accounts page; navigation keys fall through."""
+        if (self.collector.demo and
+                key in (ord('r'), ord('R'), ord('t'), ord('T'), ord('m'), ord('M'))):
+            self.show_notice('Demo mode: no local provider or GitHub probe was run')
+            return True
+        if key in (curses.KEY_UP, ord('k'), ord('K')):
+            self.accounts.move(-1)
+            return True
+        if key in (curses.KEY_DOWN, ord('j'), ord('J')):
+            self.accounts.move(1)
+            return True
+        if key in (curses.KEY_PPAGE, curses.KEY_NPAGE):
+            step = 3 if key == curses.KEY_NPAGE else -3
+            self.scroll['accounts_info'] = max(0, self.scroll['accounts_info'] + step)
+            return True
+        if key in (ord('r'), ord('R')):
+            rows = self.accounts.refresh_providers()
+            self.accounts.refresh_identity()
+            self.show_notice(f'Provider readiness refreshed: {len(rows)} local CLIs inspected')
+            return True
+        if key in (ord('t'), ord('T')):
+            row = self.accounts.selected_row()
+            if row is None:
+                self.show_notice('No provider selected')
+            else:
+                report = self.accounts.test_connection(row.provider_id)
+                self.show_notice(report.summary)
+            return True
+        if key in (ord('e'), ord('E')):
+            row = self.accounts.selected_row()
+            if row is None:
+                self.show_notice('No provider selected')
+            else:
+                self.accounts.toggle_enabled(row.provider_id)
+                self.show_notice(f'{row.display_name}: ' +
+                                 ('ENABLED' if not row.enabled else 'DISABLED'))
+            return True
+        if key in (ord('l'), ord('L')):
+            row = self.accounts.selected_row()
+            if row is None:
+                self.show_notice('No provider selected')
+            elif self.collector.demo:
+                self.show_notice('Demo mode: login guidance is unavailable')
+            else:
+                self.accounts_login = row.provider_id
+                self.confirm = 'accounts-login'
+            return True
+        if key in (ord('m'), ord('M')):
+            view = self.accounts.refresh_members()
+            self.show_notice(f'GitHub members: {view.state}')
+            return True
+        if key in (ord('o'), ord('O'), 10, 13):
+            if self.collector.demo:
+                self.show_notice('OWNER ACTION DENIED: demo mode')
+                return True
+            url = self.accounts.owner_member_url()
+            if url and self._open_external(url):
+                self.show_notice('Opened official GitHub member settings')
+            elif url:
+                self.show_notice('Browser did not open; use the GitHub settings URL')
+            else:
+                self.show_notice('OWNER ACTION DENIED: role recheck failed')
+            return True
+        # Swallow remaining action letters so Accounts never triggers the
+        # global service, theme or owner hotkeys by accident.
+        return key not in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
+                           ord('{'), ord('}'), ord('?'), ord('q'), ord('Q')) and not (
+            ord('0') <= key <= ord('9'))
 
     def selected_url(self):
         if self.tab not in (1,2,3):
@@ -2019,11 +2208,29 @@ class Observatory:
             if key in (ord('y'), ord('Y')):
                 action = self.confirm
                 self.confirm = None
-                self.collector.perform_action(action)
-                self.show_notice("Executing: " + action)
+                if action == 'accounts-login':
+                    provider_id, self.accounts_login = self.accounts_login, None
+                    url = self.accounts.vendor_login_url(provider_id) if provider_id else None
+                    if url and self._open_external(url):
+                        self.show_notice('Opened official vendor login guidance; no credentials collected')
+                    else:
+                        self.show_notice('Login cancelled: no official page was opened')
+                else:
+                    self.collector.perform_action(action)
+                    self.show_notice("Executing: " + action)
             elif key in (ord('n'), ord('N'), 27):
                 self.confirm = None
+                self.accounts_login = None
             return True
+        if self.tab == ACCOUNTS_TAB:
+            if self.accounts is None:
+                if key not in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
+                               ord('{'), ord('}'), ord('?'), ord('q'), ord('Q')) and not (
+                        ord('0') <= key <= ord('9')):
+                    self.show_notice('Accounts module unavailable; reinstall Observatory')
+                    return True
+            elif self.handle_accounts(key):
+                return True
         if key in (ord('q'), ord('Q')):
             return False
         if key == ord('/') and self.tab in (1, 2, 3):
@@ -2055,9 +2262,9 @@ class Observatory:
             self.scroll['owner_lines'] = 0
             self.scroll['pulse_lines'] = 0
             return True
-        if ((self.tab in (0, 9, 10, 13) and key in (curses.KEY_UP, curses.KEY_DOWN)) or
-                (self.tab in (10, 13) and key in (ord('k'), ord('K'), ord('j'), ord('J')))):
-            field = {0: 'pulse_lines', 9: 'owner_lines', 10: 'workers', 13: 'help'}[self.tab]
+        if ((self.tab in (0, 9, 10, 14) and key in (curses.KEY_UP, curses.KEY_DOWN)) or
+                (self.tab in (10, 14) and key in (ord('k'), ord('K'), ord('j'), ord('J')))):
+            field = {0: 'pulse_lines', 9: 'owner_lines', 10: 'workers', 14: 'help'}[self.tab]
             self.scroll[field] = max(0, self.scroll[field] + (
                 -1 if key in (curses.KEY_UP, ord('k'), ord('K')) else 1))
             return True
@@ -2077,6 +2284,9 @@ class Observatory:
             return True
         if key in (ord('h'),ord('H')):
             self.tab = 11
+            return True
+        if key in (ord('u'),ord('U')) and self.tab != 9:
+            self.tab = ACCOUNTS_TAB
             return True
         if ord('1') <= key <= ord('9'):
             self.tab = key-ord('1')
