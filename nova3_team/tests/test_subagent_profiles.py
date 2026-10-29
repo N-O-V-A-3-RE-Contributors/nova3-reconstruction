@@ -238,7 +238,59 @@ class ProbeTests(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(preflight.main(["--root", str(ROOT), *flags]), expected)
                 self.assertEqual(json.loads(output.getvalue()), result)
-                inspect.assert_called_once_with(ROOT.resolve(), probe=bool(flags))
+                inspect.assert_called_once_with(ROOT.resolve(), probe=bool(flags), loader=False)
+
+    def test_loader_is_explicit_and_default_never_binds_loopback(self):
+        with mock.patch.object(preflight, "ThreadingHTTPServer", side_effect=AssertionError("socket")), \
+                mock.patch.object(preflight.shutil, "which", return_value="/safe/codex"), \
+                mock.patch.object(preflight, "probe_profile_loading", side_effect=AssertionError("loader")):
+            self.assertEqual(preflight.inspect(ROOT)["codex"]["status"], "NOT_PROBED")
+
+    def test_loader_call_is_separate_from_flag_only_probe(self):
+        flags = {"status": "CLI_FLAGS_VERIFIED", "profile_loading": "UNKNOWN", "inference_run": False}
+        loaded = {"profile_loading": "VERIFIED_LOCAL_FIXTURE", "verified_profiles": list(preflight.PROFILES),
+                  "children_closed": True, "model_responses": "SIMULATED_LOOPBACK_ONLY"}
+        with mock.patch.object(preflight.shutil, "which", return_value="/safe/codex"), \
+                mock.patch.object(preflight, "probe_codex", side_effect=lambda _: dict(flags)), \
+                mock.patch.object(preflight, "probe_profile_loading", return_value=loaded) as loader:
+            result = preflight.inspect(ROOT, probe=True)
+            loader.assert_not_called()
+            self.assertEqual(result["codex"]["profile_loading"], "UNKNOWN")
+            result = preflight.inspect(ROOT, loader=True)
+            loader.assert_called_once_with("/safe/codex", ROOT)
+            self.assertEqual(result["codex"]["profile_loading"], "VERIFIED_LOCAL_FIXTURE")
+            self.assertTrue(result["codex"]["children_closed"])
+            self.assertEqual(result["paid_calls"], 0)
+
+    def test_loader_socket_denial_fails_without_launching_a_session(self):
+        with mock.patch.object(preflight, "ThreadingHTTPServer", side_effect=PermissionError("secret")), \
+                mock.patch.object(subprocess, "run", side_effect=AssertionError("process")):
+            with self.assertRaisesRegex(ValueError, "loopback fixture unavailable") as caught:
+                preflight.probe_profile_loading("/safe/codex", ROOT)
+            self.assertNotIn("secret", str(caught.exception))
+
+    def test_loader_failure_or_absence_never_claims_loaded(self):
+        with mock.patch.object(preflight.shutil, "which", return_value="/safe/codex"), \
+                mock.patch.object(preflight, "probe_codex", return_value={
+                    "status": "CLI_FLAGS_VERIFIED", "profile_loading": "UNKNOWN"}), \
+                mock.patch.object(preflight, "probe_profile_loading", side_effect=ValueError("fixture failed")):
+            result = preflight.inspect(ROOT, loader=True)
+        self.assertEqual(result["codex"]["status"], "PROBE_FAILED")
+        self.assertEqual(result["codex"]["profile_loading"], "UNKNOWN")
+        for state in ("UNAVAILABLE", "CLI_FLAGS_VERIFIED", "PROBE_FAILED"):
+            result = {"validation": "PASS", "codex": {"status": state, "profile_loading": "UNKNOWN"}}
+            with self.subTest(state=state), mock.patch.object(preflight, "inspect", return_value=result), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(preflight.main(["--probe-codex-loader"]), 1)
+
+    def test_mock_sse_has_no_real_inference_or_extra_tool_calls(self):
+        item = {"id": "msg_fixture", "type": "message", "role": "assistant",
+                "content": [{"type": "output_text", "text": "OFFLINE"}]}
+        encoded = preflight._fixture_events(item).decode()
+        events = [json.loads(line[6:]) for line in encoded.splitlines() if line.startswith("data: ")]
+        self.assertEqual(events[-1]["type"], "response.completed")
+        self.assertEqual(events[-1]["response"]["output"], [item])
+        self.assertNotIn("function_call", encoded)
 
 
 if __name__ == "__main__":

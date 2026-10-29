@@ -26,6 +26,7 @@ Python 3.11+ (standard-library `tomllib`) is required for this pilot's checks:
 python -B tools/agents/subagent_preflight.py
 python -B -m unittest nova3_team.tests.test_subagent_profiles -v
 python -B tools/agents/subagent_preflight.py --probe-codex
+python -B tools/agents/subagent_preflight.py --probe-codex-loader
 ```
 
 Default preflight reads only allowlisted public pilot files and executable
@@ -43,6 +44,21 @@ returns nonzero for this requested probe. `CLI_FLAGS_VERIFIED` proves those flag
 only. `profile_loading: UNKNOWN` remains separate: help/version is not proof
 that the CLI discovered, parsed or applied a custom role. The script never
 starts a model session merely to make that field green.
+
+`--probe-codex-loader` is a separate explicit integration check. It creates a
+temporary source-only project and credential-free home, then routes native
+Codex exclusively to a local fixture bound to `127.0.0.1`. Fixed synthetic SSE
+responses invoke only native `spawn_agent` and `close_agent`, sequentially for
+each role. The check inspects the actual child request for the exact full role
+instructions and the parent's native close acknowledgment. No real model is
+queried and no vendor credentials or endpoint are used. All three successes
+yield `profile_loading: VERIFIED_LOCAL_FIXTURE` and `children_closed: true`.
+This proves native profile loading/application, not model quality, instruction
+obedience, a separate sandbox or live vendor readiness. No child shell commands
+are requested. Each native invocation has a ten-second timeout. A sandbox that
+denies loopback sockets returns `PROBE_FAILED` with a fixed diagnostic; use the
+runtime's ordinary approval mechanism, never bypass restrictions. This option
+is not automatically run by the deterministic unittest suite or CI.
 
 Hermes detection reports `UNAVAILABLE` when absent or `PRESENT_UNVERIFIED` when
 an executable is visible. `config_schema: UNKNOWN` and endpoint `tool calling`
@@ -148,9 +164,12 @@ At implementation, both sprint worktrees were clean at `7d470bc` and the
 existing `nova3_subagents` was inspected read-only and left untouched. Only
 this issue's six allowed paths are changed in the implementation worktree.
 Codex reports `codex-cli 0.163.0`; its help includes the one-shot flags above.
-An isolated offline prompt-inspection experiment did not expose a standalone
-custom-role catalog. **Native discovery/application of these profiles remains
-UNKNOWN**; no inference was started to resolve that uncertainty.
+An initial offline prompt-inspection experiment did not expose a standalone
+custom-role catalog. The subsequent reproducible loopback fixture above exited
+0 on Codex 0.163.0: it discovered each role, observed each role's exact full
+instructions in an actual native child request, and received each native close
+acknowledgment. **All three profiles are VERIFIED_LOCAL_FIXTURE**. The model
+responses were deterministic local fixtures; no paid inference was used.
 
 The Hermes launcher exists, but both `--version` and `--help` exited 1 on an
 installation-lock write blocked by the current sandbox. No repair/install or
@@ -159,17 +178,20 @@ inference followed. Read-only installed source at commit
 the concurrency/depth/iteration keys above; that is source-schema evidence,
 not a successful CLI/endpoint/delegation test. Runtime remains unavailable for
 this session. There is no claim of Hermes backend completion or original-game
-behavioural equivalence. Keep the task open until supported native profile
-loading and the relevant manual acceptance checks are demonstrated.
+behavioural equivalence. Optional live Hermes/DeepSeek delegation remains
+pending separately authorized endpoint/cost checks; it is not a prerequisite
+for using the tested Codex manual pilot.
 
-Executed checkpoint checks: the targeted unittest command above passed 17 tests
-in the implementation checkout and again in an independent scratch copy. The
+Executed checkpoint checks: the initial targeted unittest command passed 17
+tests in the implementation checkout and again in an independent scratch copy.
+After adding the explicit native fixture it passes 22 deterministic tests. The
 main-agent regression command `python -B -m unittest discover -s nova3_team/tests -q`
-passed 517 tests. Both default preflight and opt-in Codex help/version probe
-exited 0; no paid calls occurred. These are synthetic/offline engineering tests.
+initially passed 517 tests; the final fixture revision passes 522. Default
+preflight, opt-in Codex help/version, and opt-in native loader fixture exited 0;
+no paid calls occurred. These are synthetic/offline engineering tests.
 
 The check commands above are the standalone resume path. Offline lint and test results must stay distinct
-from UNKNOWN profile loading, unavailable Hermes execution and unpaid endpoint
+from simulated-model profile loading, unavailable Hermes execution and unpaid endpoint
 verification. No new game functions are reconstructed by this engineering task.
 
 ## Official references (checked 2026-10-30)

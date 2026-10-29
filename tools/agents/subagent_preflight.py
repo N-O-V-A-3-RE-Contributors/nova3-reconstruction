@@ -1,12 +1,13 @@
 """Offline checks for the opt-in, manual #143 research pilot (Python 3.11+).
 
-Default: inspect allowlisted profiles/docs and executable visibility only. Never
-start agents, inspect authentication, repair a runtime, or call a provider API.
-The optional Codex probe runs only help/version commands in a disposable home.
+Default: inspect allowlisted profiles/docs and executable visibility only.
+Never inspect authentication, repair a runtime, or call a provider API. Opt-in
+probes run help/version or native children with loopback-only simulated responses.
 """
 from __future__ import annotations
 
 import argparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -152,7 +154,128 @@ def probe_codex(executable: str) -> dict:
             "profile_loading": "UNKNOWN", "inference_run": False}
 
 
-def inspect(root: Path, *, probe: bool = False) -> dict:
+def _fixture_events(item: dict) -> bytes:
+    """Minimal deterministic Responses SSE, generated locally without a model."""
+    events = [
+        {"type": "response.created", "response": {"id": "resp_fixture", "status": "in_progress", "output": []}},
+        {"type": "response.output_item.added", "output_index": 0, "item": item},
+        {"type": "response.output_item.done", "output_index": 0, "item": item},
+        {"type": "response.completed", "response": {"id": "resp_fixture", "status": "completed", "output": [item]}},
+    ]
+    return "".join("event: " + event["type"] + "\ndata: " + json.dumps(event) + "\n\n"
+                   for event in events).encode()
+
+
+def probe_profile_loading(executable: str, root: Path) -> dict:
+    """Apply each role in native Codex using ONLY a loopback response fixture.
+
+    One child at a time, fresh credential-free home, no model/provider API.
+    The fixture invokes only native spawn/close; it never requests shell tools.
+    Exact developer-instruction injection and close acknowledgments are checked.
+    """
+    verified = []
+    for name, relative in PROFILES.items():
+        source = read_source(root, relative)
+        if validate_profile(name, source):
+            raise ValueError("invalid profile for native loader fixture")
+        expected = tomllib.loads(source)["developer_instructions"]
+        seen_child = threading.Event()
+        state = {"requests": 0, "catalog": False, "closed": False}
+
+        class FixtureHandler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", "0"))
+                state["requests"] += 1
+                if not 0 < length <= 1_048_576 or state["requests"] > 12:
+                    self.send_error(413)
+                    return
+                request = json.loads(self.rfile.read(length))
+                inputs = request.get("input", [])
+                texts = [part.get("text", "") for item in inputs
+                         for part in item.get("content", []) if isinstance(part, dict)]
+                item = {"id": "msg_fixture", "type": "message", "role": "assistant",
+                        "status": "completed", "content": [{"type": "output_text",
+                        "text": "Offline fixture complete.", "annotations": []}]}
+
+                def call(tool, arguments, call_id):
+                    return {"id": "fc_" + call_id, "type": "function_call",
+                            "call_id": call_id, "namespace": "multi_agent_v1",
+                            "name": tool, "arguments": json.dumps(arguments)}
+
+                if any(expected in text for text in texts):
+                    seen_child.set()
+                elif state["requests"] == 1:
+                    tools = [tool for group in request.get("tools", [])
+                             if group.get("name") == "multi_agent_v1"
+                             for tool in group.get("tools", [])]
+                    catalog = json.dumps(tools)
+                    state["catalog"] = any(t.get("name") == "spawn_agent" for t in tools) and name in catalog
+                    if state["catalog"]:
+                        item = call("spawn_agent", {"agent_type": name, "fork_context": False,
+                                    "message": "Explicit parent assignment: read-only offline loader fixture. "
+                                    "Return the literal OFFLINE; do not call tools or spawn agents."}, "spawn_fixture")
+                else:
+                    outputs = {entry.get("call_id"): entry.get("output") for entry in inputs
+                               if entry.get("type") == "function_call_output"}
+                    if "close_fixture" in outputs:
+                        # Native close acknowledges shutdown, not just a fake model assertion.
+                        closed = json.loads(outputs["close_fixture"])
+                        state["closed"] = isinstance(closed, dict) and "previous_status" in closed
+                    elif "spawn_fixture" in outputs:
+                        spawned = json.loads(outputs["spawn_fixture"])
+                        target = spawned.get("agent_id")
+                        if isinstance(target, str):
+                            seen_child.wait(timeout=5)
+                            item = call("close_agent", {"target": target}, "close_fixture")
+                data = _fixture_events(item)
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", 0), FixtureHandler)
+        except OSError:
+            raise ValueError("loopback fixture unavailable under current permissions") from None
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with tempfile.TemporaryDirectory(prefix="nova3-native-role-") as temp:
+                home = Path(temp)
+                project = home / "project"
+                profile = project / relative
+                profile.parent.mkdir(parents=True)
+                profile.write_text(source, encoding="utf-8")
+                config = (
+                    'model="nova3-offline-fixture"\nmodel_provider="nova3_fixture"\n'
+                    '[model_providers.nova3_fixture]\nname="NOVA3 loopback fixture"\n'
+                    f'base_url="http://127.0.0.1:{server.server_port}/v1"\n'
+                    'wire_api="responses"\nrequires_openai_auth=false\n'
+                    '[agents]\nenabled=true\nmax_concurrent_threads_per_session=1\n'
+                    '[analytics]\nenabled=false\n[feedback]\nenabled=false\n'
+                    '[features]\napps=false\nplugins=false\nmemories=false\n'
+                    f'[projects.{json.dumps(str(project))}]\ntrust_level="trusted"\n')
+                (home / "config.toml").write_text(config, encoding="utf-8")
+                _probe_output(executable, ["exec", "--ephemeral", "--skip-git-repo-check",
+                              "--sandbox", "read-only", "-C", str(project),
+                              "Explicitly run the local offline profile-loading fixture with one child; "
+                              "close that child before finishing. No shell tools or other work."], home)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+        if not (state["catalog"] and seen_child.is_set() and state["closed"]):
+            raise ValueError("native role discovery/application/closure not verified")
+        verified.append(name)
+    return {"profile_loading": "VERIFIED_LOCAL_FIXTURE", "verified_profiles": verified,
+            "children_closed": True, "model_responses": "SIMULATED_LOOPBACK_ONLY"}
+
+
+def inspect(root: Path, *, probe: bool = False, loader: bool = False) -> dict:
     errors = {}
     for name, relative in PROFILES.items():
         try:
@@ -171,9 +294,11 @@ def inspect(root: Path, *, probe: bool = False) -> dict:
     hermes = shutil.which("hermes")
     cli = {"status": "NOT_PROBED" if codex else "UNAVAILABLE",
            "profile_loading": "UNKNOWN", "inference_run": False}
-    if probe and codex:
+    if (probe or loader) and codex:
         try:
             cli = probe_codex(codex)
+            if loader and not errors:
+                cli.update(probe_profile_loading(codex, root))
         except ValueError as error:
             cli["status"] = "PROBE_FAILED"
             cli["reason"] = str(error)
@@ -197,14 +322,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="checkout containing the six pilot source paths")
     parser.add_argument("--probe-codex", action="store_true",
                         help="opt in to isolated Codex help/version only; no model session")
+    parser.add_argument("--probe-codex-loader", action="store_true",
+                        help="opt in to native profile checks using a loopback-only fake model; no paid calls")
     args = parser.parse_args(argv)
     root = args.root.expanduser().resolve()
     if not root.is_dir():
         parser.error("repository directory not found")
-    result = inspect(root, probe=args.probe_codex)
+    result = inspect(root, probe=args.probe_codex, loader=args.probe_codex_loader)
     print(json.dumps(result, indent=2, sort_keys=True))
     return int(result["validation"] != "PASS" or
-               (args.probe_codex and result["codex"]["status"] != "CLI_FLAGS_VERIFIED"))
+               ((args.probe_codex or args.probe_codex_loader) and result["codex"]["status"] != "CLI_FLAGS_VERIFIED") or
+               (args.probe_codex_loader and result["codex"]["profile_loading"] != "VERIFIED_LOCAL_FIXTURE"))
 
 
 if __name__ == "__main__":
