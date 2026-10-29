@@ -48,8 +48,13 @@ class ProviderSpec:
     login_guidance: str
     help_args: tuple[str, ...]
     required_help: tuple[str, ...]
+    permission_profile: str = ''
+    permission_docs_url: str = ''
     platforms: tuple[str, ...] = ('Linux', 'macOS', 'Windows (native executable)')
-    safety_block: str = ''
+    # Empty for adapters with a documented bounded headless profile. Non-empty
+    # only when official vendor documentation shows no such profile exists;
+    # the text cites the documented behaviour, never a guess.
+    unsupported_reason: str = ''
 
 
 @dataclass(frozen=True)
@@ -76,46 +81,88 @@ class ProviderUnavailable(RuntimeError):
     """Fixed diagnostic only: never include argv, prompts or vendor stderr."""
 
 
+# Official vendor documentation URL -> the exact documented flag or mode used.
+# `docs_url` is the CLI/headless reference; `permission_docs_url` is the
+# permission/approval reference where the vendor publishes a separate page.
+# Sources verified 2026-10-30; see docs/progress/PROVIDER_RUNTIME.md.
 _SPECS = (
-    ProviderSpec('codex', 'ChatGPT (Codex CLI)', 'codex',
-                 'https://developers.openai.com/codex/cli/reference/',
-                 'https://developers.openai.com/codex/cli/',
-                 'Run codex login locally using the official vendor flow.',
-                 ('exec', '--help'), ('--ephemeral', '--sandbox')),
-    ProviderSpec('claude', 'Claude Code', 'claude',
-                 'https://code.claude.com/docs/en/cli-reference',
-                 'https://code.claude.com/docs/en/setup',
-                 'Open claude locally and follow its official login flow.',
-                 ('--help',), ('--print', '--max-turns', '--allowedTools', '--output-format')),
-    ProviderSpec('gemini', 'Gemini CLI', 'gemini',
-                 'https://geminicli.com/docs/cli/headless/',
-                 'https://geminicli.com/docs/get-started/installation/',
-                 'Open gemini locally and follow its official authentication flow.',
-                 ('--help',), ('--prompt', '--approval-mode', 'auto_edit', '--output-format')),
-    ProviderSpec('kimi', 'Kimi Code CLI', 'kimi',
-                 'https://github.com/MoonshotAI/kimi-cli',
-                 'https://github.com/MoonshotAI/kimi-cli#installation',
-                 'Use the official Kimi Code CLI interactive login flow locally.',
-                 ('--help',), (),
-                 safety_block='Kimi -p is a candidate only: a bounded noninteractive edit '
-                              'approval profile has not been verified. Do not use --yolo.'),
-    ProviderSpec('qwen', 'Qwen Code', 'qwen',
-                 'https://github.com/QwenLM/qwen-code',
-                 'https://github.com/QwenLM/qwen-code#installation',
-                 'Open qwen locally and follow its official authentication flow.',
-                 ('--help',), ('--prompt', '--approval-mode', 'auto-edit', '--output-format')),
-    ProviderSpec('opencode', 'OpenCode', 'opencode',
-                 'https://opencode.ai/docs/cli/', 'https://opencode.ai/docs/',
-                 'Run opencode auth login locally using the official vendor flow.',
-                 ('run', '--help'), (),
-                 safety_block='OpenCode run is a candidate only: the explicit permission '
-                              'profile and its config precedence need official documentation '
-                              'verification. No read-only fallback is used.'),
-    ProviderSpec('copilot', 'GitHub Copilot CLI', 'copilot',
-                 'https://docs.github.com/en/copilot/reference/cli-command-reference',
-                 'https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli',
-                 'Open copilot locally and use its official /login flow; gh login is separate.',
-                 ('--help',), ('--prompt', '--allow-tool', '--deny-tool', 'write', 'shell')),
+    ProviderSpec(
+        id='codex', display_name='ChatGPT (Codex CLI)', executable='codex',
+        docs_url='https://developers.openai.com/codex/cli/reference/',
+        install_url='https://developers.openai.com/codex/cli/',
+        login_guidance='Run codex login locally using the official vendor flow.',
+        help_args=('exec', '--help'),
+        required_help=('--ephemeral', '--sandbox'),
+        permission_profile='codex exec --ephemeral --sandbox workspace-write (documented workspace sandbox)'),
+    ProviderSpec(
+        id='claude', display_name='Claude Code', executable='claude',
+        docs_url='https://code.claude.com/docs/en/cli-reference',
+        install_url='https://code.claude.com/docs/en/setup',
+        login_guidance='Open claude locally and follow its official login flow.',
+        help_args=('--help',),
+        required_help=('--print', '--max-turns', '--allowedTools', '--output-format'),
+        permission_profile='claude -p --max-turns 12 --allowedTools Read,Edit,Write,Glob,Grep'),
+    ProviderSpec(
+        id='gemini', display_name='Gemini CLI', executable='gemini',
+        docs_url='https://geminicli.com/docs/cli/headless/',
+        install_url='https://geminicli.com/docs/get-started/installation/',
+        login_guidance='Open gemini locally and follow its official authentication flow.',
+        help_args=('--help',),
+        required_help=('--prompt', '--approval-mode', 'auto_edit', '--output-format'),
+        permission_profile='gemini -p --approval-mode auto_edit (documented auto-edit approval mode)'),
+    ProviderSpec(
+        id='kimi', display_name='Kimi Code CLI', executable='kimi',
+        docs_url='https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html',
+        install_url='https://github.com/MoonshotAI/kimi-cli#installation',
+        login_guidance='Use the official Kimi Code CLI interactive login flow locally.',
+        help_args=('--help',), required_help=(),
+        unsupported_reason=(
+            'UNSUPPORTED: official print-mode docs state that --print implicitly '
+            'enables --afk, and that in AFK/YOLO mode all tool calls including '
+            'shell commands are auto-approved. kimi-cli exposes no per-tool '
+            'permission profile, so no bounded headless edit session can be '
+            'built without a blanket approval flag. Docs: '
+            'https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html '
+            'and https://moonshotai.github.io/kimi-cli/en/reference/kimi-command.html '
+            '#approval-control. No command is launched and no flag is guessed.'),
+    ),
+    ProviderSpec(
+        id='qwen', display_name='Qwen Code', executable='qwen',
+        docs_url='https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/',
+        install_url='https://github.com/QwenLM/qwen-code#installation',
+        login_guidance='Open qwen locally and follow its official authentication flow.',
+        help_args=('--help',),
+        required_help=('--prompt', '--approval-mode', 'auto-edit', '--output-format'),
+        permission_profile='qwen -p --approval-mode auto-edit --output-format text '
+                           '(edits auto-approved; other tools still require approval)',
+        permission_docs_url='https://qwenlm.github.io/qwen-code-docs/en/users/features/approval-mode/',
+    ),
+    ProviderSpec(
+        id='opencode', display_name='OpenCode', executable='opencode',
+        docs_url='https://opencode.ai/docs/cli/',
+        install_url='https://opencode.ai/docs/',
+        login_guidance='Run opencode auth login locally using the official vendor flow.',
+        help_args=('run', '--help'), required_help=(),
+        unsupported_reason=(
+            'UNSUPPORTED: `opencode run` is documented as non-interactive, but the '
+            'bounded edit profile is expressed only as opencode.json `permission` '
+            'rules; the CLI argument `--auto` auto-approves every request that is '
+            'not explicitly denied, which is a blanket approval this worker '
+            'prohibits. No per-run permission flag exists and this adapter does '
+            'not write vendor configuration files, so no verified bounded argv can '
+            'be produced. Docs: https://opencode.ai/docs/cli/ and '
+            'https://opencode.ai/docs/permissions/. No fallback is launched.'),
+    ),
+    ProviderSpec(
+        id='copilot', display_name='GitHub Copilot CLI', executable='copilot',
+        docs_url='https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference',
+        install_url='https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli',
+        login_guidance='Open copilot locally and use its official /login flow; gh login is separate.',
+        help_args=('--help',),
+        required_help=('--prompt', '--allow-tool', '--deny-tool'),
+        permission_profile='copilot -p --allow-tool write --deny-tool shell '
+                           '(documented tool kinds write/shell; shell denied)',
+    ),
 )
 
 # Stable, ordered, read-only API for the subsequent account manager.
@@ -231,8 +278,11 @@ def probe_provider(provider_id: str) -> ProviderStatus:
         return ProviderStatus(spec.id, RuntimeState.INCOMPATIBLE, path,
                               reason='Unrecognized CLI version; no worker session was started.')
     number = match.group(1)
-    if spec.safety_block:
-        return ProviderStatus(spec.id, RuntimeState.INCOMPATIBLE, path, number, spec.safety_block)
+    if spec.unsupported_reason:
+        # Official docs show no bounded noninteractive edit profile for this
+        # vendor, so neither probe help nor a session may proceed.
+        return ProviderStatus(spec.id, RuntimeState.INCOMPATIBLE, path, number,
+                              spec.unsupported_reason)
     help_result = _probe([path, *spec.help_args])
     if help_result.failure or help_result.returncode:
         return ProviderStatus(spec.id, RuntimeState.PROBE_FAILED, path, number,
@@ -265,8 +315,10 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
     # ambiguous direct API input while preserving legacy argv exactly.
     if prompt.lstrip().startswith('-'):
         raise ProviderUnavailable('Prompt must begin with task text, not a CLI option.')
-    if spec.safety_block:
-        raise ProviderUnavailable(spec.safety_block)
+    if spec.unsupported_reason:
+        raise ProviderUnavailable(
+            'No bounded noninteractive edit profile is documented for this provider; '
+            'see the provider runtime notes.')
     if status is None and provider_id not in ('codex', 'claude', 'gemini'):
         status = probe_provider(provider_id)
     if status is not None and (status.provider_id != spec.id or not status.available):
@@ -275,6 +327,12 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
     executable = status.executable_path if status else spec.executable
     if not executable:
         raise ProviderUnavailable('Provider executable is unavailable.')
+    if provider_id not in ('codex', 'claude', 'gemini') and status is not None:
+        # New adapters must carry the probe's help-token evidence. A status
+        # object alone is not proof that the documented flags exist.
+        if not set(spec.required_help) <= set(status.capabilities):
+            raise ProviderUnavailable(
+                'Provider capability evidence is incomplete; run the local provider probe.')
     if provider_id == 'codex':
         return [executable, 'exec', '--ephemeral', '--sandbox', 'workspace-write',
                 *(['--json'] if codex_json else []), prompt]

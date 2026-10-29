@@ -14,8 +14,10 @@ from nova3_team import provider_runtime as runtime, worker
 
 
 def available(provider, path=None):
+    spec = runtime.get_provider(provider)
     return runtime.ProviderStatus(provider, runtime.RuntimeState.AVAILABLE,
-                                  path or '/native/' + provider, '1.2.3')
+                                  path or '/native/' + provider, '1.2.3',
+                                  capabilities=spec.required_help)
 
 
 class RegistryTests(unittest.TestCase):
@@ -77,10 +79,57 @@ class RegistryTests(unittest.TestCase):
             runtime.get_provider('PRIVATE-INPUT')
         self.assertNotIn('PRIVATE-INPUT', str(error.exception))
 
-    def test_unverified_profiles_fail_without_read_only_or_bypass_fallback(self):
-        for provider in ('kimi', 'opencode'):
+    def test_documented_unsupported_providers_never_build_or_guess(self):
+        # Kimi print mode auto-approves every tool (implicit --afk); OpenCode's
+        # bounded profile lives only in opencode.json permission rules. Both are
+        # documented as unsupported, with the vendor URL cited in the reason.
+        for provider, url in (
+                ('kimi', 'moonshotai.github.io/kimi-cli'),
+                ('opencode', 'opencode.ai/docs/permissions')):
+            spec = runtime.get_provider(provider)
+            self.assertIn(url, spec.unsupported_reason)
+            self.assertIn('UNSUPPORTED', spec.unsupported_reason)
+            self.assertEqual(spec.required_help, ())
             with self.assertRaises(runtime.ProviderUnavailable):
                 runtime.build_command(provider, 'task', status=available(provider))
+
+    def test_verified_candidates_require_capability_evidence_not_just_a_status(self):
+        for provider in ('qwen', 'copilot'):
+            spec = runtime.get_provider(provider)
+            self.assertTrue(spec.required_help)
+            self.assertTrue(spec.permission_profile)
+            self.assertEqual(spec.unsupported_reason, '')
+            unproven = runtime.ProviderStatus(provider, runtime.RuntimeState.AVAILABLE,
+                                              '/native/' + provider, '1.2.3')
+            with self.assertRaises(runtime.ProviderUnavailable):
+                runtime.build_command(provider, 'task', status=unproven)
+            partial = runtime.ProviderStatus(
+                provider, runtime.RuntimeState.AVAILABLE, '/native/' + provider, '1.2.3',
+                capabilities=spec.required_help[:-1])
+            with self.assertRaises(runtime.ProviderUnavailable):
+                runtime.build_command(provider, 'task', status=partial)
+            self.assertEqual(runtime.build_command(provider, 'task',
+                                                   status=available(provider))[0],
+                             '/native/' + provider)
+
+    def test_capability_token_match_is_exact_not_substring(self):
+        # A toolbox flag must not authorize a differently named tool flag.
+        with mock.patch.object(runtime.shutil, 'which', return_value='/native/copilot'), \
+                mock.patch.object(runtime, '_probe', side_effect=[
+                    runtime._Probe(0, '1.2.3'),
+                    runtime._Probe(0, '--prompt --allow-toolbox write --deny-tool shell --output-format')]):
+            status = runtime.probe_provider('copilot')
+        self.assertEqual(status.state, runtime.RuntimeState.INCOMPATIBLE)
+        self.assertIn('lacks the required', status.reason)
+
+    def test_unprobed_new_provider_builds_only_after_successful_local_probe(self):
+        spec = runtime.get_provider('qwen')
+        with mock.patch.object(runtime.shutil, 'which', return_value='/native/qwen'), \
+                mock.patch.object(runtime, '_probe', side_effect=[
+                    runtime._Probe(0, '1.2.3'),
+                    runtime._Probe(0, ' '.join(spec.required_help))]):
+            command = runtime.build_command('qwen', 'task')
+        self.assertEqual(command[0], '/native/qwen')
 
     def test_invalid_prompt_rejected_without_echo(self):
         for prompt in ('', '   ', 'SECRET\0TEXT', None, '--yolo', ' --allow-all-tools'):
@@ -90,6 +139,31 @@ class RegistryTests(unittest.TestCase):
 
 
 class ProbeTests(unittest.TestCase):
+    def test_unsupported_vendors_probe_version_only_then_stop_with_cited_reason(self):
+        for provider in ('kimi', 'opencode'):
+            spec = runtime.get_provider(provider)
+            with mock.patch.object(runtime.shutil, 'which', return_value='/native/' + provider), \
+                    mock.patch.object(runtime, '_probe',
+                                      return_value=runtime._Probe(0, '9.9.9')) as probe:
+                status = runtime.probe_provider(provider)
+            self.assertEqual(status.state, runtime.RuntimeState.INCOMPATIBLE)
+            self.assertEqual(status.version, '9.9.9')
+            self.assertEqual(status.reason, spec.unsupported_reason)
+            self.assertNotEqual(status.state, runtime.RuntimeState.AVAILABLE)
+            probe.assert_called_once_with(['/native/' + provider, '--version'])
+
+    def test_verified_candidates_report_documented_capabilities(self):
+        for provider in ('qwen', 'copilot'):
+            spec = runtime.get_provider(provider)
+            with mock.patch.object(runtime.shutil, 'which', return_value='/native/' + provider), \
+                    mock.patch.object(runtime, '_probe', side_effect=[
+                        runtime._Probe(0, 'vendor 2.0.0'),
+                        runtime._Probe(0, ' '.join(spec.required_help) + ' --json')]):
+                status = runtime.probe_provider(provider)
+            self.assertEqual(status.state, runtime.RuntimeState.AVAILABLE)
+            self.assertEqual(set(spec.required_help) - set(status.capabilities), set())
+            self.assertIn('--json', status.capabilities)
+
     def test_missing_binary_is_actionable_and_no_process_runs(self):
         with mock.patch.object(runtime.shutil, 'which', return_value=None), \
                 mock.patch.object(runtime, '_probe') as probe:
@@ -212,6 +286,27 @@ class WorkerRegistryTests(unittest.TestCase):
             self.assertEqual(exit.exception.code, 2)
             probe.assert_called_once_with(provider)
             github.assert_not_called()
+
+    def test_validated_verified_candidates_flow_through_worker_command_for(self):
+        for provider, expected in (
+                ('qwen', ['/native/qwen', '-p', 'task', '--approval-mode', 'auto-edit',
+                          '--output-format', 'text']),
+                ('copilot', ['/native/copilot', '-p', 'task', '--allow-tool', 'write',
+                             '--deny-tool', 'shell'])):
+            status = runtime.ProviderStatus(provider, runtime.RuntimeState.AVAILABLE,
+                                            '/native/' + provider, '1.2.3',
+                                            capabilities=runtime.get_provider(provider).required_help)
+            self.assertEqual(worker.command_for(provider, 'task', status=status), expected)
+
+    def test_worker_unknown_provider_fails_before_github_contact(self):
+        with mock.patch.object(sys, 'argv', ['worker', 'run', '--provider', 'PRIVATE-VENDOR']), \
+                mock.patch.object(runtime, 'probe_provider') as probe, \
+                mock.patch.object(worker, 'get_repo') as github, \
+                contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as exit:
+            worker.main()
+        self.assertEqual(exit.exception.code, 2)
+        probe.assert_not_called()
+        github.assert_not_called()
 
     def test_default_provider_remains_codex(self):
         with mock.patch.object(sys, 'argv', ['worker', 'run']), \

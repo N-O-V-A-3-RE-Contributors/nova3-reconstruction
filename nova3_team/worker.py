@@ -672,6 +672,7 @@ def main():
             status=provider_runtime.probe_provider(provider_id)
             report={'id':provider_id,'name':spec.display_name,'state':status.state.value,
                     'version':status.version,'reason':status.reason,'docs':spec.docs_url,
+                    'permission_profile':spec.permission_profile,
                     'login_guidance':spec.login_guidance}
             if args.check_auth:
                 auth=provider_runtime.check_auth(provider_id)
