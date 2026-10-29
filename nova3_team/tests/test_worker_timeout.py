@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import io
 import json
 from pathlib import Path
 import stat
@@ -18,25 +19,21 @@ from nova3_team.reliability import code_for, failure_decision
 class ProviderExecutionTests(unittest.TestCase):
     def test_json_capability_probe_is_bounded_cached_and_optional(self):
         self.addCleanup(worker._codex_json_supported.cache_clear)
-        for result in (worker.subprocess.CompletedProcess([], 0, stdout='  --json\n'),
-                       worker.subprocess.CompletedProcess([], 0, stdout='old help'),
-                       worker.subprocess.CompletedProcess([], 1, stdout='--json'),
-                       OSError('missing'), UnicodeError('invalid help'),
-                       worker.subprocess.TimeoutExpired('help', 3)):
+        for result in (worker.provider_runtime._Probe(0, '  --json\n'),
+                       worker.provider_runtime._Probe(0, 'old help'),
+                       worker.provider_runtime._Probe(1, '--json'),
+                       worker.provider_runtime._Probe(None, failure='Local CLI probe could not execute.'),
+                       worker.provider_runtime._Probe(None, failure='Local CLI probe timed out.')):
             worker._codex_json_supported.cache_clear()
-            supported = isinstance(result, worker.subprocess.CompletedProcess) and result.returncode == 0 and '--json' in result.stdout
-            with mock.patch.object(worker.subprocess, 'run') as probe:
-                if isinstance(result, Exception):
-                    probe.side_effect = result
-                else:
-                    probe.return_value = result
+            supported = result.returncode == 0 and '--json' in result.output
+            with mock.patch.object(worker.shutil, 'which', return_value='/native/codex'), \
+                    mock.patch.object(worker.provider_runtime, '_probe', return_value=result) as probe:
                 for _ in range(2):
                     cmd = worker.command_for('codex', 'private prompt')
                     self.assertEqual('--json' in cmd[:-1], supported)
                     self.assertEqual(cmd[-1], 'private prompt')
                     self.assertEqual(cmd[:5], ['codex', 'exec', '--ephemeral', '--sandbox', 'workspace-write'])
-                probe.assert_called_once_with(['codex', 'exec', '--help'], capture_output=True,
-                                              text=True, timeout=3, check=False)
+                probe.assert_called_once_with(['/native/codex', 'exec', '--help'])
 
     def test_other_provider_commands_do_not_probe_or_change_format(self):
         with mock.patch.object(worker, '_codex_json_supported') as probe:
@@ -131,6 +128,7 @@ class ProviderExecutionTests(unittest.TestCase):
                 clock = [0.0]
                 waits = []
                 process = mock.Mock(returncode=0)
+                process.stdout = io.BytesIO()
 
                 def wait(timeout):
                     waits.append(timeout)
@@ -166,6 +164,34 @@ class ProviderExecutionTests(unittest.TestCase):
             result = worker.run_provider([sys.executable, '-c', 'raise SystemExit(7)'], temp,
                                          Path(temp) / 'round.log', 2, activity=activity)
             self.assertEqual(result.returncode, 7)
+
+    def test_secret_output_is_redacted_before_private_log_handoff_and_telemetry(self):
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.dict(os.environ, {'QWEN_API_KEY': 'synthetic-private-provider-key'}):
+            logfile = Path(temp) / 'round.log'
+            script = ('import sys, time; '
+                      'sys.stdout.write("synthetic-private-"); sys.stdout.flush(); '
+                      'time.sleep(0.02); print("provider-key ghp_syntheticToken")')
+            result = worker.run_provider([sys.executable, '-c', script], temp, logfile, 2)
+            self.assertEqual(result.returncode, 0)
+            for text in (result.stdout, logfile.read_text(),
+                         logfile.with_suffix('.activity.json').read_text()):
+                self.assertNotIn('synthetic-private-provider-key', text)
+                self.assertNotIn('ghp_syntheticToken', text)
+            self.assertIn('[REDACTED]', logfile.read_text())
+
+    def test_provider_spawn_error_does_not_echo_prompt_or_os_error(self):
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(worker.subprocess, 'Popen', side_effect=OSError('SECRET-ERROR')):
+            with self.assertRaises(worker.provider_runtime.ProviderUnavailable) as error:
+                worker.run_provider(['missing', 'SECRET-PROMPT'], temp, Path(temp) / 'round.log', 2)
+            self.assertNotIn('SECRET', str(error.exception))
+
+    def test_oversized_output_line_is_bounded_and_next_line_preserved(self):
+        sink = io.BytesIO()
+        source = io.BytesIO(b'x' * (100 * 1024) + b'\nnext line\n')
+        worker._relay_provider_output(source, sink)
+        self.assertEqual(sink.getvalue(), b'[oversized provider output line omitted]\nnext line\n')
 
 
 if __name__ == '__main__':
