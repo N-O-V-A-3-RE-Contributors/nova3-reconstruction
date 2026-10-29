@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import struct
 import subprocess
@@ -17,6 +18,8 @@ from nova3_team import historical_toolchain as ht
 from nova3_team.tests import test_relocation_probe as fixtures
 from nova3_team.tests.test_historical_toolchain import fixture_queries
 
+HYPOTHESIS = hp.NOARG_SOURCE.read_text()
+
 
 class HistoricalCompilePilotTests(unittest.TestCase):
     def setUp(self):
@@ -27,7 +30,7 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         self.ndk = self.root / 'ndk'
         self.ndk.mkdir()
         self.source = self.root / 'candidate.cpp'
-        self.source.write_text('// inert, source-owned candidate fixture\n')
+        self.source.write_text(HYPOTHESIS)
         self.sysroot = self.ndk / 'sysroot'
         (self.sysroot / 'usr/include').mkdir(parents=True)
         self.include = self.ndk / 'include'
@@ -46,8 +49,8 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         self.reference = self.root / 'reference'
         self.reference.write_bytes(fixtures.fixture(linked=True, text=self.resolved))
         self.object = fixtures.fixture(text=self.raw)
-        for name, value in dict(REPO=self.root, SOURCE=self.source,
-                                ADDRESS=fixtures.ADDRESS, SYMBOL='source_fn',
+        for name, value in dict(REPO=self.root, NOARG_SOURCE=self.source,
+                                ADDRESS=fixtures.ADDRESS, SYMBOL='source_fn', NOARG_SYMBOL='source_fn',
                                 REFERENCE_SHA256=ht.file_sha256(self.reference),
                                 WINDOW_SHA256=ht.digest(self.resolved)).items():
             patch = mock.patch.object(hp, name, value)
@@ -78,7 +81,7 @@ class HistoricalCompilePilotTests(unittest.TestCase):
             self.assertEqual(cmd[1:], ['--version'])
             value = 'GNU assembler configured for arm-linux-androideabi'
         elif cmd[0] == str(self.paths['cc1plus']):
-            self.assertEqual(cmd[1:], ['--version'])
+            self.assertEqual(cmd[1:], ['-quiet', '-version', '-fsyntax-only'])
             value = 'GNU C++ (GCC) version 4.4.3'
         else:
             self.fail('unexpected executable')
@@ -88,10 +91,11 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         self.processes.append(command)
         self.assertEqual(command[0], str(self.paths['compiler']))
         self.assertEqual(set(env), {'PATH', 'LC_ALL', 'LANG', 'TMPDIR'})
-        self.assertEqual(Path(env['PATH']).parent, self.root / '.cache/run')
+        self.assertEqual(Path(env['PATH']).parent, directory.parent)
         self.assertLessEqual(timeout, 30)
         self.assertNotIn('--target=armv7a-linux-androideabi21', command)
-        self.assertIn('-std=c++03', command)
+        self.assertIn('-std=c++98', command)
+        self.assertNotIn('-std=c++03', command)  # Not an r8e GCC 4.4.3 option.
         self.assertIn('-nostdinc', command)
         self.assertIn('-nostdinc++', command)
         self.assertEqual(command[command.index('-c') + 1], str(self.source))
@@ -115,14 +119,26 @@ class HistoricalCompilePilotTests(unittest.TestCase):
             self.assertEqual(item['comparison']['relocated']['status'], 'RESOLVED_WINDOW_EQUAL')
             self.assertEqual(item['comparison']['linked_elf_comparison'], 'NOT_PERFORMED')
             self.assertFalse(item['comparison']['raw']['source_matching_verified'])
-        self.assertEqual(report['claims'], hp._claims())
+        self.assertEqual(report['claims'], hp._claims(report['candidate']))
+        self.assertEqual(report['claims']['abi'], 'NO_ARGUMENT_GLOBAL_STATE_HYPOTHESIS')
+        self.assertFalse(report['claims']['abi_verified'])
         self.assertEqual(report['claims']['linked_window_match'], 'NOT_TESTED')
         payload = (self.root / '.cache/run/report.json').read_text()
         self.assertEqual(json.loads(payload), report)
         self.assertNotIn('"bytes":', payload)
         self.assertEqual((self.root / '.cache/run').stat().st_mode & 0o777, 0o700)
+        self.assertEqual((self.root / '.cache/run/report.json').stat().st_mode & 0o777, 0o600)
         self.assertFalse(any(p.suffix in ('.s', '.so', '.ld') for p in (self.root / '.cache/run').rglob('*')))
-        self.assertEqual(self.source.read_text(), '// inert, source-owned candidate fixture\n')
+        self.assertEqual(self.source.read_text(), HYPOTHESIS)
+        for item in report['profiles']:
+            self.assertEqual(item['symbol'], 'source_fn')
+            self.assertEqual(item['source_sha256'], report['source_sha256'])
+            self.assertEqual(item['object_sha256'], ht.digest(self.object))
+            self.assertEqual(item['compiler_sha256'], self.pins['compiler'])
+            self.assertEqual(item['reference_sha256'], ht.file_sha256(self.reference))
+            self.assertIn('-pedantic-errors', item['command'])
+            self.assertIn('-std=c++98', item['flags'])
+            self.assertIn('-std=c++03', item['requested_flags'])
         self.assertEqual(len({cmd[-1] for cmd in self.processes}), 4)
         self.assertEqual(len({cmd[1] for cmd in self.processes}), 1)
 
@@ -199,6 +215,18 @@ class HistoricalCompilePilotTests(unittest.TestCase):
                 self.assertEqual(report['status'], 'BLOCKED')
                 compile.assert_not_called()
 
+    def test_frontend_version_on_stderr_is_accepted_but_exit_zero_alone_is_not(self):
+        for index, banner in enumerate((b'GNU C++ (GCC) version 4.4.3 (arm-linux-androideabi)', b'')):
+            def query(cmd, **kwargs):
+                if cmd[0] == str(self.paths['cc1plus']):
+                    self.assertIn('-fsyntax-only', cmd)
+                    return subprocess.CompletedProcess(cmd, 0, b'', banner)
+                return self.query(cmd, **kwargs)
+            with mock.patch.object(ht.subprocess, 'run', side_effect=query), \
+                 mock.patch.object(hp, '_compile', side_effect=self.compile):
+                report = hp.run(**self.args(out=self.root / '.cache' / f'frontend-{index}'))
+            self.assertEqual(report['status'], 'NOT_MATCHED' if banner else 'BLOCKED')
+
     def test_failed_builds_are_recorded_without_fake_comparisons(self):
         result = dict(status='COMPILE_FINISHED', exit_code=1)
         report = self.run_pilot(compile=lambda *a: result)
@@ -221,6 +249,10 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         struct.pack_into('<H', bad_machine, 18, 3)
         with self.assertRaises(ValueError):
             hp.compare(self.reference.read_bytes(), bytes(bad_machine), fixtures.TARGETS)
+        bad_abi = bytearray(self.object)
+        struct.pack_into('<I', bad_abi, 36, 0x04000000)  # EABI4, not EABI5.
+        with self.assertRaisesRegex(ValueError, 'EABI5'):
+            hp.compare(self.reference.read_bytes(), bytes(bad_abi), fixtures.TARGETS)
         for obj, status in [(fixtures.fixture(text=self.raw, thumb=True), 'ARM_THUMB_MODE_MISMATCH'),
                             (fixtures.fixture(), 'FUNCTION_SIZE_MISMATCH')]:
             report = hp.compare(self.reference.read_bytes(), obj, fixtures.TARGETS)
@@ -244,6 +276,8 @@ class HistoricalCompilePilotTests(unittest.TestCase):
                      '-fplugin=payload', '-specs=payload', '@file', '-std=c++17'):
             with self.assertRaises(ValueError):
                 ht.validate_flags(flags[0] + [flag])
+            with self.assertRaises(ValueError):
+                hp.gcc443_flags(flags[0] + [flag])
         with mock.patch.object(ht.subprocess, 'run') as run:
             with self.assertRaises(ValueError):
                 hp.run(**self.args(timeout=31))
@@ -303,7 +337,7 @@ class HistoricalCompilePilotTests(unittest.TestCase):
             return dict(status='COMPILE_FINISHED', exit_code=0)
         report = self.run_pilot(compile=changed)
         self.assertEqual(report['status'], 'BLOCKED')
-        self.assertEqual(report['claims'], hp._claims())
+        self.assertEqual(report['claims'], hp._claims(report['candidate']))
         self.assertEqual(len(report['profiles']), 1)
 
     def test_subprocess_timeout_kills_group_and_success_saves_logs(self):
@@ -315,6 +349,8 @@ class HistoricalCompilePilotTests(unittest.TestCase):
                                  {'PATH': os.defpath, 'LC_ALL': 'C'}, timeout)
             self.assertEqual(report['status'], status)
             self.assertEqual(report['stdout_sha256'], ht.file_sha256(directory / 'stdout.log'))
+            for log in ('stdout.log', 'stderr.log'):
+                self.assertEqual((directory / log).stat().st_mode & 0o777, 0o600)
         with mock.patch.object(hp.subprocess, 'Popen') as popen:
             child = popen.return_value.__enter__.return_value
             child.wait.return_value = 0
@@ -348,6 +384,91 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         self.assertNotIn(str(self.root), error.getvalue())
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             hp.main(args + ['--flag=-fplugin=payload'])
+
+    def test_legacy_is_recognized_but_blocked_before_compiler_or_reference(self):
+        with mock.patch.object(ht.subprocess, 'run') as execute, \
+             mock.patch.object(hp, '_reference') as reference:
+            report = hp.run(**self.args(source=hp.SOURCE))
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertEqual(report['blocker'], 'SOURCE_LANGUAGE_OR_ABI_INCOMPATIBLE')
+        self.assertEqual(report['candidate']['symbol'], hp.SYMBOL)
+        self.assertEqual(report['claims']['abi'], 'DIFFERENT_CONTEXT_POINTER_CANDIDATE')
+        self.assertIn('C++17', report['error'])
+        self.assertEqual(report['profiles'], [])
+        execute.assert_not_called()
+        reference.assert_not_called()
+
+    def test_language_abi_and_external_contract_fail_before_tools(self):
+        variants = [HYPOTHESIS.replace('int android_getCpuCount(void)',
+                                       'int android_getCpuCount(void* context)'),
+                    HYPOTHESIS.replace('extern "C"', 'extern "C++"'),
+                    HYPOTHESIS.replace('<pthread.h>', '<cstdint>'),
+                    HYPOTHESIS.replace('extern int g_cpuCount;', 'int g_cpuCount = 1;'),
+                    HYPOTHESIS.replace('void android_cpuInit(void);',
+                                       'void android_cpuInit(void) {}'),
+                    HYPOTHESIS.replace('return g_cpuCount;', 'return 4;'),
+                    HYPOTHESIS + '\nnamespace bad::syntax {}\n']
+        for index, source in enumerate(variants):
+            self.source.write_text(source)
+            with self.subTest(index=index), mock.patch.object(ht.subprocess, 'run') as execute:
+                report = hp.run(**self.args(out=self.root / '.cache' / f'bad-source-{index}'))
+            self.assertEqual(report['blocker'], 'SOURCE_LANGUAGE_OR_ABI_INCOMPATIBLE')
+            self.assertFalse(report['candidate']['compatible'])
+            self.assertFalse(report['claims']['abi_verified'])
+            self.assertEqual(report['claims']['source_equivalence'], 'NOT_MATCHED')
+            execute.assert_not_called()
+
+    def test_new_source_selects_actual_entry_and_rejects_context_proxy_object(self):
+        # Do not let an object defining the old proxy satisfy the new selection.
+        with mock.patch.object(hp, 'NOARG_SYMBOL', 'android_getCpuCount'):
+            report = self.run_pilot()
+        for item in report['profiles']:
+            self.assertEqual(item['symbol'], 'android_getCpuCount')
+            self.assertEqual(item['status'], 'COMPARISON_REJECTED')
+        self.assertFalse(report['claims']['abi_verified'])
+
+    def test_all_bytes_compared_and_target_normalization_is_deterministic(self):
+        altered = self.raw[:-1] + b'\x01'
+        self.object = fixtures.fixture(text=altered)
+        targets = dict(reversed(list(fixtures.TARGETS.items())))
+        report = self.run_pilot(targets=targets)
+        self.assertEqual(list(report['targets']), sorted(fixtures.TARGETS))
+        for item in report['profiles']:
+            window = item['comparison']['relocated']
+            self.assertEqual(window['status'], 'RESOLVED_WINDOW_MISMATCH')
+            self.assertEqual(window['compared_bytes'], 44)
+            self.assertEqual(window['differing_offsets'], [43])
+        for bad in ({'state': True}, {' state': 1}, {'state': -1}, {'state': 2**32}):
+            with self.subTest(targets=bad), self.assertRaises(ValueError):
+                hp.normalize_targets(bad)
+
+    def test_real_host_cxx03_compile_has_only_noarg_entry_and_unresolved_dependencies(self):
+        # Source-only syntax/ABI-shape evidence. No NDK, reference or host stub.
+        compiler, nm = shutil.which('g++'), shutil.which('nm')
+        if not compiler or not nm:
+            self.skipTest('optional host C++03 compiler and nm unavailable')
+        source = self.root / 'syntax.cpp'
+        source.write_text(HYPOTHESIS + '\nint (*entry_type_check)(void) = &android_getCpuCount;\n')
+        obj = self.root / 'syntax.o'
+        build = subprocess.run([compiler, '-std=c++03', '-pedantic-errors', '-Werror',
+                                '-c', str(source), '-o', str(obj)], capture_output=True, timeout=15)
+        self.assertEqual(build.returncode, 0, build.stderr.decode())
+        symbols = subprocess.run([nm, '-g', str(obj)], capture_output=True, timeout=5, check=True)
+        lines = symbols.stdout.decode().splitlines()
+        undefined = {line.split()[-1] for line in lines if line.split()[0] == 'U'}
+        # A host defaulting to PIE may also emit its toolchain GOT anchor.
+        self.assertEqual(undefined - {'_GLOBAL_OFFSET_TABLE_'},
+                         {'g_once', 'g_cpuCount', 'android_cpuInit', 'pthread_once'})
+        self.assertTrue(any(line.split()[-2:] == ['T', 'android_getCpuCount'] for line in lines))
+        self.assertFalse(any('nova3_recovered_cpu_count' in line for line in lines))
+        contract = hp.source_contract(self.source, HYPOTHESIS.encode())
+        self.assertTrue(contract['compatible'])
+        self.assertEqual(set(contract['external_dependencies']),
+                         {'g_once', 'g_cpuCount', 'android_cpuInit', 'pthread_once'})
+        source.write_text(HYPOTHESIS + '\nint (*wrong_abi)(void*) = &android_getCpuCount;\n')
+        wrong = subprocess.run([compiler, '-std=c++03', '-pedantic-errors', '-Werror',
+                                '-fsyntax-only', str(source)], capture_output=True, timeout=15)
+        self.assertNotEqual(wrong.returncode, 0)
 
 
 if __name__ == '__main__':
