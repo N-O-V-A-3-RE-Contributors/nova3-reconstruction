@@ -263,6 +263,36 @@ class QueueGateTests(unittest.TestCase):
         self.assertEqual(decision.reason, 'owner_approval_required')
         self.assertNotIn('allow_legacy_publish', gate.revalidate.__code__.co_varnames)
 
+    def test_claimed_task_with_lease_can_be_readmitted(self):
+        # A live lease is appended to the editable issue body. The approval binds
+        # the task text, not the envelope, so re-admission after a restart must
+        # still verify (previously the raw-body hash always denied).
+        issue = issue_payload()
+        collector = FakeCollector(issue=issue)
+        lease = {'owner': 'alice', 'token': 'a' * 32, 'expires_at': iso(NOW + 3600),
+                 'approval_id': 900, 'approval_binding': {}, 'task_text_sha256': '0' * 64}
+        claimed = dict(issue)
+        claimed['body'] = issue['body'] + '\n\n<!-- NOVA3_LEASE_START\n' + json.dumps(lease) + '\nNOVA3_LEASE_END -->'
+        collector.issue_data = claimed
+        decision = gate_for(collector).verify(claimed)
+        self.assertTrue(decision.allowed, decision.reason)
+        self.assertEqual(decision.task_text_sha256,
+                         __import__('hashlib').sha256(issue['body'].encode()).hexdigest())
+
+    def test_submitted_is_gated_like_release(self):
+        # A rewritten/legacy lease must not be able to move a task to review
+        # without a currently valid owner/admin approval.
+        gh = GateGH()
+        gh.item['labels'] = [{'name': 'nova:claimed'}]
+        gh.item['body'] = 'Priority: 50\nAllowed paths: foo/\n\n<!-- NOVA3_LEASE_START\n' + \
+                          json.dumps({'owner': 'alice', 'token': 'a' * 32,
+                                      'expires_at': iso(NOW + 3600)}) + '\nNOVA3_LEASE_END -->'
+        gate = gate_for(FakeCollector(issue=gh.item))
+        submitted = event('alice', '/nova submitted ' + 'a' * 32 + ' https://github.com/example-org/reconstruction/pull/9')
+        self.assertFalse(co.handle_event(gh, submitted, gate))
+        self.assertNotIn('nova:review', label_names(gh.item))
+        self.assertIn('nova:attention', label_names(gh.item))
+
     def test_revalidate_accepts_matching_captured_binding(self):
         issue = issue_payload()
         collector = FakeCollector(issue=issue)
