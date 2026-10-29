@@ -80,7 +80,7 @@ manual delegation for that invocation alone (the shell timeout is an optional
 Linux/coreutils outer bound; use an equivalent process timeout elsewhere):
 
 ```sh
-timeout 900s codex exec --ephemeral --sandbox workspace-write \
+timeout 900s codex exec --sandbox workspace-write \
   -c agents.enabled=true \
   -c agents.max_concurrent_threads_per_session=2 \
   'Work only on the approved issue and its allowed paths. Parent is sole writer.
@@ -94,13 +94,27 @@ timeout 900s codex exec --ephemeral --sandbox workspace-write \
 
 This is a manual account-usage action, not a command run by preflight or CI.
 Inspect the supported CLI's role catalog/child details to confirm the selected
-role instructions were actually applied. If the standalone roles are absent,
-report UNSUPPORTED/UNKNOWN and stop delegation; do not silently use a generic
-worker. Do not add legacy registration/global config or guess a schema merely
-to conceal a capability failure. `--ephemeral` does not persist session history;
-the parent must save source changes and a concise issue-scoped handoff before
-the process expires. It does not make source files or external side effects
-ephemeral. The parent independently rechecks every child conclusion.
+role instructions were actually applied (`codex agents` lists sessions on the
+local app-server daemon; `codex exec resume <id>`/`fork` re-enter one). If the
+standalone roles are absent, report UNSUPPORTED/UNKNOWN and stop delegation; do
+not silently use a generic worker. Do not add legacy registration/global config
+or guess a schema merely to conceal a capability failure. The parent
+independently rechecks every child conclusion.
+
+Do **not** add `--ephemeral` to a delegated run. On Codex CLI 0.163.0
+`codex exec --help` documents it as "Run without persisting session files to
+disk", so a pristine throwaway session is created and then discarded. That
+directly defeats the two checks this pilot depends on: there is no session left
+for `codex agents`/`resume` to inspect — so child role application and child
+closing cannot be evidenced after the run — and an interrupted or timed-out
+sprint cannot be resumed, only restarted. `--ephemeral` is also not an
+isolation or read-only boundary: it does not make source files, worktree
+changes or external side effects ephemeral. Reserve it for a single-agent
+throwaway analysis where neither session inspection nor resume is needed and
+no child agents are spawned; when in doubt, omit it and rely on the worktree,
+`--sandbox workspace-write` and the bounded wall clock instead. The parent must
+still save source changes and a concise issue-scoped handoff as it goes, because
+a killed process ends the session regardless of persistence.
 
 The handoff includes issue/head, six-path scope, existing preserved changes,
 tests and exit codes, findings with lines, unresolved capability checks, and
