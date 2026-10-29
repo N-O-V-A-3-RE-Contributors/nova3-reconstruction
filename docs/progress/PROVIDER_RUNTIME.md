@@ -53,11 +53,14 @@ Exact documented flags relied on:
 - **Claude Code**: the adapter's argv and required-token list are unchanged by
   this task, per the issue's regression constraint. On the maintainer host,
   `claude --help` (2.1.126) advertises `-p/--print`, `--allowedTools` and
-  `--output-format` but **not** `--max-turns`, so the capability gate correctly
-  reports `INCOMPATIBLE` and refuses to launch rather than sending an argv the
-  installed release may reject. This is a pre-existing adapter/version drift
-  outside this task's allowed argv change; it is recorded here rather than
-  silently relaxing the gate.
+  `--output-format` but **not** `--max-turns`, so the probe reports
+  `INCOMPATIBLE`. Because `codex`/`claude`/`gemini` predate the registry and
+  their argv is frozen by #127, the probe is **advisory** for them: the worker
+  prints an explicit warning and still launches the unchanged documented
+  invocation, while new adapters (Kimi/Qwen/OpenCode/Copilot) fail closed
+  without positive help-token evidence. Refusing only happens when the
+  executable is genuinely absent. This preserves the pre-registry behaviour the
+  issue requires instead of silently disabling an existing provider.
 - **Qwen Code**: `--prompt` / `-p` "Run in headless mode"; `--approval-mode`
   value `auto-edit` auto-approves edit tools while other tools still require
   approval; `--output-format` / `-o` accepts `text, json, stream-json`. `yolo`

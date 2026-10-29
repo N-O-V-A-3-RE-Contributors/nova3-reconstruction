@@ -206,6 +206,42 @@ class RegistryTests(unittest.TestCase):
                 runtime.build_command('claude', prompt)
             self.assertNotIn('SECRET', str(error.exception))
 
+    def test_legacy_providers_keep_frozen_argv_despite_help_drift(self):
+        # claude 2.1.126 no longer advertises --max-turns in `claude --help`.
+        # #127 freezes the legacy argv, so an advisory probe must not rewrite or
+        # block it; only new adapters are gated on help tokens.
+        drifted = runtime.ProviderStatus(
+            'claude', runtime.RuntimeState.INCOMPATIBLE, '/native/claude', '2.1.126',
+            reason='help lacks --max-turns', capabilities=('--print', '--allowedTools'))
+        self.assertEqual(
+            runtime.build_command('claude', 'task', status=drifted),
+            ['/native/claude', '-p', 'task', '--max-turns', '12', '--allowedTools',
+             'Read', 'Edit', 'Write', 'Glob', 'Grep', '--output-format', 'text'])
+        self.assertTrue(runtime.is_legacy('claude'))
+        self.assertFalse(runtime.is_legacy('kimi'))
+
+    def test_new_adapters_still_fail_closed_on_incompatible_probe(self):
+        incompatible = runtime.ProviderStatus(
+            'kimi', runtime.RuntimeState.INCOMPATIBLE, '/native/kimi', '0.1',
+            reason='help lacks --agent-file', capabilities=('--print',))
+        with tempfile.TemporaryDirectory() as temp:
+            runtime.prepare_aux_files('kimi', temp)
+            with self.assertRaises(runtime.ProviderUnavailable):
+                runtime.build_command('kimi', 'task', status=incompatible, aux_dir=temp)
+
+    def test_status_for_another_provider_is_rejected(self):
+        wrong = available('qwen')
+        with self.assertRaises(runtime.ProviderUnavailable):
+            runtime.build_command('copilot', 'task', status=wrong)
+
+    def test_command_for_falls_back_to_codex_json_probe(self):
+        drifted = runtime.ProviderStatus(
+            'codex', runtime.RuntimeState.INCOMPATIBLE, '/native/codex', '0.163.0',
+            reason='help drift', capabilities=())
+        with mock.patch.object(worker, '_codex_json_supported', return_value=True):
+            command = worker.command_for('codex', 'task', status=drifted)
+        self.assertIn('--json', command)
+
 
 class ProbeTests(unittest.TestCase):
     def test_new_adapters_report_documented_capabilities(self):
