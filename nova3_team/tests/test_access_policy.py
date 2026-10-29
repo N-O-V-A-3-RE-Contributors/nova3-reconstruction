@@ -620,12 +620,14 @@ class AccessPolicyTests(unittest.TestCase):
             p.Reason.APPROVAL_REQUIRED)
         for replay, reason in ((replace(evidence.replay, consumed=frozenset({f"github:{REPO.id}:comment:900"})), p.Reason.REPLAY),
                                (replace(evidence.replay, revoked_comments=frozenset({900})), p.Reason.REPLAY),
-                               (None, None)):
+                               # Replay state is mandatory; None must not skip
+                               # revocation/consumption checks.
+                               (None, p.Reason.INVALID_EVIDENCE)):
             denied = p.verify_approval_record(binding, approval, request,
                                               **{**kwargs, "replay": replay})
-            self.assertEqual(denied.allowed, reason is None)
-            if reason is not None:
-                self.assertEqual(denied.reason, reason)
+            self.assertFalse(denied.allowed)
+            self.assertEqual(denied.reason, reason)
+            self.assertEqual(denied.consume_keys, ())
 
     def test_no_secret_environment_file_network_subprocess_access_or_logs(self):
         request, evidence = fixture()
