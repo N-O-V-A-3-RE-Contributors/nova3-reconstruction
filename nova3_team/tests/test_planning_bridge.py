@@ -437,6 +437,20 @@ class QueueAuthorizationTests(unittest.TestCase):
         self.assertEqual(result["action"], "denied")
         self.assertEqual(result["reason"], "exact_current_approval_required")
 
+    def test_prose_mentioning_approval_does_not_block_valid_approval(self):
+        # Regression: substring matching treated any comment containing
+        # "nova3.approval" as a candidate, so an unrelated comment created two
+        # candidates and denied every approve-queue call.
+        transport, _, _ = approved_transport()
+        transport.add_comment('Reminder: the "nova3.approval" record format is documented.',
+                              author_id=9, author_login="reviewer")
+        result = pb.queue_transition(
+            transport, FakeReplay(), OWNER, NAME, transport.issue_number,
+            nonce="b" * 64, task_spec_sha256="a" * 64, apply=True,
+            confirm=lambda binding: True, clock=lambda: NOW,
+        )
+        self.assertEqual(result["action"], "queued")
+
     def test_edited_issue_invalidates_approval(self):
         transport, _, _ = approved_transport()
         transport.issues[transport.issue_number]["body"] += "\nScope widened by edit."
