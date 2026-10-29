@@ -45,6 +45,18 @@ DEFAULT_PROVIDER = "openrouter"
 MAX_TURNS = 40
 MAX_RUN_BUDGET = 3600
 MAX_PROMPT_BYTES = 512 * 1024
+SESSION_TIMEOUT_DEFAULT = 1200
+SESSION_TIMEOUT_MIN = 300
+SESSION_TIMEOUT_MAX = 1800
+CONFIG_ENV = "NOVA3_HERMES_"
+PLANNER_ENV = "NOVA3_HERMES_PLANNER_"
+ALLOWLIST_ENV = "NOVA3_HERMES_ALLOWED_PROVIDERS"
+EXECUTABLE_ENV = "NOVA3_HERMES_EXECUTABLE"
+# `hermes chat --help` documents `--provider PROVIDER` but exposes no static
+# provider list, so only the verified default is trusted implicitly. Any other
+# provider must be named explicitly in the operator allowlist; this module
+# never guesses a vendor name from a typo.
+DEFAULT_ALLOWED_PROVIDERS = frozenset({DEFAULT_PROVIDER})
 
 DOCS_URL = "https://hermes-agent.nousresearch.com/docs"
 INSTALL_URL = "https://hermes-agent.nousresearch.com/docs/getting-started/installation"
@@ -272,6 +284,180 @@ def build_invocation(status: HermesStatus, *, role: Role, prompt_path: str,
     if issue_number is not None:
         env["HERMES_NOVA3_ISSUE"] = str(issue_number)
     return Invocation(tuple(argv), cwd, role, provider, model, prompt_path, env)
+
+
+# --------------------------------------------------------------------------
+# Configuration: operator-selected provider/model/role, fail-closed
+# --------------------------------------------------------------------------
+
+def status_from_provider(status: object) -> HermesStatus:
+    """Adapt the provider registry's status record without losing evidence."""
+    if isinstance(status, HermesStatus):
+        return status
+    raw_state = getattr(status, "state", None)
+    value = getattr(raw_state, "value", raw_state)
+    try:
+        state = RuntimeState(value)
+    except (TypeError, ValueError):
+        raise HermesError("readiness", "unrecognized provider readiness state") from None
+    path = getattr(status, "executable_path", None)
+    capabilities = getattr(status, "capabilities", ()) or ()
+    return HermesStatus(
+        state,
+        path if isinstance(path, str) and path else None,
+        getattr(status, "version", None),
+        tuple(str(token) for token in capabilities),
+        str(getattr(status, "reason", "") or ""),
+    )
+
+
+def assert_ready(status: object, *, role: Role = Role.WORKER) -> HermesStatus:
+    """Deny unavailable/unverified runtimes with a fixed, actionable code."""
+    status = status_from_provider(status)
+    if status.state is RuntimeState.MISSING:
+        raise HermesError("unverified", "Hermes is not installed; install it locally: " + INSTALL_URL)
+    if status.state is RuntimeState.PROBE_FAILED:
+        raise HermesError("unverified", "Hermes capability probe failed; no session was started")
+    if status.state is RuntimeState.INCOMPATIBLE:
+        raise HermesError("capabilities", "installed Hermes lacks the required headless flags; no session was started")
+    if not status.available or not status.executable_path:
+        raise HermesError("unverified", "Hermes readiness is not verified; no session was started")
+    missing = [token for token in REQUIRED_CAPABILITIES if token not in status.capabilities]
+    if missing:
+        raise HermesError("capabilities", "Hermes capability evidence is incomplete; no session was started")
+    return status
+
+
+def materialise_prompt(directory: str | os.PathLike[str], prompt: str) -> str:
+    """Write the exact prompt to a private file; never pass task text via argv."""
+    if not isinstance(prompt, str) or not prompt.strip():
+        raise HermesError("prompt", "a non-empty text prompt is required")
+    if "\0" in prompt:
+        raise HermesError("prompt", "prompt must not contain NUL bytes")
+    data = prompt.encode("utf-8")
+    if len(data) > MAX_PROMPT_BYTES:
+        raise HermesError("prompt", "prompt file exceeds size limit")
+    folder = os.path.abspath(os.fspath(directory))
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    if os.name == "posix":
+        os.chmod(folder, 0o700)
+    path = os.path.join(folder, "hermes-prompt.md")
+    descriptor = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+    finally:
+        if os.name == "posix":
+            os.chmod(path, 0o600)
+    return path
+
+
+def _env_value(env: Mapping[str, str], name: str) -> str | None:
+    raw = env.get(name)
+    return raw if isinstance(raw, str) and raw.strip() else None
+
+
+def _env_int(env: Mapping[str, str], name: str, default: int,
+             low: int, high: int) -> int:
+    raw = _env_value(env, name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        raise HermesError("config", f"{name} must be an integer") from None
+    if not low <= value <= high:
+        raise HermesError("config", f"{name} must be between {low} and {high}")
+    return value
+
+
+@dataclass(frozen=True)
+class HermesConfig:
+    role: Role
+    provider: str
+    model: str
+    budget: Budget
+    timeout_seconds: int
+    executable: str = "hermes"
+
+    def as_dict(self) -> dict:
+        """Serialisable summary; contains no prompt, argv or credentials."""
+        return {
+            "role": self.role.value, "provider": self.provider,
+            "model": self.model, "max_turns": self.budget.max_turns,
+            "run_budget_seconds": self.budget.run_budget_seconds,
+            "timeout_seconds": self.timeout_seconds,
+            "executable": self.executable,
+        }
+
+
+def _allowed_providers(env: Mapping[str, str]) -> frozenset[str]:
+    raw = _env_value(env, ALLOWLIST_ENV)
+    extra = set()
+    if raw:
+        for item in raw.split(","):
+            item = item.strip()
+            if item:
+                if not _PROVIDER.fullmatch(item):
+                    raise HermesError("config", f"{ALLOWLIST_ENV} contains an invalid provider identifier")
+                extra.add(item)
+    return DEFAULT_ALLOWED_PROVIDERS | extra
+
+
+def load_config(role: Role, *, env: Mapping[str, str] | None = None,
+                status: object | None = None, timeout_seconds: int | None = None,
+                executable: str | None = None,
+                tty: Callable[[], bool] | None = None) -> HermesConfig:
+    """Resolve operator configuration for exactly one role.
+
+    Planner and worker read separate environment prefixes, so a planner
+    session's model/provider cannot silently leak into a coding worker. A role
+    mismatch, TTY on a worker, unknown provider/model, bad integer or an
+    unverified runtime all raise :class:`HermesError` with a fixed code; there
+    is no partial or degraded configuration.
+    """
+    if not isinstance(role, Role):
+        raise HermesError("role", "role must be planner or worker")
+    env = os.environ if env is None else env
+    declared = _env_value(env, CONFIG_ENV + "ROLE")
+    if declared is not None and declared.strip().lower() != role.value:
+        raise HermesError("role", "configured role does not match this caller; "
+                                  "planner and worker configuration are separate")
+    prefix = PLANNER_ENV if role is Role.PLANNER else CONFIG_ENV
+
+    provider = _env_value(env, prefix + "PROVIDER") or DEFAULT_PROVIDER
+    if not _PROVIDER.fullmatch(provider):
+        raise HermesError("provider", "invalid provider identifier")
+    if provider not in _allowed_providers(env):
+        raise HermesError("provider", f"unknown provider; add it explicitly to {ALLOWLIST_ENV}")
+
+    model = _env_value(env, prefix + "MODEL") or DEFAULT_MODEL
+    if not _IDENTIFIER.fullmatch(model):
+        raise HermesError("model", "invalid or unknown model identifier")
+
+    max_turns = _env_int(env, prefix + "MAX_TURNS", MAX_TURNS, 1, 200)
+    if timeout_seconds is None:
+        timeout_seconds = _env_int(env, "NOVA3_AI_SESSION_TIMEOUT",
+                                   SESSION_TIMEOUT_DEFAULT,
+                                   SESSION_TIMEOUT_MIN, SESSION_TIMEOUT_MAX)
+    if type(timeout_seconds) is not int or not \
+            SESSION_TIMEOUT_MIN <= timeout_seconds <= SESSION_TIMEOUT_MAX:
+        raise HermesError("config", "session timeout must be between "
+                                    f"{SESSION_TIMEOUT_MIN} and {SESSION_TIMEOUT_MAX} seconds")
+
+    name = executable or _env_value(env, EXECUTABLE_ENV) or "hermes"
+    if not isinstance(name, str) or not name or len(name) > 255 or "\0" in name:
+        raise HermesError("config", "invalid Hermes executable name")
+
+    if role is Role.WORKER and tty is not None and tty():
+        raise HermesError("tty", "interactive TTY present; a worker session must be headless")
+
+    budget = Budget(max_turns=max_turns, run_budget_seconds=timeout_seconds).validate()
+    config = HermesConfig(role, provider, model, budget, timeout_seconds, name)
+    if status is not None:
+        assert_ready(status, role=role)
+    return config
+
 
 
 @dataclass(frozen=True)

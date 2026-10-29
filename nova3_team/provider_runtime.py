@@ -21,6 +21,8 @@ from types import MappingProxyType
 from typing import Mapping
 
 
+from . import hermes_runtime
+
 PROBE_TIMEOUT = 3.0
 MAX_PROBE_BYTES = 64 * 1024
 
@@ -62,6 +64,10 @@ class ProviderSpec:
     # only when official vendor documentation shows no such profile exists;
     # the text cites the documented behaviour, never a guess.
     unsupported_reason: str = ''
+    # False for CLIs that do not advertise a semantic version. Their readiness
+    # rests entirely on documented capability tokens from `help`, never a
+    # guessed minimum version.
+    version_required: bool = True
 
 
 @dataclass(frozen=True)
@@ -181,6 +187,23 @@ _SPECS = (
         required_help=('--prompt', '--allow-tool', '--deny-tool'),
         permission_profile='copilot -p --allow-tool write --deny-tool shell '
                            '(documented tool kinds write/shell; shell denied)',
+    ),
+    ProviderSpec(
+        id='hermes', display_name='Hermes Agent', executable='hermes',
+        docs_url=hermes_runtime.DOCS_URL,
+        install_url=hermes_runtime.INSTALL_URL,
+        login_guidance='Authenticate with the vendor-native Hermes flow locally; '
+                       'no API key belongs in this repository.',
+        # Hermes is driven through its file-based headless adapter, not an
+        # inline -p prompt. Registered here for discovery/readiness; argv is
+        # built only by nova3_team.hermes_runtime.
+        help_args=('chat', '--help'),
+        required_help=hermes_runtime.REQUIRED_CAPABILITIES,
+        permission_profile='hermes chat --query-file <private prompt> --oneshot --quiet '
+                           '--format stream-json --provider <pinned> --model <pinned> '
+                           '--toolsets file,terminal,code_execution,todo --max-turns N '
+                           '--run-budget S (no --yolo/--accept-hooks/--api-key)',
+        version_required=False,
     ),
 )
 
@@ -337,15 +360,18 @@ def probe_provider(provider_id: str) -> ProviderStatus:
                                      'or a vendor-supported non-shell entrypoint.')
     if not (os.path.isabs(path) or ntpath.isabs(path)):
         path = os.path.abspath(path)
-    version = _probe([path, '--version'])
-    if version.failure or version.returncode:
-        return ProviderStatus(spec.id, RuntimeState.PROBE_FAILED, path,
-                              reason=version.failure or 'Local --version probe failed.')
-    match = re.search(r'(?<![\w.])(\d{1,4}\.\d{1,4}\.\d{1,4})(?![\w.])', version.output)
-    if not match:
-        return ProviderStatus(spec.id, RuntimeState.INCOMPATIBLE, path,
-                              reason='Unrecognized CLI version; no worker session was started.')
-    number = match.group(1)
+    version = None
+    number = None
+    if spec.version_required:
+        version = _probe([path, '--version'])
+        if version.failure or version.returncode:
+            return ProviderStatus(spec.id, RuntimeState.PROBE_FAILED, path,
+                                  reason=version.failure or 'Local --version probe failed.')
+        match = re.search(r'(?<![\w.])(\d{1,4}\.\d{1,4}\.\d{1,4})(?![\w.])', version.output)
+        if not match:
+            return ProviderStatus(spec.id, RuntimeState.INCOMPATIBLE, path,
+                                  reason='Unrecognized CLI version; no worker session was started.')
+        number = match.group(1)
     if spec.unsupported_reason:
         # Official docs show no bounded noninteractive edit profile for this
         # vendor, so neither probe help nor a session may proceed.
@@ -365,6 +391,40 @@ def probe_provider(provider_id: str) -> ProviderStatus:
     return ProviderStatus(spec.id, RuntimeState.AVAILABLE, path, number,
                           'Installed help advertises the required flags; no model call tested.',
                           tuple(sorted(tokens & (set(spec.required_help) | {'--json'}))))
+
+
+def readiness(provider_id: str, *, status: ProviderStatus | None = None,
+              model: str | None = None, provider: str | None = None) -> dict:
+    """Stable readiness record for one provider (Control Center, worker status).
+
+    Hermes reuses the same capability probe and adds its role/model surface;
+    the record is descriptive only. Execution still re-validates readiness, so
+    a stale caller cannot start a session from a cached \"available\" string.
+    """
+    spec = get_provider(provider_id)
+    status = status if status is not None else probe_provider(provider_id)
+    record = {
+        'provider_id': spec.id,
+        'display_name': spec.display_name,
+        'state': status.state.value,
+        'version': status.version,
+        'executable': status.executable_path,
+        'reason': status.reason,
+        'docs_url': spec.docs_url,
+        'install_url': spec.install_url,
+        'login_guidance': spec.login_guidance,
+        'permission_profile': spec.permission_profile,
+        'roles': ['worker'],
+        'capabilities': list(status.capabilities),
+    }
+    if provider_id == 'hermes':
+        record.update(hermes_runtime.readiness(
+            hermes_runtime.status_from_provider(status),
+            model=model or hermes_runtime.DEFAULT_MODEL,
+            provider=provider or hermes_runtime.DEFAULT_PROVIDER))
+        record['executable'] = status.executable_path
+        record['capabilities'] = list(status.capabilities)
+    return record
 
 
 def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
@@ -441,6 +501,12 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
         # Explicit deny overrides saved shell approvals. No --allow-all-tools,
         # --allow-all-paths, --allow-all-urls or unattended login is requested.
         return [executable, '-p', prompt, '--allow-tool', 'write', '--deny-tool', 'shell']
+    if provider_id == 'hermes':
+        # Hermes must receive its query as a private file (--query-file), which
+        # this inline-prompt builder cannot provide. Failure stays explicit so
+        # no caller can silently fall back to interpolating task text into argv.
+        raise ProviderUnavailable(
+            'Hermes uses the file-based worker adapter; an inline prompt is not permitted.')
     raise ProviderUnavailable('No verified writable headless command is available.')
 
 

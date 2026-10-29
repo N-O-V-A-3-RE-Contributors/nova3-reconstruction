@@ -357,6 +357,234 @@ class PromptAndReadinessTests(unittest.TestCase):
         self.assertIn("worker", payload["roles"])
 
 
+class RegistryWiringTests(unittest.TestCase):
+    """The Hermes backend must be drivable through the shared registry."""
+
+    def setUp(self):
+        from nova3_team import provider_runtime as pr
+        self.pr = pr
+
+    def test_registered_once_with_stable_api(self):
+        self.assertIn("hermes", self.pr.provider_ids())
+        self.assertEqual(self.pr.provider_ids().count("hermes"), 1)
+        spec = self.pr.get_provider("hermes")
+        self.assertEqual(spec.executable, "hermes")
+        self.assertEqual(spec.help_args, ("chat", "--help"))
+        self.assertEqual(set(spec.required_help), set(hr.REQUIRED_CAPABILITIES))
+        self.assertFalse(spec.version_required)
+        self.assertFalse(spec.aux_files)
+        self.assertIn("query-file", spec.permission_profile)
+
+    def test_probe_uses_hermes_help_tokens_and_skips_version(self):
+        with mock.patch.object(self.pr.shutil, "which",
+                               return_value="/opt/hermes/bin/hermes"), \
+                mock.patch.object(self.pr, "_probe",
+                                  return_value=self.pr._Probe(0, HELP)) as probe:
+            status = self.pr.probe_provider("hermes")
+        self.assertTrue(status.available)
+        self.assertIsNone(status.version)
+        probe.assert_called_once_with(["/opt/hermes/bin/hermes", "chat", "--help"])
+        self.assertEqual(set(status.capabilities), set(hr.REQUIRED_CAPABILITIES))
+
+    def test_missing_binary_has_no_process_and_denies(self):
+        with mock.patch.object(self.pr.shutil, "which", return_value=None), \
+                mock.patch.object(self.pr, "_probe") as probe:
+            status = self.pr.probe_provider("hermes")
+        probe.assert_not_called()
+        self.assertEqual(status.state, self.pr.RuntimeState.MISSING)
+        with self.assertRaises(hr.HermesError) as caught:
+            hr.assert_ready(status)
+        self.assertEqual(caught.exception.code, "unverified")
+
+    def test_incomplete_help_capabilities_deny(self):
+        with mock.patch.object(self.pr.shutil, "which", return_value="/x/hermes"), \
+                mock.patch.object(self.pr, "_probe",
+                                  return_value=self.pr._Probe(0, "usage: chat [--query-file PATH]\n")):
+            status = self.pr.probe_provider("hermes")
+        self.assertEqual(status.state, self.pr.RuntimeState.INCOMPATIBLE)
+        with self.assertRaises(hr.HermesError) as caught:
+            hr.assert_ready(status)
+        self.assertEqual(caught.exception.code, "capabilities")
+
+    def test_readiness_surfaces_through_registry(self):
+        available = self.pr.ProviderStatus(
+            "hermes", self.pr.RuntimeState.AVAILABLE, "/x/hermes", None,
+            capabilities=hr.REQUIRED_CAPABILITIES)
+        record = self.pr.readiness("hermes", status=available)
+        self.assertEqual(record["provider_id"], "hermes")
+        self.assertEqual(record["state"], "available")
+        self.assertEqual(record["roles"], ["planner", "worker"])
+        self.assertEqual(record["model"], hr.DEFAULT_MODEL)
+        self.assertEqual(record["provider"], hr.DEFAULT_PROVIDER)
+        self.assertIn("install_url", record)
+        legacy = self.pr.readiness(
+            "codex", status=self.pr.ProviderStatus(
+                "codex", self.pr.RuntimeState.MISSING, reason="missing"))
+        self.assertEqual(legacy["roles"], ["worker"])
+        self.assertEqual(legacy["state"], "missing")
+
+    def test_inline_prompt_builder_refuses_hermes(self):
+        status = self.pr.ProviderStatus(
+            "hermes", self.pr.RuntimeState.AVAILABLE, "/x/hermes", None,
+            capabilities=hr.REQUIRED_CAPABILITIES)
+        with self.assertRaises(self.pr.ProviderUnavailable) as caught:
+            self.pr.build_command("hermes", "task text", status=status)
+        self.assertIn("file-based", str(caught.exception))
+
+    def test_status_adapter_preserves_evidence(self):
+        status = self.pr.ProviderStatus(
+            "hermes", self.pr.RuntimeState.AVAILABLE, "/x/hermes", None,
+            capabilities=hr.REQUIRED_CAPABILITIES, reason="help ok")
+        adapted = hr.status_from_provider(status)
+        self.assertEqual(adapted.state, hr.RuntimeState.AVAILABLE)
+        self.assertEqual(adapted.executable_path, "/x/hermes")
+        self.assertEqual(adapted.capabilities, hr.REQUIRED_CAPABILITIES)
+        self.assertIs(hr.status_from_provider(adapted), adapted)
+
+
+class ConfigTests(unittest.TestCase):
+    """Operator configuration is explicit, role-scoped and fail-closed."""
+
+    def config(self, role=hr.Role.WORKER, env=None, **kwargs):
+        kwargs.setdefault("status", available_status())
+        kwargs.setdefault("tty", lambda: False)
+        return hr.load_config(role, env=env or {}, **kwargs)
+
+    def test_defaults_are_pinned_and_bounded(self):
+        config = self.config()
+        self.assertEqual(config.role, hr.Role.WORKER)
+        self.assertEqual(config.provider, hr.DEFAULT_PROVIDER)
+        self.assertEqual(config.model, hr.DEFAULT_MODEL)
+        self.assertEqual(config.timeout_seconds, 1200)
+        self.assertEqual(config.budget.run_budget_seconds, 1200)
+        self.assertEqual(config.budget.max_turns, hr.MAX_TURNS)
+        self.assertEqual(config.executable, "hermes")
+
+    def test_env_selects_provider_model_turns_and_timeout(self):
+        config = self.config(env={
+            "NOVA3_HERMES_PROVIDER": "nous",
+            "NOVA3_HERMES_ALLOWED_PROVIDERS": "nous, openrouter",
+            "NOVA3_HERMES_MODEL": "nous/hermes-4-405b",
+            "NOVA3_HERMES_MAX_TURNS": "12",
+            "NOVA3_AI_SESSION_TIMEOUT": "600",
+        })
+        self.assertEqual(config.provider, "nous")
+        self.assertEqual(config.model, "nous/hermes-4-405b")
+        self.assertEqual(config.budget.max_turns, 12)
+        self.assertEqual(config.timeout_seconds, 600)
+        self.assertEqual(config.budget.run_budget_seconds, 600)
+
+    def test_unknown_provider_denied_unless_explicitly_allowed(self):
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(env={"NOVA3_HERMES_PROVIDER": "opernrouter"})
+        self.assertEqual(caught.exception.code, "provider")
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(env={"NOVA3_HERMES_ALLOWED_PROVIDERS": "bad provider"})
+        self.assertEqual(caught.exception.code, "config")
+
+    def test_invalid_model_denied(self):
+        for model in ("../../etc/passwd", "${INJECTION}", "a" * 200):
+            with self.subTest(model=model):
+                with self.assertRaises(hr.HermesError) as caught:
+                    self.config(env={"NOVA3_HERMES_MODEL": model})
+                self.assertIn(caught.exception.code, ("model", "config"))
+
+    def test_bad_integers_and_timeout_bounds_denied(self):
+        for env in ({"NOVA3_AI_SESSION_TIMEOUT": "soon"},
+                    {"NOVA3_AI_SESSION_TIMEOUT": "60"},
+                    {"NOVA3_AI_SESSION_TIMEOUT": "3601"},
+                    {"NOVA3_HERMES_MAX_TURNS": "zero"},
+                    {"NOVA3_HERMES_MAX_TURNS": "0"},
+                    {"NOVA3_HERMES_MAX_TURNS": "500"}):
+            with self.subTest(**env):
+                with self.assertRaises(hr.HermesError) as caught:
+                    self.config(env=env)
+                self.assertEqual(caught.exception.code, "config")
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(timeout_seconds=59)
+        self.assertEqual(caught.exception.code, "config")
+
+    def test_role_mismatch_cannot_promote_a_worker(self):
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(env={"NOVA3_HERMES_ROLE": "planner"})
+        self.assertEqual(caught.exception.code, "role")
+
+    def test_worker_and_planner_configuration_are_separate(self):
+        shared = {"NOVA3_HERMES_PLANNER_MODEL": "planner/only",
+                  "NOVA3_HERMES_PLANNER_PROVIDER": "nous",
+                  "NOVA3_HERMES_ALLOWED_PROVIDERS": "nous"}
+        worker = self.config(env=shared)
+        self.assertEqual(worker.model, hr.DEFAULT_MODEL)
+        self.assertEqual(worker.provider, hr.DEFAULT_PROVIDER)
+        planner = self.config(role=hr.Role.PLANNER, env=shared)
+        self.assertEqual(planner.model, "planner/only")
+        self.assertEqual(planner.provider, "nous")
+        self.assertEqual(planner.role, hr.Role.PLANNER)
+        # Worker overrides must not bleed into the planner either.
+        planner = self.config(role=hr.Role.PLANNER,
+                              env={"NOVA3_HERMES_MODEL": "worker/only"})
+        self.assertEqual(planner.model, hr.DEFAULT_MODEL)
+
+    def test_tty_denies_worker_but_not_human_planner(self):
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(tty=lambda: True)
+        self.assertEqual(caught.exception.code, "tty")
+        self.assertEqual(self.config(role=hr.Role.PLANNER, tty=lambda: True).role,
+                         hr.Role.PLANNER)
+
+    def test_unverified_and_incompatible_status_deny(self):
+        missing = hr.HermesStatus(hr.RuntimeState.MISSING, reason="absent")
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(status=missing)
+        self.assertEqual(caught.exception.code, "unverified")
+        incomplete = hr.HermesStatus(hr.RuntimeState.AVAILABLE, "/x/hermes",
+                                     capabilities=("--oneshot",))
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(status=incomplete)
+        self.assertEqual(caught.exception.code, "capabilities")
+        failed = hr.HermesStatus(hr.RuntimeState.PROBE_FAILED, reason="timeout")
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(status=failed)
+        self.assertEqual(caught.exception.code, "unverified")
+
+    def test_diagnostics_never_echo_values_or_secrets(self):
+        secret = "sk-" + "E" * 24
+        with self.assertRaises(hr.HermesError) as caught:
+            self.config(env={"NOVA3_HERMES_MODEL": secret,
+                             "NOVA3_HERMES_PROVIDER": secret})
+        self.assertNotIn(secret, str(caught.exception))
+        self.assertNotIn(secret, repr(caught.exception))
+        self.assertNotIn("api-key", str(caught.exception).lower())
+
+    def test_summary_has_no_prompt_or_secret_fields(self):
+        payload = self.config().as_dict()
+        self.assertEqual(set(payload), {"role", "provider", "model", "max_turns",
+                                        "run_budget_seconds", "timeout_seconds",
+                                        "executable"})
+
+
+class PromptMaterialisationTests(unittest.TestCase):
+    def test_prompt_file_is_private_and_verbatim(self):
+        with tempfile.TemporaryDirectory() as temp:
+            aux = os.path.join(temp, "provider-aux")
+            text = "TASK $(id) `whoami` ; rm -rf / 'quoted'\nsecond line"
+            path = hr.materialise_prompt(aux, text)
+            self.assertEqual(os.path.basename(path), "hermes-prompt.md")
+            with open(path, "rb") as handle:
+                self.assertEqual(handle.read(), text.encode("utf-8"))
+            if os.name == "posix":
+                self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+                self.assertEqual(os.stat(aux).st_mode & 0o777, 0o700)
+
+    def test_rejects_empty_nul_and_oversized(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for bad in ("", "   ", "a\0b", "x" * (hr.MAX_PROMPT_BYTES + 1)):
+                with self.subTest(length=len(bad)):
+                    with self.assertRaises(hr.HermesError) as caught:
+                        hr.materialise_prompt(temp, bad)
+                    self.assertEqual(caught.exception.code, "prompt")
+
+
 class CliTests(unittest.TestCase):
     def test_status_command_reports_json(self):
         import io

@@ -25,7 +25,8 @@ def available(provider, path=None):
 class RegistryTests(unittest.TestCase):
     def test_registry_is_typed_ordered_immutable_and_has_vendor_guidance(self):
         self.assertEqual(runtime.provider_ids(),
-                         ('codex', 'claude', 'gemini', 'kimi', 'qwen', 'opencode', 'copilot'))
+                         ('codex', 'claude', 'gemini', 'kimi', 'qwen', 'opencode', 'copilot',
+                          'hermes'))
         self.assertEqual(runtime.get_provider('codex').display_name, 'ChatGPT (Codex CLI)')
         self.assertNotIn('chatgpt', runtime.PROVIDERS)
         for provider, spec in runtime.PROVIDERS.items():
@@ -270,15 +271,21 @@ class ProbeTests(unittest.TestCase):
         for provider in runtime.provider_ids():
             spec = runtime.get_provider(provider)
             help_text = ' '.join(spec.required_help) + ' --json'
+            # Providers that do not advertise a semantic version are gated on
+            # help capability tokens alone; no invented minimum version.
+            probes = ([runtime._Probe(0, help_text)] if not spec.version_required else
+                      [runtime._Probe(0, 'vendor 1.2.3\n'), runtime._Probe(0, help_text)])
+            expected = ([mock.call(['/native/' + provider, *spec.help_args])]
+                        if not spec.version_required else
+                        [mock.call(['/native/' + provider, '--version']),
+                         mock.call(['/native/' + provider, *spec.help_args])])
             with mock.patch.object(runtime.shutil, 'which', return_value='/native/' + provider), \
-                    mock.patch.object(runtime, '_probe', side_effect=[
-                        runtime._Probe(0, 'vendor 1.2.3\n'), runtime._Probe(0, help_text)]) as probe:
+                    mock.patch.object(runtime, '_probe', side_effect=probes) as probe:
                 result = runtime.probe_provider(provider)
                 self.assertTrue(result.available)
-                self.assertEqual(result.version, '1.2.3')
-                self.assertEqual(probe.call_args_list, [
-                    mock.call(['/native/' + provider, '--version']),
-                    mock.call(['/native/' + provider, *spec.help_args])])
+                if spec.version_required:
+                    self.assertEqual(result.version, '1.2.3')
+                self.assertEqual(probe.call_args_list, expected)
 
     def test_unsupported_help_version_failed_probe_and_secrets_never_exported(self):
         cases = (
