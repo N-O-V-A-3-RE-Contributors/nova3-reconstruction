@@ -77,7 +77,8 @@ class FakeTransport:
             issue_number: {
                 "id": 9000 + issue_number, "number": issue_number,
                 "title": "Owner-approved queue enforcement",
-                "body": issue_body, "state": "open", "updated_at": iso(issue_updated),
+                "body": issue_body, "state": "open", "created_at": iso(NOW - 7200),
+                "updated_at": iso(issue_updated),
                 "labels": labels or [{"name": "nova:review"}],
                 # Real GitHub issue payloads attest their own repository; the
                 # hardened access policy rejects payloads without these.
@@ -160,7 +161,7 @@ class FakeTransport:
         number = max(self.issues) + 1
         self.issues[number] = {
             "id": 9000 + number, "number": number, "title": title, "body": body,
-            "state": "open", "updated_at": iso(NOW), "labels": [{"name": l} for l in labels],
+            "state": "open", "created_at": iso(NOW - 7200), "updated_at": iso(NOW), "labels": [{"name": l} for l in labels],
             "html_url": f"https://github.com/{owner}/{name}/issues/{number}",
         }
         return self.issues[number]
