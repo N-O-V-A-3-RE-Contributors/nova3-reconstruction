@@ -277,11 +277,22 @@ class JournalTests(unittest.TestCase):
         admin = ui('ADMIN')
         admin.collector.home = self.home
         admin.tab = 12
-        admin.handle(ord('J'))
-        self.assertEqual(admin.confirm, 'journal-open')
-        self.assertIsNone(admin.journal_view)
-        admin.handle(ord('y'))  # explicit consent
+        with mock.patch.object(o.operator_ops, 'require_owner_access', return_value='ADMIN'):
+            admin.handle(ord('J'))
+            self.assertEqual(admin.confirm, 'journal-open')
+            self.assertIsNone(admin.journal_view)
+            admin.handle(ord('y'))  # explicit consent
         self.assertIsNotNone(admin.journal_view)
+        # A revoked role at execution time is denied even if the page says ADMIN.
+        revoked = ui('ADMIN')
+        revoked.collector.home = self.home
+        revoked.tab = 12
+        with mock.patch.object(o.operator_ops, 'require_owner_access',
+                               side_effect=o.operator_ops.CommandFailure('revoked')):
+            revoked.handle(ord('J'))
+            revoked.handle(ord('y'))
+        self.assertIsNone(revoked.journal_view)
+        self.assertIn('JOURNAL LOCKED', revoked.notice)
         admin.render()
         self.assertIn('LOCAL PRIVATE JOURNAL (REDACTED)', admin.stdscr.text())
         self.assertNotIn('supersecretvalue123', admin.stdscr.text())

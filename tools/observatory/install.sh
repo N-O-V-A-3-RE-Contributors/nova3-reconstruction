@@ -54,6 +54,9 @@ install -m 600 "$LIVE_GUIDE" "$STAGING/OBSERVATORY_LIVE_INTEGRATION.md"
 install -m 600 "$FORECAST_GUIDE" "$STAGING/FORECAST_POLICY.md"
 # Offline synthetic health check, outside the source tree and with -I (no PYTHONPATH).
 PYTHONDONTWRITEBYTECODE=1 python3 -I "$STAGING/observer.py" --demo --once >/dev/null
+# Fail closed if the provider registry / Accounts page could not load; the
+# observer otherwise degrades silently to "Accounts module unavailable".
+PYTHONDONTWRITEBYTECODE=1 python3 -I -c "import sys; sys.path.insert(0, r'$STAGING'); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" >/dev/null
 install -d -m 700 "$TARGET"
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py provider_accounts.py provider_runtime.py historical_toolchain.py HISTORICAL_TOOLCHAIN.md OBSERVATORY_LIVE_INTEGRATION.md FORECAST_POLICY.md; do
   install -m 600 "$STAGING/$file" "$TARGET/$file"
