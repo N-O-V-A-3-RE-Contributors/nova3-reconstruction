@@ -12,7 +12,7 @@ case "${1:-}" in
   --setup-timer) SETUP_TIMER=1 ;;
   *) echo 'Usage: install.sh [--setup-timer]' >&2; exit 2 ;;
 esac
-for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json; do
+for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
   [[ -f "$SOURCE_DIR/$file" ]] || { echo "Missing $file" >&2; exit 1; }
 done
 HISTORICAL_HELPER="$SOURCE_DIR/../../nova3_team/historical_toolchain.py"
@@ -27,7 +27,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SOURCE_DIR/tests" -q
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/nova3-observatory"
 BINDIR="$HOME/.local/bin"
 install -d -m 700 "$TARGET" "$BINDIR"
-for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json; do
+for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py; do
   install -m 600 "$SOURCE_DIR/$file" "$TARGET/$file"
 done
 install -m 600 "$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"
@@ -40,6 +40,8 @@ printf '%s\n' \
   'exec python3 "${XDG_DATA_HOME:-$HOME/.local/share}/nova3-observatory/observer.py" "$@"' \
   > "$BINDIR/nova3-observer"
 chmod 700 "$BINDIR/nova3-observer"
+# Exercise the installed sibling imports, offline and outside the source tree.
+PYTHONDONTWRITEBYTECODE=1 python3 -I "$TARGET/observer.py" --demo --once >/dev/null
 echo "Observatory installed: $BINDIR/nova3-observer"
 echo 'Read-only contributor pages are available to anyone with repository access.'
 echo 'ADMIN/MAINTAIN GitHub permission is checked before every owner operation.'
