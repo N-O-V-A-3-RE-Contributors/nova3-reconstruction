@@ -107,7 +107,7 @@ including worker starts, queue writes, approval/revocation writes and retries.
 Discard incomplete collections. Do not share mutable payloads with untrusted
 code; defensively copy/freeze transport snapshots before evaluation.
 
-## Exact approval protocol, version 2
+## Exact approval protocol, version 3
 
 Every mutating action has an open ordinary tracking issue. Creation of a new
 task is approved against a separate existing proposal/tracking issue; a request
@@ -132,12 +132,32 @@ keys and custom objects. No whitespace or Unicode normalization is performed.
 
 `request_binding(request, issue)` constructs this exact record portion:
 
-* `version` = 2 and `origin` = `https://api.github.com`;
+* `version` = 3 and `origin` = `https://api.github.com`;
 * numeric `repository_id`, `owner_id`, `issue_id`, `issue_number`;
-* `task_spec_sha256`: canonical SHA256 of exact issue `id`, `number`, `title`,
-  `body`, `updated_at` (revision included, stable for the same API snapshot);
+* `task_spec_sha256`: canonical SHA256 of immutable issue `id`, `number`,
+  `title` and `body`. Issue `created_at` is validated as a timestamp and is not
+  part of the digest. `updated_at` is deliberately excluded (protocol v3);
 * `action`, `operation_sha256`, `operation_arguments`, `nonce`,
   `executor_user_id`.
+
+### Why `updated_at` is not bound (protocol v3 defect fix)
+
+GitHub bumps an issue's `updated_at` for ordinary comments, label changes and
+assignment changes, not only for edits. Binding approval to that field meant a
+coordinator lease comment, assignment comment, reviewer comment or label change
+invalidated a freshly created approval — and because the approval comment itself
+bumps the timestamp, an approval built from an issue read before comment
+creation could never verify. The lifecycle was therefore unusable in normal
+operation and forced unsafe re-approval loops.
+
+Version 3 binds the **exact task content** instead: issue identity, title and
+body. Post-approval comments and metadata no longer revoke a valid approval.
+Any title/body edit still changes `task_spec_sha256` and denies. An edit-and-
+revert to byte-identical content verifies, because the authorization is
+content-addressed and the owner approved exactly that content; it grants nothing
+new. Callers must still bind task text at publish time (the coordinator removes
+its own lease envelope before digesting) so a lease cannot smuggle instructions
+into the approved body.
 
 `operation_arguments` is a detached canonical copy of the exact JSON argument
 payload. Approval and assignment records therefore bind the precise argument
@@ -149,12 +169,13 @@ The approval is an entire, strictly parsed JSON GitHub comment, containing
 exactly those fields plus `kind` = `nova3.approval`, `actor_id`, `actor_login`,
 `issued_at`, `expires_at`. The actor must match the API comment author and that
 author's current verified owner/admin identity. Times are UTC
-`YYYY-MM-DDTHH:MM:SSZ`. Issuance must follow the task revision, precede comment
-creation by no more than five minutes, and not be future dated. Expiry is
-exclusive, at most one hour after issuance. Duplicate JSON keys, unknown fields,
-unknown versions, appended instructions, markers and multiple candidate approval
-records are rejected. The trusted executor selects one specific comment ID;
-never scan arbitrary comments and take the first “approved” marker.
+`YYYY-MM-DDTHH:MM:SSZ`. Issuance must not predate the issue's `created_at`,
+must precede comment creation by no more than five minutes, and must not be
+future dated. Expiry is exclusive, at most one hour after issuance. Duplicate
+JSON keys, unknown fields, unknown versions, appended instructions, markers and
+multiple candidate approval records are rejected. The trusted executor selects
+one specific comment ID; never scan arbitrary comments and take the first
+“approved” marker.
 
 The API-authenticated author and the independent live permission checks provide
 GitHub verification. A hash, nonce or JSON “signed” text alone grants nothing.
@@ -165,13 +186,14 @@ Show the exact operation, amount/payor or merge head before the human confirms.
 Never translate an AI answer, issue sentence or ordinary comment into consent.
 Local worker consent cannot permit project spending.
 
-Task title/body changes, revision changes (including an observable edit/revert),
-new issue IDs, action/argument changes, account substitution, repository
-substitution and nonce reuse invalidate approval. Hashes do not attest to
-semantics or safety. Issue text remains untrusted input even after approval.
-Entire issue bodies are bound: the current lease-writing coordinator cannot
-edit a body after approval without invalidating it. Integration must address
-lease storage/re-approval explicitly; never silently exclude mutable task text.
+Task title/body changes and new issue IDs invalidate approval. Action/argument
+changes, account substitution, repository substitution and nonce reuse also
+deny. Ordinary comments, labels and assignments do **not** invalidate approval
+(they only move `updated_at`). Hashes do not attest to semantics or safety.
+Issue text remains untrusted input even after approval. Entire issue bodies are
+bound: the current lease-writing coordinator cannot edit a body after approval
+without invalidating it. Integration must address lease storage/re-approval
+explicitly; never silently exclude mutable task text.
 
 ## Standing task approval for queue admission
 
@@ -183,11 +205,11 @@ being verified. This avoids pretending a bot/service token is the owner.
 
 The request must be a steering action (queue admission uses `approve_queue`)
 with `executor_user_id = None`: one approval admits exactly one immutable task
-revision (repository ID, issue ID/number, title, body, `updated_at`, operation
-arguments, action, nonce), not a specific worker. Approval records that are
-edited, rewritten by another author, bound to another repository/issue/revision,
-issued before the current revision, expired, revoked or already consumed deny
-with `APPROVAL_REQUIRED`, `REPLAY` or `INVALID_EVIDENCE`. No `Consent` object is
+revision (repository ID, issue ID/number, title, body, operation arguments,
+action, nonce), not a specific worker. Approval records that are edited,
+rewritten by another author, bound to another repository/issue/content revision,
+issued before the issue existed, expired, revoked or already consumed deny with
+`APPROVAL_REQUIRED`, `REPLAY` or `INVALID_EVIDENCE`. No `Consent` object is
 required here because this is a third-party verification of an already
 published human approval, not the owner's own one-shot execution path (which
 still uses `authorize` and requires consent).
