@@ -52,6 +52,7 @@ def fixture(permission="admin", *, action=p.Action.APPROVE_QUEUE, org_owner=Fals
                                 "owner": {"id": REPO.owner_id, "login": REPO.owner, "type": "Organization"}})
     issue = read(f"{REPO.path}/issues/134", {
         "id": 13400, "number": 134, "title": "Bound task", "body": "Allowed paths: source.cpp",
+        "created_at": iso(NOW - 120),
         "updated_at": iso(NOW - 60), "state": "open", "labels": [{"name": "nova:queued"}],
         "repository_url": f"{p.API_ORIGIN}{REPO.path}",
         "url": f"{p.API_ORIGIN}{REPO.path}/issues/134",
@@ -269,14 +270,21 @@ class AccessPolicyTests(unittest.TestCase):
         viewer = replace(evidence.viewer, membership=changed(evidence.viewer.membership, role="member"))
         self.assertDenied(request, replace(evidence, viewer=viewer), p.Reason.OWNER_REQUIRED)
 
-    def test_task_edits_title_body_and_edit_revert_invalidate(self):
+    def test_task_content_edits_invalidate_but_activity_metadata_does_not(self):
         request, evidence = fixture()
         for fields in ({"body": "New paths"}, {"title": "New target"},
-                       {"updated_at": iso(NOW - 15)}, {"id": 9999}, {"state": "closed"},
+                       {"created_at": iso(NOW - 60)}, {"id": 9999}, {"state": "closed"},
                        {"number": 135}, {"pull_request": {}}):
             with self.subTest(fields=fields):
                 self.assertDenied(request, replace(evidence, issue=changed(evidence.issue, **fields)))
         self.assertDenied(request, approval_change(evidence, task_spec_sha256="0" * 64))
+        # A comment, label or assignment bumps issue.updated_at. That is
+        # activity metadata, not task content, and must not revoke a valid
+        # approval for unchanged work.
+        for stamp in (iso(NOW - 15), iso(NOW - 1), iso(NOW)):
+            with self.subTest(updated_at=stamp):
+                issue = changed(evidence.issue, updated_at=stamp)
+                self.assertTrue(self.decide(request, replace(evidence, issue=issue)).allowed)
 
     def test_cross_repo_issue_action_operation_and_challenge_binding(self):
         request, evidence = fixture()
@@ -303,7 +311,7 @@ class AccessPolicyTests(unittest.TestCase):
     def test_approval_expiry_future_dates_pre_task_and_version(self):
         request, evidence = fixture()
         for fields in ({"expires_at": iso(NOW)}, {"expires_at": iso(NOW + 4000)},
-                       {"issued_at": iso(NOW + 1)}, {"issued_at": iso(NOW - 100)},
+                       {"issued_at": iso(NOW + 1)}, {"issued_at": iso(NOW - 200)},
                        {"issued_at": "not-a-date"}, {"issued_at": "2026-99-99T00:00:00Z"},
                        {"extra": "ignored instructions"}):
             with self.subTest(fields=fields):
@@ -538,11 +546,17 @@ class AccessPolicyTests(unittest.TestCase):
         self.assertEqual(result.consume_keys, ())
         self.assertIsNotNone(result.request_sha256)
         for fields in ({"body": "Allowed paths: other.cpp"}, {"title": "Edited"},
-                       {"updated_at": iso(NOW - 15)}, {"id": 9999}, {"state": "closed"},
+                       {"created_at": iso(NOW - 60)}, {"id": 9999}, {"state": "closed"},
                        {"number": 135}, {"pull_request": {}}):
             with self.subTest(fields=fields):
                 issue = changed(evidence.issue, **fields)
                 self.assertFalse(p.verify_owner_approval(request, replace(evidence, issue=issue), now=NOW).allowed)
+        # Activity metadata (comments/labels/assignments bump updated_at) must
+        # not invalidate a standing approval for unchanged task content.
+        for stamp in (iso(NOW - 15), iso(NOW - 1), iso(NOW)):
+            with self.subTest(updated_at=stamp):
+                issue = changed(evidence.issue, updated_at=stamp)
+                self.assertTrue(p.verify_owner_approval(request, replace(evidence, issue=issue), now=NOW).allowed)
         # Approver role is rechecked live: revocation and spoofing deny.
         approval = evidence.approvals[0]
         for level in ("maintain", "write", "read", "none"):
@@ -583,7 +597,7 @@ class AccessPolicyTests(unittest.TestCase):
         approval = evidence.approvals[0]
         kwargs = dict(reader=101, now=NOW, organization=True, replay=evidence.replay)
         result = p.verify_approval_record(
-            binding, approval, request, issue_updated_at=evidence.issue.payload["updated_at"], **kwargs)
+            binding, approval, request, **kwargs)
         self.assertTrue(result.allowed)
         self.assertEqual(result.role, p.Role.OWNER)
         bad_bindings = (
@@ -604,9 +618,6 @@ class AccessPolicyTests(unittest.TestCase):
         self.assertEqual(
             p.verify_approval_record(binding, replace(approval, author=author), request, **kwargs).reason,
             p.Reason.APPROVAL_REQUIRED)
-        self.assertEqual(
-            p.verify_approval_record(binding, approval, request, issue_updated_at=iso(NOW - 1),
-                                     **kwargs).reason, p.Reason.APPROVAL_REQUIRED)
         for replay, reason in ((replace(evidence.replay, consumed=frozenset({f"github:{REPO.id}:comment:900"})), p.Reason.REPLAY),
                                (replace(evidence.replay, revoked_comments=frozenset({900})), p.Reason.REPLAY),
                                (None, None)):
