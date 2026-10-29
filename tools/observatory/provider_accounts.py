@@ -22,28 +22,44 @@ import re
 import subprocess
 import sys
 import tempfile
+import types
 
 # Observatory installs are standalone directories.  Load a sibling runtime if
 # present (install.sh copies it), otherwise fall back to the repository package.
-_RUNTIME_NAME = 'nova3_private_provider_runtime'
+# provider_runtime uses package-relative imports (e.g. ``from . import
+# hermes_runtime``), so a bare spec-from-file load breaks it.  Register a
+# synthetic package rooted at the runtime's directory instead.
+_RUNTIME_PACKAGE = 'nova3_private_provider_runtime'
 
 
 def _load_runtime():
-    if _RUNTIME_NAME in sys.modules:
-        return sys.modules[_RUNTIME_NAME]
+    # Prefer the file candidate even when `nova3_team` happens to be importable:
+    # importing the real package here would shadow the fixture packages used by
+    # standalone Observatory tests.
+    if _RUNTIME_PACKAGE in sys.modules:
+        return sys.modules[_RUNTIME_PACKAGE + '.provider_runtime']
     candidates = (Path(__file__).resolve().parent / 'provider_runtime.py',
                   Path(__file__).resolve().parents[2] / 'nova3_team' / 'provider_runtime.py')
     for candidate in candidates:
         if not candidate.is_file():
             continue
-        spec = importlib.util.spec_from_file_location(_RUNTIME_NAME, candidate)
+        package = types.ModuleType(_RUNTIME_PACKAGE)
+        package.__path__ = [str(candidate.parent)]
+        sys.modules[_RUNTIME_PACKAGE] = package
+        spec = importlib.util.spec_from_file_location(
+            _RUNTIME_PACKAGE + '.provider_runtime', candidate)
         if spec is None or spec.loader is None:
             continue
         module = importlib.util.module_from_spec(spec)
-        sys.modules[_RUNTIME_NAME] = module
-        spec.loader.exec_module(module)
+        sys.modules[spec.name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(spec.name, None)
+            sys.modules.pop(_RUNTIME_PACKAGE, None)
+            continue
         return module
-    from nova3_team import provider_runtime as module  # noqa: F401  (installed package)
+    from nova3_team import provider_runtime as module  # installed package fallback
     return module
 
 
@@ -52,7 +68,10 @@ provider_runtime = _load_runtime()
 MAX_GH_BYTES = 64 * 1024
 GH_TIMEOUT = 4.0
 ROLE_VALUES = frozenset({'ADMIN', 'MAINTAIN', 'WRITE', 'TRIAGE', 'READ', 'UNKNOWN'})
-OWNER_ROLES = frozenset({'ADMIN', 'MAINTAIN'})
+# Repository ADMIN (and verified organization owners, resolved server-side by
+# operator_ops) may administer. MAINTAIN/WRITE/TRIAGE/READ are contributor
+# levels and must never unlock owner actions (#134/#135).
+OWNER_ROLES = frozenset({'ADMIN'})
 _REPO_RE = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 _LOGIN_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}')
 _ACCOUNT_RE = re.compile(r'account\s+([A-Za-z0-9][A-Za-z0-9_.-]{0,62})', re.I)

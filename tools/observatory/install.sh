@@ -35,6 +35,10 @@ for file in observer.py operator_ops.py presence_view.py progress.py forecast_mo
 done
 install -m 600 "$SOURCE_DIR/provider_accounts.py" "$TARGET/provider_accounts.py"
 install -m 600 "$PROVIDER_RUNTIME" "$TARGET/provider_runtime.py"
+# provider_runtime imports this sibling when the optional Hermes backend is
+# registered; copy it when present so standalone installs keep loading.
+HERMES_RUNTIME="$SOURCE_DIR/../../nova3_team/hermes_runtime.py"
+[[ -f "$HERMES_RUNTIME" ]] && install -m 600 "$HERMES_RUNTIME" "$TARGET/hermes_runtime.py"
 install -m 600 "$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"
 install -m 600 "$HISTORICAL_GUIDE" "$TARGET/HISTORICAL_TOOLCHAIN.md"
 install -m 600 "$LIVE_GUIDE" "$TARGET/OBSERVATORY_LIVE_INTEGRATION.md"
