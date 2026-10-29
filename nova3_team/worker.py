@@ -1,6 +1,7 @@
 """Cross-platform opt-in unattended worker. Runs one sandboxed local CLI at a time."""
 from __future__ import annotations
-import argparse, hashlib, json, os, pathlib, shutil, signal, subprocess, sys, threading, time, uuid
+import argparse, hashlib, json, os, pathlib, re, shutil, signal, subprocess, sys, threading, time, uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache
 from .common import GitHub, lease_active, lease_get, label_names
@@ -8,6 +9,7 @@ from .guard import check as guard_check
 from . import recovery  # NOVA3-DURABLE-RESUME-v1
 from . import reliability  # NOVA3-RELIABILITY-FAILSTOP-v2
 from . import activity_feed
+from .coordinator import EvidenceUnavailable, QueueDecision, build_gate
 from . import provider_runtime
 
 
@@ -290,6 +292,129 @@ def allowed_from_issue(body):
     return []
 
 
+# --- Priority schema (issue #135 regression: malformed Priority killed queue) ---
+# Documented schema: at most one line, exactly `Priority: <decimal integer>`
+# with optional intra-line spaces/tabs after the colon, value 0..999. No
+# suffixes, punctuation, sign, fraction, wrap or extra lines. Missing is
+# 50 by documented default; present-but-invalid is quarantined, never guessed.
+PRIORITY_DEFAULT = 50
+PRIORITY_MAX = 999
+_PRIORITY_LINE = re.compile(r'Priority:[ \t]*([0-9]{1,4})[ \t]*')
+_PRIORITY_PREFIX = re.compile(r'Priority:[ \t]*')
+
+
+@dataclass(frozen=True)
+class Priority:
+    value: int | None
+    error: str | None = None
+
+
+def parse_priority(body):
+    """Strict, deterministic Priority parser. Never raises on task text."""
+    text = body if isinstance(body, str) else ''
+    lines = [line for line in text.splitlines() if _PRIORITY_PREFIX.match(line)]
+    if not lines:
+        return Priority(PRIORITY_DEFAULT)
+    if len(lines) > 1:
+        return Priority(None, 'duplicate')
+    line = lines[0]
+    match = _PRIORITY_LINE.fullmatch(line)
+    if not match:
+        if _PRIORITY_PREFIX.fullmatch(line):
+            return Priority(None, 'empty_or_wrapped')
+        return Priority(None, 'non_numeric_or_suffixed')
+    value = int(match.group(1))
+    if value > PRIORITY_MAX:
+        return Priority(None, 'out_of_range')
+    return Priority(value)
+
+
+def priority_sort_key(issue, *, claimed=False):
+    """Total order that is safe for malformed bodies (validated upstream)."""
+    priority = parse_priority(issue.get('body', ''))
+    value = priority.value if priority.value is not None else PRIORITY_DEFAULT
+    return (0 if claimed else 1, -value, issue.get('number', 0))
+
+
+def quarantine_priority(gh, root, issue, reason):
+    """Skip one malformed task with one concise diagnostic; never launch AI."""
+    number = issue.get('number')
+    digest = hashlib.sha256((str(reason) + '\0' + str(issue.get('body') or '')).encode('utf-8')).hexdigest()[:16]
+    previous = recovery.load(root, number)
+    if previous.get('priority_diagnostic') == digest:
+        note(f'Skipping #{number}: Priority {reason} (diagnostic already posted)')
+        return False
+    recovery.update(root, number, priority_error=reason, priority_diagnostic=digest,
+                    retry_after=int(time.time()) + 86400, phase='blocked')
+    note(f'QUARANTINED #{number}: malformed Priority ({reason}); no AI session will start. '
+         'Expected exactly one line "Priority: <integer 0-999>".')
+    try:
+        gh.comment(number, (
+            f'⚠️ NOVA3 worker skipped #{number} without starting an AI session: `Priority:` is '
+            f'invalid (`{reason}`). Expected exactly one line `Priority: <integer 0-999>`; '
+            f'suffixes, punctuation, signs, fractions, wrapping and duplicate lines are rejected. '
+            f'An owner/admin should correct the task body and requeue it.'))
+    except Exception as exc:
+        note(f'WARN #{number}: could not post Priority diagnostic: {type(exc).__name__}')
+    return False
+
+
+def admit_queue(gate, issues, root):
+    """Filter the queue BEFORE any provider launch; never guess authorization."""
+    admitted = []
+    for issue in issues:
+        if gate is None:
+            note(f'Skipping #{issue["number"]}: owner/admin approval gate unavailable')
+            continue
+        decision = gate.verify(issue)
+        if not decision.allowed:
+            previous = recovery.load(root, issue['number'])
+            if previous.get('admission_reason') != decision.reason:
+                recovery.update(root, issue['number'], admission_reason=decision.reason,
+                                retry_after=int(time.time()) + 3600)
+            note(f'Skipping #{issue["number"]}: queue admission denied ({decision.reason}); '
+                 'no AI session will start. See docs/progress/OWNER_APPROVAL_GATE.md')
+            continue
+        recovery.update(root, issue['number'], approval_id=decision.approval_id,
+                        approval_binding=decision.binding,
+                        task_text_sha256=decision.task_text_sha256,
+                        approved_updated_at=decision.approved_updated_at)
+        admitted.append(issue)
+    return admitted
+
+
+def revalidate_before_publish(gh, gate, number, *, allow_legacy_publish=False):
+    """Recheck owner approval immediately before pushing/opening a PR."""
+    issue = gh.issue(number)
+    lease = lease_get(issue.get('body'))
+    if not lease_active(lease):
+        # The claim was lost/expired; another worker may own the task now.
+        return QueueDecision(False, 'lease_inactive')
+    return gate.revalidate(issue, lease, allow_legacy_publish=allow_legacy_publish)
+
+
+def record_worker_failure(root, code, cause):
+    """Preserve the deliberate exit cause instead of systemd start-limit-hit."""
+    cause = provider_runtime.redact_diagnostic(str(cause))[:500]
+    payload = {'exit_code': int(code), 'cause': cause,
+               'at': datetime.now(timezone.utc).isoformat(timespec='seconds')}
+    try:
+        path = pathlib.Path(root)/'worker-failure.json'
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp = path.with_name(path.name + '.tmp')
+        tmp.write_text(json.dumps(payload, indent=2), encoding='utf-8')
+        os.replace(tmp, path)
+    except OSError:
+        pass
+    note(f'WORKER EXIT {int(code)}: {cause}')
+    return payload
+
+
+def stop_worker(root, code, cause):
+    record_worker_failure(root, code, cause)
+    raise SystemExit(int(code))
+
+
 def changed_paths(work):
     # NOVA3_CHANGED_FILE_ENUMERATION_V2: git status -uall gives leaf files.
     # This prevents untracked directories from failing valid task scopes.
@@ -473,7 +598,7 @@ def pause_failed_task(gh, root, number, token, provider, user, error):
     return False
 
 
-def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_status=None):
+def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_status=None,gate=None):
     n=issue['number']
     prior=recovery.load(root,n)
     token=claim(gh,issue,user,saved=prior)
@@ -570,6 +695,16 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
         current=recovery.load(root,n)
         verified=current.get('verified',False)
         checklog=current.get('checklog','No verification run')
+        if gate is not None and current.get('phase') in ('committed','pushed'):
+            # Revalidate owner/admin approval with fresh evidence immediately
+            # before any push or PR; never publish unapproved work. The explicit
+            # legacy allowance publishes work already committed before this gate
+            # shipped and cannot start new AI sessions.
+            approval = revalidate_before_publish(gh,gate,n,allow_legacy_publish=True)
+            if not approval.allowed:
+                return pause_failed_task(
+                    gh,root,n,token,provider,user,
+                    RuntimeError(f'Owner approval no longer valid before publish: {approval.reason}'))
         if current.get('phase')=='committed':
             git(work,'push','-u','origin',branch)
             recovery.update(root,n,phase='pushed')
@@ -726,6 +861,14 @@ def main():
             except OSError:
                 pass
     root=pathlib.Path.home()/'.cache'/'nova3-team'/upstream.replace('/','_')
+    gate=None
+    if args.command=='run':
+        try:
+            gate=build_gate(gh)
+        except EvidenceUnavailable as exc:
+            # Fail closed: without a verified owner/admin queue gate the worker
+            # must not launch paid AI sessions on arbitrary queued input.
+            stop_worker(root,6,f'owner/admin approval gate unavailable: {exc}')
     attempt=0
     consecutive_failures=0
     coordinator_failures=0
@@ -744,6 +887,18 @@ def main():
                             and lease.get('token')==previous.get('token')):
                         issues.append(i)
             issues=[i for i in issues if float(recovery.load(root,i['number']).get('retry_after',0))<=time.time()]
+            # Malformed Priority quarantines only that task; the queue continues.
+            valid=[]
+            for i in issues:
+                priority=parse_priority(i.get('body',''))
+                if priority.error:
+                    quarantine_priority(gh,root,i,priority.error)
+                    continue
+                valid.append(i)
+            issues=valid
+            # Owner/admin approval is checked before reference scoping, sorting
+            # or any provider launch. Unapproved tasks never spend AI tokens.
+            issues=admit_queue(gate,issues,root)
             # Only machines holding local originals can meaningfully reconstruct
             # function-address tasks. Everyone can still contribute other code.
             if not args.binary_root:
@@ -751,7 +906,7 @@ def main():
                 if needs_ref:
                     note(f'Skipping {len(needs_ref)} reference-only tasks: no local original ELF; other contributors may claim them')
                     issues=[i for i in issues if i not in needs_ref]
-            issues.sort(key=lambda i:(0 if 'nova:claimed' in label_names(i) else 1,-int(next((line.split(':',1)[1].strip() for line in i.get('body','').splitlines() if line.startswith('Priority:')),'50')),i['number']))
+            issues.sort(key=lambda i: priority_sort_key(i, claimed='nova:claimed' in label_names(i)))
             if not issues:
                 note('No queued tasks. Polling again.')
                 _kick_local_discovery_if_due()
@@ -759,7 +914,7 @@ def main():
                 for issue in issues[:8]:
                     note(f'Trying #{issue["number"]}: {issue["title"]}')
                     result=work_one(gh,upstream,user,issue,args.provider,root,args.rounds,args.binary_root,
-                                    provider_status=ready)
+                                    provider_status=ready,gate=gate)
                     # An unresponsive GitHub/API setup must not burn hours or tokens.
                     if result is True:
                         consecutive_failures=0
@@ -768,25 +923,25 @@ def main():
                     if result is None:
                         unclaimed_attempts+=1
                         if unclaimed_attempts>=3:
-                            note('ALERT WORKER STOPPED: 3 task claims were not granted. '
-                                 'Check GitHub Actions coordinator permissions and task leases.')
-                            raise SystemExit(4)
+                            stop_worker(root,4,
+                                '3 task claims were not granted. Check GitHub Actions coordinator '
+                                'permissions, the owner/admin approval locator and task leases.')
                     if result is False:
                         consecutive_failures+=1
                         if consecutive_failures>=3:
-                            note('ALERT WORKER STOPPED: 3 consecutive task failures. '
-                                 'Check nova:blocked/attention tasks on the GitHub status issue. '
-                                 'Checkouts retained. Fix the shared cause before relaunching.')
-                            raise SystemExit(3)
+                            stop_worker(root,3,
+                                '3 consecutive task failures. Check nova:blocked/attention tasks '
+                                'on the GitHub status issue; checkouts retained. Fix the shared '
+                                'cause before relaunching.')
         except KeyboardInterrupt:
             raise
         except Exception as e:
             coordinator_failures+=1
             note(f'Coordinator/worker failure {coordinator_failures}/3: {e}')
             if coordinator_failures>=3:
-                note('ALERT WORKER STOPPED: repeated coordinator/API failures. '
-                     'No additional AI will launch until the configuration is fixed.')
-                raise SystemExit(5)
+                stop_worker(root,5,
+                    f'repeated coordinator/API failures: {type(e).__name__}: {e}. '
+                    'No additional AI will launch until the configuration is fixed.')
         else:
             coordinator_failures=0
         attempt+=1

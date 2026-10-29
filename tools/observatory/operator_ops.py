@@ -18,7 +18,10 @@ import time
 from typing import Callable
 
 REPO_DEFAULT = 'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
-OWNER_ROLES = frozenset({'ADMIN', 'MAINTAIN'})
+# MAINTAIN/WRITE/TRIAGE/READ never confer steering. Organization owners are
+# verified separately below; this set only covers effective repository ADMIN.
+OWNER_ROLES = frozenset({'ADMIN'})
+ORG_OWNER = 'ORG_OWNER'
 UNIT = 'nova3-discovery.timer'
 SERVICE = 'nova3-discovery.service'
 FIELDS = 'number,title,author,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,isDraft,url,reviewDecision,state'
@@ -50,6 +53,17 @@ def viewer() -> str:
         raise CommandFailure('Could not read current GitHub login')
     return name
 
+def viewer_identity() -> dict:
+    """Numeric identity of the authenticated operator (never a local flag)."""
+    raw = gh_json('api','user','--jq','{login:.login,id:.id,type:.type}')
+    if not isinstance(raw,dict):
+        raise CommandFailure('Could not read current GitHub identity')
+    login = raw.get('login')
+    ident = raw.get('id')
+    if not isinstance(login,str) or not login or type(ident) is not int or ident <= 0:
+        raise CommandFailure('GitHub returned an invalid authenticated identity')
+    return {'login': login, 'id': ident, 'type': raw.get('type')}
+
 def repo_permission(repo: str) -> str:
     """Read current authenticated account's *effective* repository role.
 
@@ -64,12 +78,32 @@ def repo_permission(repo: str) -> str:
         raise CommandFailure('GitHub did not return an authenticated repository permission')
     return role
 
+def is_org_owner(repo: str, login: str) -> bool:
+    """Verified current active owner of the organization owning this repository."""
+    if not isinstance(login,str) or not re.fullmatch(r'[A-Za-z0-9-]{1,39}',login):
+        return False
+    owner = repo.split('/',1)[0]
+    try:
+        data = gh_json('api',f'orgs/{owner}/memberships/{login}',
+                       '--jq','{role:.role,state:.state,organization:.organization.login}')
+    except CommandFailure:
+        return False
+    return (isinstance(data,dict) and data.get('state')=='active'
+            and data.get('role')=='admin'
+            and str(data.get('organization','')).casefold()==owner.casefold())
+
 def require_owner_access(repo: str) -> str:
-    """Recheck Github permissions at the operation boundary (fail closed)."""
+    """Recheck GitHub permissions at the operation boundary (fail closed).
+
+    Returns 'ADMIN' or 'ORG_OWNER'. MAINTAIN and every contributor role deny.
+    """
     role = repo_permission(repo)
-    if role not in OWNER_ROLES:
-        raise CommandFailure('Owner operation locked: ADMIN or MAINTAIN repo permission required')
-    return role
+    if role in OWNER_ROLES:
+        return role
+    identity = viewer_identity()
+    if is_org_owner(repo, identity['login']):
+        return ORG_OWNER
+    raise CommandFailure('Owner operation locked: verified repository ADMIN or organization owner required')
 
 def load_pr(repo: str, number: int) -> dict:
     pr = gh_json('pr','view',str(number),'-R',repo,'--json',FIELDS)
@@ -206,6 +240,10 @@ def merge_batch(repo:str, preview:MergePreview,*,wait:int=90,
                     raise CommandFailure('; '.join(problems))
                 sha=str(current['headRefOid'])
                 outcome['checked'].append(number)
+                # Execution-boundary recheck: rendering a preview or waiting for
+                # mergeability may have taken minutes; a role revoked in between
+                # must deny before the first mutating gh command.
+                require_owner_access(repo)
                 # Explicit SHAs protect against a contributor updating the branch mid-merge.
                 run(['gh','pr','merge',str(number),'-R',repo,'--squash','--delete-branch',
                      '--match-head-commit',sha],timeout=90)
