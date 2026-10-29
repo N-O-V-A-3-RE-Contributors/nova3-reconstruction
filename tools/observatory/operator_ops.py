@@ -18,10 +18,12 @@ import time
 from typing import Callable
 
 REPO_DEFAULT = 'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
-# Issue #137 authority: only the authenticated organization owner or repository
-# ADMIN may steer. MAINTAIN/WRITE/TRIAGE/READ are contributor levels.
+# Issue #137/#135 authority: only the authenticated organization owner or
+# repository ADMIN may steer. MAINTAIN/WRITE/TRIAGE/READ are contributor levels
+# and never confer steering.
 OWNER_ROLES = frozenset({'ADMIN'})
 CONTRIBUTOR_ROLES = frozenset({'MAINTAIN', 'WRITE', 'TRIAGE', 'READ'})
+ORG_OWNER = 'ORG_OWNER'
 UNIT = 'nova3-discovery.timer'
 SERVICE = 'nova3-discovery.service'
 FIELDS = 'number,title,author,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,isDraft,url,reviewDecision,state'
@@ -53,6 +55,17 @@ def viewer() -> str:
         raise CommandFailure('Could not read current GitHub login')
     return name
 
+def viewer_identity() -> dict:
+    """Numeric identity of the authenticated operator (never a local flag)."""
+    raw = gh_json('api','user','--jq','{login:.login,id:.id,type:.type}')
+    if not isinstance(raw,dict):
+        raise CommandFailure('Could not read current GitHub identity')
+    login = raw.get('login')
+    ident = raw.get('id')
+    if not isinstance(login,str) or not login or type(ident) is not int or ident <= 0:
+        raise CommandFailure('GitHub returned an invalid authenticated identity')
+    return {'login': login, 'id': ident, 'type': raw.get('type')}
+
 def repo_permission(repo: str) -> str:
     """Read current authenticated account's *effective* repository role.
 
@@ -68,23 +81,41 @@ def repo_permission(repo: str) -> str:
     return role
 
 def org_owner_role(org: str, login: str) -> str:
-    """Return the organization membership role for the authenticated login.
+    """Return ADMIN only for a verified *active* owner of ``org``.
 
-    Failures (not a member, no organization, API error) simply return ANONYMOUS
-    so the caller denies owner operations. No role metadata is trusted from the
-    UI or a local cache.
+    Membership must be active, role admin, and belong to the organization that
+    owns the repository. Failures, pending invitations, members and API errors
+    all return ANONYMOUS so the caller denies owner operations. No role metadata
+    is trusted from the UI or a local cache.
     """
     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', org or '') or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', login or ''):
         raise CommandFailure('Invalid organization or account identifier')
     try:
-        raw = run(['gh', 'api', f'orgs/{org}/memberships/{login}', '--jq', '.role'], timeout=8).strip()
+        data = gh_json('api', f'orgs/{org}/memberships/{login}',
+                       '--jq', '{role:.role,state:.state,organization:.organization.login}',
+                       timeout=8)
     except CommandFailure:
         return 'ANONYMOUS'
-    try:
-        value = json.loads(raw)
-    except (ValueError, TypeError):
-        value = raw.strip('"')
-    return str(value).upper() if str(value).lower() in ('admin', 'member', 'billing_manager') else 'ANONYMOUS'
+    if not isinstance(data, dict):
+        return 'ANONYMOUS'
+    organization = str(data.get('organization') or '')
+    if (str(data.get('state', '')).lower() == 'active'
+            and str(data.get('role', '')).lower() == 'admin'
+            and organization.casefold() == org.casefold()):
+        return 'ADMIN'
+    return 'ANONYMOUS'
+
+
+def verified_login() -> str:
+    """Login of the authenticated account after numeric-identity validation."""
+    return viewer_identity()['login']
+
+
+def is_org_owner(repo: str, login: str) -> bool:
+    """Verified current active owner of the organization owning this repository."""
+    if not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', login):
+        return False
+    return org_owner_role(repo.split('/', 1)[0], login) == 'ADMIN'
 
 
 def owner_access(repo: str, *, permission_reader: Callable[[str], str] | None = None,
@@ -101,7 +132,7 @@ def owner_access(repo: str, *, permission_reader: Callable[[str], str] | None = 
                 'organization_owner': False, 'source': 'validation',
                 'reason': 'Invalid repository identifier'}
     permission_reader = permission_reader or repo_permission
-    account_reader = account_reader or viewer
+    account_reader = account_reader or verified_login
     org_reader = org_reader or org_owner_role
     try:
         role = str(permission_reader(repo) or 'UNKNOWN').upper()
@@ -133,11 +164,14 @@ def owner_access(repo: str, *, permission_reader: Callable[[str], str] | None = 
 
 
 def require_owner_access(repo: str) -> str:
-    """Recheck owner/admin authority at the operation boundary (fail closed)."""
+    """Recheck owner/admin authority at the operation boundary (fail closed).
+
+    Returns 'ADMIN' or 'ORG_OWNER'. MAINTAIN and every contributor role deny.
+    """
     status = owner_access(repo)
     if not status['allowed']:
         raise CommandFailure('Owner operation locked: ' + status['reason'])
-    return status['role']
+    return ORG_OWNER if status['organization_owner'] else status['role']
 
 def load_pr(repo: str, number: int) -> dict:
     pr = gh_json('pr','view',str(number),'-R',repo,'--json',FIELDS)
@@ -274,6 +308,10 @@ def merge_batch(repo:str, preview:MergePreview,*,wait:int=90,
                     raise CommandFailure('; '.join(problems))
                 sha=str(current['headRefOid'])
                 outcome['checked'].append(number)
+                # Execution-boundary recheck: rendering a preview or waiting for
+                # mergeability may have taken minutes; a role revoked in between
+                # must deny before the first mutating gh command.
+                require_owner_access(repo)
                 # Explicit SHAs protect against a contributor updating the branch mid-merge.
                 run(['gh','pr','merge',str(number),'-R',repo,'--squash','--delete-branch',
                      '--match-head-commit',sha],timeout=90)

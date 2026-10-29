@@ -27,6 +27,7 @@ class OperatorTests(unittest.TestCase):
   self.addCleanup(authorization.stop)
  def test_permission_policy_deny_by_default(self):
   self.assertEqual(ops.OWNER_ROLES, frozenset({'ADMIN'}))
+  self.assertNotIn('MAINTAIN', ops.OWNER_ROLES)
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'READ'}):
    self.assertEqual(ops.repo_permission('Org/repo'),'READ')
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'INVALID'}):
@@ -34,12 +35,72 @@ class OperatorTests(unittest.TestCase):
   with patch.object(ops,'gh_json',return_value={'viewerPermission':'WRITE'}),\
        patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
    with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
- def test_owner_privilege_requires_fresh_gh_role(self):
-  for role in ('ADMIN',):
-   with patch.object(ops,'gh_json',return_value={'viewerPermission':role}),\
+
+ def _auth_responses(self, role, *, membership=None, identity=None, fail=False):
+  identity=identity or {'login':'crjase','id':101,'type':'User'}
+  def fake(*args, **kwargs):
+   if fail: raise ops.CommandFailure('GitHub unavailable')
+   if args[:2]==('repo','view'): return {'viewerPermission':role}
+   if args[:2]==('api','user'): return identity
+   if len(args)>1 and str(args[1]).startswith('orgs/'):
+    if membership is None: raise ops.CommandFailure('membership unavailable')
+    return membership
+   raise ops.CommandFailure('unexpected GitHub call')
+  return fake
+
+ def test_maintain_write_triage_read_never_confer_owner_access(self):
+  for role in ('MAINTAIN','WRITE','TRIAGE','READ'):
+   with self.subTest(role=role),\
+        patch.object(ops,'gh_json',side_effect=self._auth_responses(role)),\
         patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
-    self.assertEqual(ops.require_owner_access('Org/repo'),role)
+    with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
+
+ def test_verified_repository_admin_and_org_owner_allowed(self):
+  with patch.object(ops,'gh_json',side_effect=self._auth_responses('ADMIN')),\
+       patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
+   self.assertEqual(ops.require_owner_access('Org/repo'),'ADMIN')
+  owner={'role':'admin','state':'active','organization':'Org'}
+  with patch.object(ops,'gh_json',side_effect=self._auth_responses('READ',membership=owner)),\
+       patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
+   self.assertEqual(ops.require_owner_access('Org/repo'),ops.ORG_OWNER)
+  for membership in ({'role':'member','state':'active','organization':'Org'},
+                     {'role':'admin','state':'pending','organization':'Org'},
+                     {'role':'admin','state':'active','organization':'OtherOrg'},
+                     None):
+   with self.subTest(membership=membership),\
+        patch.object(ops,'gh_json',side_effect=self._auth_responses('MAINTAIN',membership=membership)),\
+        patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
+    with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
+
+ def test_github_failure_and_missing_identity_fail_closed(self):
+  with patch.object(ops,'gh_json',side_effect=self._auth_responses('ADMIN',fail=True)),\
+       patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
+   with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
+  # Invalid numeric identity can never be promoted by a login string.
+  with patch.object(ops,'gh_json',side_effect=self._auth_responses('READ',identity={'login':'crjase','id':None})),\
+       patch.object(ops,'require_owner_access',side_effect=REAL_REQUIRE):
+   with self.assertRaises(ops.CommandFailure):ops.require_owner_access('Org/repo')
+
+ def test_role_revoked_after_preview_blocks_merge_at_execution(self):
+  preview=ops.MergePreview('crjase',{47:pr()})
+  calls=[]
+  def recheck(repo):
+   calls.append(repo)
+   if len(calls)==1: return 'ADMIN'
+   raise ops.CommandFailure('revoked before execution')
+  with patch.object(ops,'require_owner_access',side_effect=recheck),\
+       patch.object(ops,'load_pr',return_value=pr()),\
+       patch.object(ops,'check_state',return_value=('PASS','ok')),\
+       patch.object(ops,'run') as run:
+   result=ops.merge_batch('Org/repo',preview,wait=0)
+  self.assertEqual(result['merged'],[])
+  self.assertIn('revoked before execution',result['skipped'][47])
+  run.assert_not_called()
+  self.assertEqual(len(calls),2)
+
+ def test_owner_privilege_requires_fresh_gh_role(self):
   with self.assertRaises(ops.CommandFailure):ops.repo_permission('../bad')
+
  def test_permission_denial_blocks_merge_before_gh_mutation(self):
   with patch.object(ops,'require_owner_access',side_effect=ops.CommandFailure('denied')),\
        patch.object(ops,'run') as run:
