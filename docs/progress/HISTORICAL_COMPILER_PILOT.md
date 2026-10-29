@@ -1,4 +1,4 @@
-# Historical GCC compile pilot (#104 / #115)
+# Historical GCC compile pilot (#104 / #115 / #117)
 
 The pilot now compiles a separate source-owned C++03, no-argument hypothesis
 for `android_getCpuCount`. **NOT MATCHED**: the local r8e GCC 4.4.3 run on
@@ -154,14 +154,121 @@ frontend gate and flag spelling, four optimization profiles with frame-pointer
 omission compiled with exit 0; all selected `android_getCpuCount`, A32, size 52,
 four relocation sites, `FUNCTION_SIZE_MISMATCH`. Relocation resolution was
 `NOT_ATTEMPTED`; no targets were supplied. Full flags, header/tool pins, object
-hashes and logs remain in ignored `.cache/task115-r8e-cxx03-noarg/report.json`.
+hashes and logs remain in ignored `.cache/task115-r8e-cxx03-noarg/report.json`
+**relative to the retained #115 worker checkout**, not the main project or a
+new worker checkout. Preserve that directory. Only a bounded, read-only listing
+of `115-*` directories under the repository's worker-cache parent is needed
+to locate it; never search the entire home directory.
 The earlier frontend blocker and four rejected `-std=c++03` attempts are also
 retained privately. No original-library execution or behavior comparison ran.
 
-Next bounded task: inspect the candidate's binding/GOT/layout and observed
-reference metadata locally to explain the 52-versus-44 discrepancy. Do not
-invent relocation targets or change globals merely to force a size match.
-Retain the legacy source and both candidates' separate claims. A reviewed
-relocation worksheet and actual candidate link would be additional experiments,
-not prerequisites for this now-working compile gate. No end-to-end game
-functionality or original source equivalence is established by this slice.
+## Structural diagnostic checkpoint #117 (2026-10-29)
+
+The retained owner-local #115 report and four cached candidate objects were
+available and independently checked against the pinned source and Premium
+ELF/window above. No compiler or linker executed during this diagnostic.
+The prior report SHA-256 was
+`0fe82cceedbf3fbe32202c375c053cff93676b9c4582d78c24b6fb1af7bbaecd`.
+Actual structural results for **each of the four profiles**:
+
+| Measurement | Candidate ET_REL | Premium linked window |
+| --- | --- | --- |
+| Function bytes / mode | 52 / A32 | 44 / A32 |
+| Mapping-symbol code extent | 40 bytes | 36 bytes |
+| Mapping-symbol data extent | 12 bytes | 8 bytes |
+| Function relocation sites | 3 `R_ARM_GOT_PREL`, 1 `R_ARM_PLT32` | Original pre-link records UNKNOWN |
+| Expected state/initializer symbol binding | GLOBAL, DEFAULT visibility, undefined | LOCAL, DEFAULT visibility, defined |
+| Expected once-service symbol binding | GLOBAL, DEFAULT visibility, undefined | GLOBAL, DEFAULT visibility, undefined |
+
+The eight-byte gap consists of four extra mapped code bytes and four extra
+mapped data bytes. These are mapping-symbol extents, not decoded instruction
+semantics or proof that all data words serve the same purpose. Exact-name
+symbol metadata does not independently establish the reference's call/data
+edges. Four distinct candidate external symbols remain unresolved. Both ELF
+headers have zero floating-point ABI flag bits; this alone cannot establish
+the complete ABI. The recorded invocations confirm PIC, A32, ARMv7-A, NEON,
+softfp, frame-pointer omission and the four optimization levels described
+above. `-O2`, `-Os`, `-O3` have identical candidate function-code hashes;
+`-O1` differs but has the same size, extents and relocation counts.
+
+**INFERRED hypothesis:** PIC access to externally bound dependencies may
+contribute to the extra code/data compared with local binding. The GOT
+relocations and binding difference support investigating this; they do not
+prove causation or recover the original source declarations. All four
+relocations are outside the existing CALL/REL32 resolver's supported set.
+Applying an invented target map or ignoring those sites would be invalid.
+Root cause remains **UNKNOWN**, source **NOT MATCHED**, relocation resolution
+**NOT_ATTEMPTED**, linked comparison **NOT_PERFORMED**. No flag/visibility
+experiment or change to either source candidate was made in #117.
+
+`python -m nova3_team.gcc_layout_diagnostics` diagnoses one explicitly selected
+cached object at a time. It requires explicit reference/object/source/prior
+report paths and a prior-report SHA pin. It checks the fixed reference
+SHA/window, symbol/section/PT_LOAD mapping, A32/EABI5, source/object pins,
+recorded compiler target/version hashes, complete effective invocation,
+header-manifest consistency and a freshly recomputed raw comparison. Report
+paths are never followed as input paths. Inputs have byte and aggregate
+metadata budgets; malformed relocations, overlapping sites, symlinks and
+special files fail closed. It reuses the existing ELF/comparison readers;
+there is no new disassembler or compiler runner.
+
+Output contains hashes, allowlisted flags, normalized dependency roles,
+structural counts and difference categories. It never serializes raw code,
+assembly, literal values, arbitrary symbol names, private input paths or
+unfiltered prior-report fields. Only a fresh ignored checkout-local `.cache`
+directory is accepted; reports use mode 0600 and their directories 0700.
+Even synthetic equal windows retain the independent NOT MATCHED claims.
+Exit 0 means the diagnostic completed; exit 2 means input rejection.
+
+Actual private reports in the #117 worker checkout are
+`.cache/task117-layout-checked/profile-00/report.json` through
+`.cache/task117-layout-checked/profile-03/report.json`.
+Exact retained input paths are recorded **only locally** in
+`.cache/task117-layout-checked/handoff.json`; private `preflight.json` and
+`fingerprint.json` are alongside it. Do not upload these files. Initial
+diagnostic reports under `.cache/task117-layout-profile-00/` through `-03/`
+were preserved as well.
+
+Owner follow-up from the checkout containing this tool, after setting the
+exact retained #115 directory and Premium path locally:
+
+```bash
+: "${NOVA3_115_CHECKOUT:?set exact retained saved #115 checkout}"
+: "${NOVA3_LOCAL_PREMIUM:?set owner-local Premium ELF path}"
+python -m nova3_team.gcc_layout_diagnostics \
+  --reference "$NOVA3_LOCAL_PREMIUM" \
+  --source reconstruction/research/arm32_cpu_query_gcc443.cpp \
+  --prior-report "$NOVA3_115_CHECKOUT/.cache/task115-r8e-cxx03-noarg/report.json" \
+  --prior-report-sha256 0fe82cceedbf3fbe32202c375c053cff93676b9c4582d78c24b6fb1af7bbaecd \
+  --object "$NOVA3_115_CHECKOUT/.cache/task115-r8e-cxx03-noarg/profile-00/candidate.o" \
+  --profile-index 0 \
+  --out ".cache/task117-layout-followup-$(date +%Y%m%d-%H%M%S)-$$"
+```
+
+Select index 1, 2 or 3 together with its matching object for another profile.
+The next bounded experiment should test one independently reviewed
+dependency-binding hypothesis with explicit source/header/tool pins, then a
+controlled candidate link and relocation worksheet at the original VA.
+Local symbols and hidden external declarations are different hypotheses;
+neither source declarations nor original link transformations are recovered
+by this inventory. Preserve the reference and do not force size equality.
+
+Verification for #117:
+
+```sh
+python -m unittest nova3_team.tests.test_gcc_layout_diagnostics \
+  nova3_team.tests.test_historical_compile_pilot \
+  nova3_team.tests.test_historical_toolchain nova3_team.tests.test_object_compare \
+  nova3_team.tests.test_relocation_probe nova3_team.tests.test_compiler_matrix -q
+python -m nova3_team.gcc_layout_diagnostics --help
+git diff --check
+```
+
+102 tests passed, including 16 diagnostic tests; commands exited zero.
+Synthetic fixtures cover the size gap, mapped extents, GOT/PLT sites,
+unresolved externals, visibility/header differences, stale reports,
+hash/machine/mode/mapping failures, aggregate budgets, private output,
+sanitized errors and false-match prevention. They require no original ELF
+or historical NDK. The four actual local structural runs above are separate
+evidence. Neither test group demonstrates original behavior, instruction
+equality, a linked candidate, full-library equality or gameplay.
