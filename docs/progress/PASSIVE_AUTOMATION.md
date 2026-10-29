@@ -26,6 +26,16 @@ or whole-library equivalence. #99 / PR #100 left historical ARM GCC 4.4.3 and
 its sysroot unavailable. `.comment` strings alone do not establish provenance.
 No historical NDK is installed or executed by this gate.
 
+Task #103 adds [optional compiler candidate onboarding](HISTORICAL_TOOLCHAIN.md)
+to first-run `nova3_easy.py` workers and the Observatory's **H / TOOLCHAIN**
+page. Observers and ordinary host-only tasks need no historical compiler.
+NDK r8e installation is a manual, consented no-sudo step; metadata execution
+requires an explicit compiler SHA pin. `PINNED_VERSION_TARGET_VERIFIED` means
+only candidate GCC 4.4.3/ARM metadata, never source acceptance or original
+compiler proof. Source matching remains NOT PROVEN, independently verified
+original object/source matches remain zero, and #101 remains fail closed.
+No passive queue, automatic merge or evidence promotion is enabled.
+
 ## Read-only interface and trust boundary
 
 ```sh

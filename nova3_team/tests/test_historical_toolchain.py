@@ -5,9 +5,11 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from unittest import mock
+import nova3_easy as easy
 
 from nova3_team import historical_toolchain as ht
 
@@ -328,6 +330,211 @@ class HistoricalToolchainTests(unittest.TestCase):
                                     tools={"readelf": (self.compiler, self.pin)})
         self.assertEqual(report["arm_attributes"]["status"], "OBSERVED_CANDIDATE_ONLY")
         self.assertEqual(report["arm_attributes"]["object_sha256"], ht.file_sha256(obj))
+
+    def test_profile_schema_still_matches_matrix_contract(self):
+        from nova3_team.object_matching import SCHEMA
+        self.assertEqual(ht.MATRIX_PROFILE_SCHEMA, SCHEMA)
+
+    def test_xdg_user_install_discovered_without_executing(self):
+        with mock.patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root / 'data')}, clear=True):
+            ndk = ht.user_local_root()
+            compiler = ndk / 'toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin' / self.compiler.name
+            compiler.parent.mkdir(parents=True)
+            compiler.write_text('inert source-owned fixture')
+            with mock.patch.object(ht.subprocess, 'run') as run:
+                report = ht.onboarding()
+            run.assert_not_called()
+            self.assertIn(str(ndk), report['discovery']['roots'])
+            self.assertEqual(report['status'], 'AVAILABLE_BUT_UNTRUSTED')
+            self.assertIn('/opt/android-ndk-r8e', report['discovery']['roots'])
+        with mock.patch.dict(os.environ, {'XDG_DATA_HOME': 'relative'}):
+            self.assertEqual(ht.user_local_root(), Path.home() / '.local/share/nova3-team/toolchains/android-ndk-r8e')
+
+    def test_custom_environment_root_retains_precedence(self):
+        with mock.patch.dict(os.environ, {'NOVA3_HISTORICAL_TOOLCHAIN_ROOT': str(self.root)}):
+            report = ht.onboarding()
+        self.assertEqual(report['discovery']['roots'][0], str(self.root))
+        self.assertEqual(report['status'], 'AVAILABLE_BUT_UNTRUSTED')
+
+    def test_onboarding_missing_and_hash_only_never_executes(self):
+        with mock.patch.object(ht.subprocess, 'run') as run:
+            missing = ht.onboarding(roots=[self.root / 'absent'])
+            untrusted = ht.onboarding(roots=[self.root], compiler=self.compiler)
+        run.assert_not_called()
+        self.assertEqual(missing['status'], 'MISSING')
+        self.assertTrue(missing['warnings'])
+        self.assertEqual(untrusted['status'], 'AVAILABLE_BUT_UNTRUSTED')
+        self.assertEqual(untrusted['source_matching'], 'NOT_PROVEN')
+
+    def test_explicit_onboarding_pin_verifies_only_metadata(self):
+        with mock.patch.object(ht, 'supported_host', return_value=True), mock.patch.object(ht.subprocess, 'run', side_effect=fake_query):
+            report = ht.onboarding(roots=[self.root], compiler=self.compiler, trusted_sha256=self.pin)
+        self.assertEqual(report['status'], 'PINNED_VERSION_TARGET_VERIFIED')
+        self.assertEqual(report['match_to_original'], 'NOT_MATCHED')
+        self.assertFalse(report['fingerprint']['EXACT_ORIGINAL_COMPILER_PROVEN'])
+
+    def test_onboarding_mismatch_and_host_dependency_failure(self):
+        def wrong(cmd, **kwargs):
+            if cmd[-1] == '-dumpmachine':
+                return subprocess.CompletedProcess(cmd, 0, b'x86_64-linux-gnu\n', b'')
+            return fake_query(cmd, **kwargs)
+        with mock.patch.object(ht, 'supported_host', return_value=True):
+            with mock.patch.object(ht.subprocess, 'run', side_effect=wrong):
+                report = ht.onboarding(roots=[self.root], compiler=self.compiler, trusted_sha256=self.pin)
+            self.assertEqual(report['status'], 'COMPILER_REJECTED')
+            self.assertIn('CONTRADICTORY_TARGET_TRIPLE', report['warnings'][0])
+            for exc in (FileNotFoundError(), PermissionError(), subprocess.TimeoutExpired([], 10)):
+                with mock.patch.object(ht.subprocess, 'run', side_effect=exc):
+                    report = ht.onboarding(roots=[self.root], compiler=self.compiler, trusted_sha256=self.pin)
+                self.assertEqual(report['status'], 'COMPILER_UNUSABLE')
+                self.assertIn('Arch', report['warnings'][0])
+
+    def test_unsupported_hosts_cannot_execute_linux_candidate(self):
+        for system, machine, expected in (('Linux', 'x86_64', True), ('Linux', 'AMD64', True),
+                                          ('Darwin', 'x86_64', False), ('Linux', 'aarch64', False),
+                                          ('Windows', 'AMD64', False), ('Linux', 'i686', False)):
+            with mock.patch.object(ht.platform, 'system', return_value=system), mock.patch.object(ht.platform, 'machine', return_value=machine):
+                self.assertEqual(ht.supported_host(), expected)
+                if not expected:
+                    with mock.patch.object(ht.subprocess, 'run') as run:
+                        report = ht.onboarding(roots=[self.root], compiler=self.compiler, trusted_sha256=self.pin)
+                    self.assertEqual(report['status'], 'UNSUPPORTED_HOST')
+                    run.assert_not_called()
+
+    def test_source_candidate_identity_checked_before_compiler_execution(self):
+        source = self.root / 'candidate.cpp'
+        source.write_text('int source_owned_candidate() { return 42; }\n')
+        pin = ht.file_sha256(source)
+        report = ht.onboarding(roots=[self.root], source=source, source_sha256=pin)
+        self.assertEqual(report['source_candidate'], {'sha256': pin, 'status': 'HASH_CHECKED_ONLY'})
+        source.write_text('changed candidate')
+        with mock.patch.object(ht.subprocess, 'run') as run:
+            with self.assertRaisesRegex(ht.ToolchainError, 'source candidate'):
+                ht.onboarding(compiler=self.compiler, trusted_sha256=self.pin, source=source, source_sha256=pin)
+            run.assert_not_called()
+        with self.assertRaises(ht.ToolchainError):
+            ht.onboarding(source=source)
+
+    def test_compressed_archive_checks_size_signature_md5_and_records_sha(self):
+        # A tiny inert signature fixture exercises IO/digests, not real bzip2/NDK.
+        payload = b'BZh' + b'source-owned archive signature fixture'
+        archive = self.root / 'archive.tar.bz2'
+        archive.write_bytes(payload)
+        with mock.patch.object(ht, 'ARCHIVE_SIZE', len(payload)), mock.patch.object(ht, 'ARCHIVE_MD5', ht.hashlib.md5(payload).hexdigest()):
+            report = ht.verify_archive(archive)
+            self.assertEqual(report['sha256'], ht.digest(payload))
+            self.assertFalse(report['modern_signature_verified'])
+            self.assertEqual(report['source_matching'], 'NOT_PROVEN')
+            with mock.patch.object(ht, 'ARCHIVE_MD5', '0' * 32):
+                with self.assertRaisesRegex(ht.ToolchainError, 'MD5 mismatch'):
+                    ht.verify_archive(archive)
+            archive.write_bytes(b'tar' + payload[3:])
+            with self.assertRaisesRegex(ht.ToolchainError, 'bzip2'):
+                ht.verify_archive(archive)
+        with self.assertRaises(ht.ToolchainError):
+            ht.verify_archive(archive)
+        with self.assertRaises(ht.ToolchainError):
+            ht.verify_archive(self.root)
+
+    def test_cli_onboarding_is_offline_and_errors_are_observable(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, mock.patch.object(ht.subprocess, 'run') as run:
+            self.assertEqual(ht.main(['onboard', '--root', str(self.root / 'missing')]), 0)
+        run.assert_not_called()
+        self.assertEqual(json.loads(out.getvalue())['status'], 'MISSING')
+        with contextlib.redirect_stdout(io.StringIO()) as out, mock.patch.object(ht.subprocess, 'run') as run:
+            self.assertEqual(ht.main(['onboard', '--instructions']), 0)
+        run.assert_not_called()
+        for value in (ht.ARCHIVE_URL, ht.ARCHIVE_MD5, str(ht.ARCHIVE_SIZE), 'NOT PROVEN', '4.4.3'):
+            self.assertIn(value, out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(ht.main(['onboard', '--trusted-sha256', self.pin]), 2)
+            self.assertEqual(ht.main(['verify-archive', str(self.compiler)]), 2)
+        self.assertIn('exact compressed byte count', err.getvalue())
+        with mock.patch.object(ht, 'supported_host', return_value=True), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(ht.main(['onboard', '--root', str(self.root), '--compiler', str(self.compiler), '--trusted-sha256', '0' * 64]), 2)
+        self.assertEqual(json.loads(out.getvalue())['status'], 'COMPILER_UNUSABLE')
+
+    def test_launcher_skip_decline_noninteractive_and_seen_do_not_install(self):
+        for choice, interactive in (('skip', True), (None, True), (None, False)):
+            cfg = {}
+            with contextlib.redirect_stdout(io.StringIO()) as out, mock.patch.object(easy.sys.stdin, 'isatty', return_value=interactive), mock.patch.object(easy, 'ask', return_value=False) as ask, mock.patch.object(ht.subprocess, 'run') as run:
+                easy.historical_onboarding(cfg, choice)
+            run.assert_not_called()
+            if choice == 'skip' or not interactive:
+                ask.assert_not_called()
+            self.assertTrue(cfg['historical_onboarding_seen'])
+            self.assertIn('skipped', out.getvalue())
+        with mock.patch.object(ht, 'onboarding') as check:
+            easy.historical_onboarding({'historical_onboarding_seen': True})
+        check.assert_not_called()
+
+    def test_launcher_opt_in_and_cli_instructions_never_install(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out, mock.patch.object(easy, 'ask', return_value=True), mock.patch.object(easy.sys.stdin, 'isatty', return_value=True), mock.patch.object(easy, 'command') as command:
+            easy.historical_onboarding({})
+            self.assertEqual(easy.main(['--historical-toolchain', 'instructions']), 0)
+        command.assert_not_called()
+        self.assertIn(ht.ARCHIVE_URL, out.getvalue())
+
+    def test_first_worker_run_offers_onboarding_and_still_launches_when_declined(self):
+        cfg = {'repo': 'X/Y', 'provider': 'codex'}
+        with contextlib.ExitStack() as stack:
+            for name, result in (('load_config', cfg), ('ensure_dependencies', None),
+                                 ('github_login', 'gh'), ('resolve_repo', 'X/Y'),
+                                 ('workdir', self.root), ('prepare_checkout', self.root),
+                                 ('local_identity', None), ('select_provider', 'codex'),
+                                 ('exe', '/fixture/codex'), ('provider_login', None),
+                                 ('save_config', None), ('python_command', ['python3'])):
+                stack.enter_context(mock.patch.object(easy, name, return_value=result))
+            stack.enter_context(mock.patch.object(easy.sys.stdin, 'isatty', return_value=True))
+            ask = stack.enter_context(mock.patch.object(easy, 'ask', return_value=False))
+            command = stack.enter_context(mock.patch.object(easy, 'command', return_value=subprocess.CompletedProcess([], 0)))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            self.assertEqual(easy.main(['--repo', 'X/Y', '--once']), 0)
+        ask.assert_called_once()
+        self.assertIn('GCC 4.4.3', ask.call_args.args[0])
+        self.assertTrue(cfg['historical_onboarding_seen'])
+        self.assertIn('nova3_team.worker', command.call_args.args[0])
+
+    def test_documented_extraction_recipe_is_guarded_with_source_owned_archives(self):
+        if not hasattr(tarfile, 'data_filter'):
+            self.skipTest('Guarded manual extraction requires updated Python tarfile.data_filter')
+        guide = Path(__file__).resolve().parents[2] / 'docs/progress/HISTORICAL_TOOLCHAIN.md'
+        recipe = guide.read_text().split("python3 - <<'PY'\n", 1)[1].split('\nPY\n', 1)[0]
+        archive = self.root / 'source-owned-fixture.tar.bz2'
+        target = self.root / 'user/ndk'
+
+        def extract():
+            with mock.patch.dict(os.environ, {'NOVA3_NDK_ARCHIVE': str(archive)}), mock.patch.object(ht, 'verify_archive', return_value={'status': 'SOURCE_OWNED_TEST_FIXTURE'}) as verify, mock.patch.object(ht, 'user_local_root', return_value=target), contextlib.redirect_stdout(io.StringIO()):
+                exec(compile(recipe, 'documented-extraction', 'exec'), {})
+            verify.assert_called_once_with(archive.resolve())
+
+        def bundle(name, link=None):
+            with tarfile.open(archive, 'w:bz2') as stream:
+                member = tarfile.TarInfo(name)
+                if link is not None:
+                    member.type = tarfile.SYMTYPE
+                    member.linkname = link
+                    stream.addfile(member)
+                else:
+                    payload = b'inert source-owned fixture'
+                    member.size = len(payload)
+                    stream.addfile(member, io.BytesIO(payload))
+
+        # A link inside staging but outside the eventual NDK root must fail too.
+        for name, link in (('outside/file', None), ('android-ndk-r8e/../outside', None),
+                           ('android-ndk-r8e/link', '../outside'),
+                           ('android-ndk-r8e/link', '/tmp/outside')):
+            bundle(name, link)
+            with self.assertRaises(tarfile.FilterError):
+                extract()
+            self.assertFalse(target.exists())
+            self.assertEqual(list(target.parent.glob('.r8e-staging-*')), [])
+        bundle('android-ndk-r8e/readme.txt')
+        extract()
+        self.assertEqual((target / 'readme.txt').read_bytes(), b'inert source-owned fixture')
+        with self.assertRaisesRegex(SystemExit, 'Existing NDK target'):
+            extract()
+        self.assertTrue(archive.is_file())
 
 
 if __name__ == "__main__":

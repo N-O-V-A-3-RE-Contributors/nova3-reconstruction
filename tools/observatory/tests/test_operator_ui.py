@@ -25,7 +25,7 @@ class Tests(unittest.TestCase):
   self.assertEqual(ui.tab,0)
   self.assertIn('LOCKED',ui.notice)
   ui.handle(ord('?'))
-  self.assertEqual(ui.tab,11)
+  self.assertEqual(ui.tab,len(o.TABS)-1)
  def test_owner_can_open_owner_tab(self):
   _,ui=self.make(owner=True)
   ui.handle(ord('0'))

@@ -23,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import textwrap
 import webbrowser
 from typing import Any
 # Load the bundled module relative to this script even when unittest imports
@@ -81,7 +82,37 @@ MAX_ISSUES = 1000
 MAX_PRS = 500
 MAX_RUNS = 80
 MINUTES_PER_TASK = {"fast": 35, "likely": 90, "slow": 210}
-TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "HELP"]
+TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "HELP"]
+
+
+def toolchain_module():
+    """Load the same offline discovery helper in a checkout or standalone install."""
+    here = Path(__file__).resolve()
+    for path in (here.parent / 'historical_toolchain.py',
+                 here.parents[2] / 'nova3_team/historical_toolchain.py'):
+        if path.is_file():
+            spec = _importlib_util.spec_from_file_location('nova3_observer_toolchain', path)
+            if spec is not None and spec.loader is not None:
+                module = _importlib_util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                return module
+    raise ImportError('Optional historical toolchain helper missing; reinstall Observatory from the checkout.')
+
+
+def historical_setup_text() -> str:
+    """No metadata execution, downloads, collector or GitHub calls."""
+    try:
+        helper = toolchain_module()
+        report = helper.onboarding()
+        warnings = '\n'.join(report['warnings'])
+        guide = Path(__file__).resolve().parent / 'HISTORICAL_TOOLCHAIN.md'
+        guide_notice = ('\nBundled extraction/pilot guide: ' + str(guide) + '\n') if guide.is_file() else ''
+        return ('Compiler status: ' + report['status'] + '\n' + warnings + '\n' +
+                helper.setup_instructions() + guide_notice)
+    except (ImportError, OSError, ValueError) as exc:
+        return ('Optional compiler setup unavailable: ' + type(exc).__name__ +
+                '\nRead-only observer remains available. Reinstall Observatory from the checkout.\n'
+                'Source matching NOT PROVEN; no compiler is required to watch tasks.')
 
 
 def dt(raw: Any) -> datetime | None:
@@ -1011,6 +1042,8 @@ class Observatory:
                 self.draw_operator_locked(6, bottom, w)
         elif self.tab == 10:
             self.draw_workers(6, bottom, w)
+        elif self.tab == 11:
+            self.draw_toolchain(6, bottom, w)
         else:
             self.draw_help(6, bottom, w)
         self.put(h-3, 0, "─"*(w-1), "muted")
@@ -1018,9 +1051,9 @@ class Observatory:
         gh_txt = "LIVE" if gh_ok else ("CACHED" if self.snap.github_updated else "OFFLINE")
         bottom_left = f" GitHub {gh_txt} · {refreshed}  │  systemd {health}  │  workers(plan) {self.workers} "
         self.put(h-2, 1, bottom_left, "yellow" if not gh_ok else "muted", w-3)
-        foot = (" TAB / 1-9 pages  W workers  0 owner ops  G sync  ? help  Q quit "
+        foot = (" TAB / 1-9 pages  W workers  H toolchain  0 owner ops  G sync  ? help  Q quit "
                 if self.snap.repo_role in operator_ops.OWNER_ROLES else
-                " TAB / 1-9 pages  W workers  0 owner ops LOCKED  G sync  ? help  Q quit ")
+                " TAB / 1-9 pages  W workers  H toolchain  0 owner ops LOCKED  G sync  ? help  Q quit ")
         self.put(h-1, 1, foot, "muted", w-3)
         if self.notice and time.monotonic() < self.notice_until:
             self.put(h-4, 2, self.notice, "yellow", w-4)
@@ -1361,6 +1394,20 @@ class Observatory:
         for i,msg in enumerate(self.snap.operator_events[-visible:]):
             self.put(y+18+i,4,msg,'red' if any(x in msg for x in ('failed','SKIPPED','ERROR')) else 'muted',w-10)
 
+    def draw_toolchain(self, y, end, w):
+        self.put(y, 3, 'OPTIONAL GCC 4.4.3 CANDIDATE / read-only guidance', 'cyan', w-6)
+        if not hasattr(self, '_toolchain_text'):
+            self._toolchain_text = historical_setup_text()
+        lines = []
+        for line in self._toolchain_text.splitlines():
+            lines.extend(textwrap.wrap(line, max(10, w-8), replace_whitespace=False) or [''])
+        count = max(1, end-y-2)
+        offset = min(self.scroll['toolchain'], max(0, len(lines)-count))
+        self.scroll['toolchain'] = offset
+        for i, line in enumerate(lines[offset:offset+count]):
+            self.put(y+1+i, 4, line, 'normal', w-8)
+        self.put(end, 3, 'Up/Down scroll | V rescan | --toolchain-setup prints copyable commands', 'muted', w-6)
+
     def draw_workers(self, y, end, w):
         self.frame(y, 1, end-y-1, w-3, ' CONTRIBUTOR HEALTH  •  GITHUB SIGNALS / NO CREDENTIAL ACCESS ')
         records=self.snap.worker_presence
@@ -1486,6 +1533,9 @@ class Observatory:
         if key in (ord('w'),ord('W')):
             self.tab = 10
             return True
+        if key in (ord('h'),ord('H')):
+            self.tab = 11
+            return True
         if ord('1') <= key <= ord('9'):
             self.tab = key-ord('1')
             return True
@@ -1567,6 +1617,13 @@ class Observatory:
             self.roadmap_offset=max(0,self.roadmap_offset-1)
         elif self.tab == 8 and key in (curses.KEY_DOWN,ord('j'),ord('J')):
             self.roadmap_offset+=1
+        elif self.tab == 11 and key in (curses.KEY_UP, ord('k'), ord('K')):
+            self.scroll['toolchain'] = max(0, self.scroll['toolchain']-1)
+        elif self.tab == 11 and key in (curses.KEY_DOWN, ord('j'), ord('J')):
+            self.scroll['toolchain'] += 1
+        elif self.tab == 11 and key in (ord('v'), ord('V')):
+            self._toolchain_text = historical_setup_text()
+            self.show_notice('Compiler discovery refreshed; no compiler executed')
         elif key in (ord('+'),ord('=')):
             self.workers = min(32, self.workers+1)
         elif key == ord('-'):
@@ -1647,7 +1704,12 @@ def cli(argv=None):
     p.add_argument("--refresh-seconds", type=int, default=GH_INTERVAL)
     p.add_argument("--demo", action="store_true", help="show clearly synthetic offline data")
     p.add_argument("--once", action="store_true", help="print one snapshot, no terminal UI")
+    p.add_argument("--toolchain-setup", action="store_true",
+                   help="offline optional compiler status/manual recipe; no login, install or compiler execution")
     args=p.parse_args(argv)
+    if args.toolchain_setup:
+        print(historical_setup_text())
+        return 0
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.repo):
         p.error("--repo must be OWNER/REPOSITORY")
     if not re.fullmatch(r"[a-zA-Z0-9@_.-]+\.service", args.service):

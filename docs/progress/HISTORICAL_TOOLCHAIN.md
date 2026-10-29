@@ -1,4 +1,253 @@
-# Task #99: historical ARM GCC provenance gate
+# Historical ARM compiler candidate onboarding (#103)
+
+Optional setup is now offered on the first worker run through `nova3_easy.py`
+and `START-LINUX.sh`. Declining or skipping it permits ordinary host-only tasks.
+The Observatory installer advertises its **H / TOOLCHAIN** page and bundles the
+same offline helper; monitoring requires no compiler, worker, or NDK download.
+The default flow never downloads, extracts, installs or executes GCC.
+
+```sh
+# Offline guidance, before any dependency installation or account login:
+python3 nova3_easy.py --historical-toolchain instructions
+python3 -m nova3_team.historical_toolchain onboard --instructions
+nova3-observer --toolchain-setup
+# Explicitly skip the optional step while starting an ordinary worker:
+bash START-LINUX.sh --historical-toolchain skip
+```
+
+The separate `nova3_start.py` entry point and direct
+`python -m nova3_team.worker run` bypass `nova3_easy.py` onboarding. They are
+outside #103's file allowlist and unchanged. Users of those modes should open
+the offline guidance above; integrating a first-run notice there requires a
+separate narrow change to `nova3_start.py`/`nova3_team/worker.py`.
+
+| Onboarding status | What it establishes |
+| --- | --- |
+| `MISSING` | No compiler found in bounded discovery. Observer/host tasks remain usable. |
+| `AVAILABLE_BUT_UNTRUSTED` | A candidate file was hashed; no execution or version assertion. |
+| `PINNED_VERSION_TARGET_VERIFIED` | Explicit owner-pinned executable returned consistent GCC 4.4.3, ARM target and specs metadata. No build or match. |
+| `COMPILER_REJECTED` | Queried metadata contradicts the candidate version/target or is incomplete. |
+| `COMPILER_UNUSABLE` | Missing/nonexecutable file, changed pin, timeout, or host execution/dependency failure. |
+| `UNSUPPORTED_HOST` | Explicit metadata execution refused outside Linux x86_64. Monitoring still works. |
+
+Every status retains `source_matching: NOT_PROVEN` and
+`match_to_original: NOT_MATCHED`. The legacy inventory has **zero independently
+verified original object/source matches**. `.comment` GCC 4.4.3 strings narrow
+a hypothesis; they do not prove that NDK r8e produced N.O.V.A. 3. No source
+acceptance or #101 evidence-gate policy changed.
+
+## Official archive and manual opt-in (Linux x86_64, no sudo)
+
+Task-supplied upstream provenance, **not fetched in this offline session**:
+
+- [Original Google archive](https://dl.google.com/android/ndk/android-ndk-r8e-linux-x86_64.tar.bz2):
+  `android-ndk-r8e-linux-x86_64.tar.bz2`, **466853553 compressed bytes**.
+- [Historical AOSP publisher record](https://android.googlesource.com/platform/frameworks/base/+/603dbd7^!/),
+  `ndk.linux64_*` fields: publisher MD5 **fa812352956067e7a9eefc0274675e9a**.
+- [Official release history](https://developer.android.com/ndk/downloads/revision_history):
+  r8e, March 2013, Linux 64-bit host package; default GCC **4.6**.
+  Select **arm-linux-androideabi-4.4.3 explicitly**, never default `ndk-build`.
+
+Historical publisher MD5 is **not a modern cryptographic integrity or signature
+guarantee**. Combine the pinned official HTTPS origin, byte count and digest;
+record a local SHA-256 without inventing an authenticated upstream SHA-256.
+The reported uncompressed `.tar` SHA-256 is a different artifact and cannot
+be compared with the compressed original's MD5.
+
+After choosing to obtain the candidate, in a **new private empty directory**:
+
+```sh
+umask 077
+curl --fail --proto '=https' --tlsv1.2 --max-redirs 0 \
+  --output android-ndk-r8e-linux-x86_64.tar.bz2 \
+  'https://dl.google.com/android/ndk/android-ndk-r8e-linux-x86_64.tar.bz2'
+file -- android-ndk-r8e-linux-x86_64.tar.bz2
+wc -c < android-ndk-r8e-linux-x86_64.tar.bz2
+md5sum -- android-ndk-r8e-linux-x86_64.tar.bz2
+sha256sum -- android-ndk-r8e-linux-x86_64.tar.bz2
+```
+
+No redirects, third-party mirrors, `--compressed`, or preexisting download
+destination. Stop on an HTTP error, transformed `.tar`, unexpected size or
+digest. Do not extract a partial download. From the repository, verify the
+absolute archive path and retain stdout privately:
+
+```sh
+export NOVA3_NDK_ARCHIVE=/absolute/path/android-ndk-r8e-linux-x86_64.tar.bz2
+python3 -m nova3_team.historical_toolchain verify-archive "$NOVA3_NDK_ARCHIVE"
+tar -tjf "$NOVA3_NDK_ARCHIVE"
+tar -tvjf "$NOVA3_NDK_ARCHIVE"
+df -h "${XDG_DATA_HOME:-$HOME/.local/share}"
+```
+
+The verifier reads a bounded regular file, checks bzip2 signature, compressed
+size and publisher MD5, and records local SHA-256. It never extracts or runs
+code. It does not authenticate the network origin of a previously supplied
+file or validate the decompressed tar. Review the listing: one
+`android-ndk-r8e/` tree; reject absolute/traversing paths, device entries or
+escaping links. Plan disk space for the archive and unpacked tree, and keep
+the archive until provenance review is complete.
+
+For guarded extraction use updated Python with `tarfile.data_filter`
+(Python 3.12+), from the repository. This owner-run recipe first repeats archive
+validation, refuses an existing final install, extracts into fresh staging with
+the data filter (rejecting escaping links/special files), and only then moves
+the completed tree to the XDG user location. Failure removes staging; the
+download is retained. It does not execute any extracted tool:
+
+```sh
+python3 - <<'PY'
+import os
+from pathlib import Path, PurePosixPath
+import tarfile
+import tempfile
+from nova3_team.historical_toolchain import user_local_root, verify_archive
+
+archive = Path(os.environ['NOVA3_NDK_ARCHIVE']).resolve(strict=True)
+print(verify_archive(archive))
+if not hasattr(tarfile, 'data_filter'):
+    raise SystemExit('Updated Python with tarfile.data_filter required; do not extract unfiltered')
+target = user_local_root()
+if target.exists() or target.is_symlink():
+    raise SystemExit('Existing NDK target: inspect it; do not overwrite')
+target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+with tempfile.TemporaryDirectory(prefix='.r8e-staging-', dir=target.parent) as scratch:
+    with tarfile.open(archive, 'r:bz2') as bundle:
+        def ndk_filter(member, destination):
+            parts = PurePosixPath(member.name).parts
+            if (not parts or parts[0] != 'android-ndk-r8e'
+                    or '..' in parts or PurePosixPath(member.name).is_absolute()):
+                raise tarfile.FilterError('Unexpected NDK archive path')
+            filtered = tarfile.data_filter(member, destination)
+            if filtered.issym() or filtered.islnk():
+                base = ((Path(destination) / filtered.name).parent if filtered.issym()
+                        else Path(destination))
+                link = (base / filtered.linkname).resolve()
+                try:
+                    link.relative_to((Path(destination) / 'android-ndk-r8e').resolve())
+                except ValueError:
+                    raise tarfile.FilterError('Link escapes the final NDK tree')
+            return filtered
+        bundle.extractall(scratch, filter=ndk_filter)
+    tree = Path(scratch) / 'android-ndk-r8e'
+    if tree.is_symlink() or not tree.is_dir():
+        raise SystemExit('Expected real android-ndk-r8e directory')
+    if target.exists() or target.is_symlink():
+        raise SystemExit('Target appeared during extraction; stop')
+    tree.rename(target)
+print('Installed candidate data only:', target)
+PY
+```
+
+No automatic cleanup deletes the archive; remove it manually only after review.
+Keep the historical SDK out of production artifacts and commits. Onboarding
+does not select it as the general CMake compiler or replace any modern NDK.
+
+## Select and validate the candidate before a bounded pilot
+
+Default discovery includes
+`${XDG_DATA_HOME:-$HOME/.local/share}/nova3-team/toolchains/android-ndk-r8e`,
+`/opt/android-ndk-r8e` and existing bounded `/opt` roots. A relative
+`XDG_DATA_HOME` is ignored per XDG rules. `NOVA3_HISTORICAL_TOOLCHAIN_ROOT` has
+first priority; repeated explicit `--root` options restrict discovery. No
+recursive home scan or PATH execution occurs.
+
+```sh
+export NOVA3_HISTORICAL_TOOLCHAIN_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/nova3-team/toolchains/android-ndk-r8e"
+python3 -m nova3_team.historical_toolchain onboard
+export NOVA3_HISTORICAL_CXX="$NOVA3_HISTORICAL_TOOLCHAIN_ROOT/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++"
+file -- "$NOVA3_HISTORICAL_CXX"
+readelf -h -l -d "$NOVA3_HISTORICAL_CXX"
+sha256sum -- "$NOVA3_HISTORICAL_CXX"
+```
+
+Some old packages use `prebuilt/linux-x86` instead: inspect the actual tree
+and host ELF class/loader before selecting it. Discovery recognizes both host
+directories but does not guess that either runs on current Arch. Review
+compiler, cc1plus, assembler and linker dependencies with `file`/`readelf`,
+without running `ldd` on untrusted code. Missing old loaders/libraries call for
+a separately reviewed disposable environment, not arbitrary host packages or
+system changes. A successful driver metadata query does not prove cc1plus or
+the linker works. Missing/nonexecutable drivers, bad pins, execution failures
+and metadata contradictions produce operator-visible statuses/warnings.
+
+After provenance review, explicitly supply the **reviewed compiler SHA** to
+authorize its metadata execution; a freshly computed local hash alone does
+not establish trust. An optional source-owned candidate must also match a
+separately reviewed SHA before any metadata execution:
+
+```sh
+python3 -m nova3_team.historical_toolchain onboard \
+  --compiler "$NOVA3_HISTORICAL_CXX" --trusted-sha256 REVIEWED_COMPILER_SHA256 \
+  --source reconstruction/research/arm32_cpu_query_candidate.cpp \
+  --source-sha256 REVIEWED_SOURCE_SHA256
+```
+
+The compiler gate reuses `fingerprint` and `assess_metadata`: exact GCC 4.4.3
+banner/dumpversion, `arm-linux-androideabi` target, nonempty specs, eight bounded
+metadata queries, sanitized environment and before/after executable SHA checks.
+The optional source identity check is hash-only, not behavior validation.
+`onboard` exits 0 for missing/untrusted optional candidates, 2 for explicit
+compiler rejection/unusable/unsupported-host checks or invalid arguments.
+No trust pin is persisted by the launcher or TUI. Custom roots must be exported
+in the actual worker/service environment; changing another terminal's
+environment does not reconfigure a running service.
+
+Immediate next step: use the existing `fingerprint`/`profiles` flow below,
+review/pin assembler/linker and historical sysroot/header dependencies, and run
+one bounded source-owned compiler pilot. Retain source/reference/compiler and
+object hashes, exact flags, ARM/Thumb identity, errors and mismatches. Compare
+the object and linked instruction window separately, with explicit relocation
+mapping. Keep all original ELF/APK and machine bytes private. **NOT MATCHED**;
+installation and green host tests establish no original match.
+
+## #103 validation / handoff
+
+Validated offline on Python 3.14.8, 2026-10-29:
+
+| Check | Actual result |
+| --- | --- |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s nova3_team/tests -q` | Exit 0, **394 tests passed**, including 39 historical-toolchain tests and the unchanged #101 gate tests. |
+| Observatory `test_toolchain.py`, `test_render.py`, `test_operator_ui.py` via `unittest discover -p` | Exit 0, **4 + 3 + 8 tests passed**; offline CLI, standalone bundle, no compiler/network calls, navigation/scroll/rescan and rendering. |
+| `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/observatory/tests -q` | Exit 1, **78 tests: 76 passed, one failure and one error** in the preexisting `test_discovery_fix` tests; `systemd-analyze verify` is denied sandbox `SO_PASSRIGHTS` / `SO_PASSCRED` socket operations. Same blocker recorded by #101; no unrelated test/implementation repair. |
+| Actual `historical_toolchain onboard`, launcher `--historical-toolchain instructions`, observer `--toolchain-setup` | Exit 0; discovery reported `AVAILABLE_BUT_UNTRUSTED`, `NOT_PROVEN` across 13 roots, without executing a candidate. Both guidance routes work offline. |
+| Launcher `--self-test`, observer `--demo --once`, installer `bash -n`, `git diff --check` | Exit 0. |
+| `python3 -m nova3_team.guard --repo . --all` and explicit guard of the new untracked test | Exit 0, 393 tracked files checked and new test passed. |
+
+New archive tests use tiny inert signature fixtures, never an NDK download.
+Metadata subprocesses are mocked. The documented extraction recipe itself is
+executed only against generated source-owned tar fixtures, with its publisher
+verification mocked: safe extraction succeeds, existing targets are preserved,
+and traversal/escaping links (including links inside staging but outside the
+final NDK root) are rejected with staging cleanup. This does not validate a real
+NDK archive layout. An initial new launcher integration fixture omitted mock
+stdout for familiar-checkout discovery; explicitly selecting its fixture repo
+corrected the test. Final full repository suite passes.
+
+Private local diagnostics:
+`/tmp/nova103-team-tests.log`, `/tmp/nova103-observatory-tests.log`,
+`/tmp/nova103-onboard.json`, `/tmp/nova103-launcher-guide.txt`,
+`/tmp/nova103-observer-guide.txt`. Do not attach raw local discovery paths to
+a PR. No original binaries/assets were needed or modified. No network access,
+packages, sudo, compiler execution, real NDK extraction, GitHub changes or
+source-match promotions occurred. The actual installer was not run because it
+would write outside this checkout and its full suite hits the blocker above.
+
+Handoff: review the ten allowed changed/new files, run the normal Observatory
+suite/installer on a host permitting systemd validation, then deliberately
+follow the manual candidate provenance/install steps above. Independently
+review compiler/binutils pins and sysroot/source hashes before the bounded
+compiler pilot and separate object/linked-window comparisons. Integrating the
+separate launchers requires the narrow follow-up described above. PR creation
+is left to the supervisor under this session's no-GitHub-state constraint.
+Historical compiler and source matching remain **NOT MATCHED**.
+
+---
+
+# Task #99: historical ARM GCC provenance gate (prior offline checkpoint)
+
+The counts and unavailable-checksum statements below describe the earlier
+#99 session, before the task-supplied publisher checksum update above.
 
 2026-10-28. **MISSING_HISTORICAL_COMPILER. Historical GCC NOT MATCHED.**
 The reusable metadata/profile tool and source-only tests are implemented. No
