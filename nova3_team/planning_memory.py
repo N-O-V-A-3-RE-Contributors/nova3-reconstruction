@@ -398,6 +398,14 @@ def _repo_root_default() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _worktree_root(path: Path) -> Path | None:
+    """Nearest ancestor that looks like a Git worktree (has a .git entry)."""
+    for candidate in (path.resolve(), *path.resolve().parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return None
+
+
 def _is_within(path: Path, root: Path) -> bool:
     try:
         path.resolve().relative_to(root.resolve())
@@ -458,6 +466,16 @@ class PlanningMemory:
                 raise PlanningMemoryError(
                     "store-in-repo",
                     "planning memory must live outside the public repository or in a git-ignored path",
+                )
+        # Module-location detection misses an installed copy writing into a real
+        # checkout. Also discover containment from the target's own worktree.
+        toplevel = _worktree_root(target)
+        if toplevel is not None and toplevel != root.resolve():
+            relative = str(target.resolve().relative_to(toplevel)).replace(os.sep, "/")
+            if not (allow_repo_path and _gitignored(relative, toplevel)):
+                raise PlanningMemoryError(
+                    "store-in-repo",
+                    "planning memory must live outside any Git worktree or in a git-ignored path",
                 )
         self.root = target
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -531,10 +549,16 @@ class PlanningMemory:
             self._migrate(conn)
             if snapshot:
                 for envelope in snapshot.get("sessions", []):
+                    # One savepoint per envelope: a failure must not leave a
+                    # partially imported session committed.
+                    conn.execute("SAVEPOINT envelope")
                     try:
                         self._import_conn(conn, envelope, now=stamp, trust_checksum=True)
-                    except PlanningMemoryError:
+                    except (PlanningMemoryError, sqlite3.Error, ValueError, TypeError):
+                        conn.execute("ROLLBACK TO envelope")
+                        conn.execute("RELEASE envelope")
                         continue
+                    conn.execute("RELEASE envelope")
             self._event_conn(conn, None, "database-recovered", {
                 "snapshot_restored": bool(snapshot),
                 "corrupt_backup": f"memory.sqlite3.corrupt-{stamp}",

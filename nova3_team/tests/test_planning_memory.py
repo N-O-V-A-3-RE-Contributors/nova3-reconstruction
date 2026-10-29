@@ -768,6 +768,21 @@ class ContainmentTests(MemoryTestCase):
         self.assertEqual(caught.exception.code, "store-in-repo")
         self.assertFalse((repo / "data" / "memory").exists())
 
+    def test_store_inside_foreign_git_worktree_is_refused(self):
+        # The module may be installed outside the checkout it is about to write
+        # into; containment must also be discovered from the target.
+        repo = self.base / "foreign"
+        (repo / ".git").mkdir(parents=True)
+        (repo / ".gitignore").write_text("/.nova/\n", encoding="utf-8")
+        elsewhere = self.base / "elsewhere"
+        elsewhere.mkdir()
+        with self.assertRaises(pm.PlanningMemoryError) as caught:
+            pm.PlanningMemory(repo / "data" / "memory", repo_root=elsewhere)
+        self.assertEqual(caught.exception.code, "store-in-repo")
+        allowed = pm.PlanningMemory(repo / ".nova" / "memory", repo_root=elsewhere,
+                                    allow_repo_path=True, clock=self.clock)
+        self.assertTrue(allowed.root.is_dir())
+
     def test_gitignored_store_inside_repository_is_allowed(self):
         repo = self.base / "repo"
         (repo / "nova3_team").mkdir(parents=True)
