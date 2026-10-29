@@ -2,10 +2,12 @@
 from __future__ import annotations
 import argparse, hashlib, json, os, pathlib, shutil, signal, subprocess, sys, time, uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 from .common import GitHub, lease_active, lease_get, label_names
 from .guard import check as guard_check
 from . import recovery  # NOVA3-DURABLE-RESUME-v1
 from . import reliability  # NOVA3-RELIABILITY-FAILSTOP-v2
+from . import activity_feed
 
 
 def run(cmd, cwd=None, timeout=90, capture=True, check=True):
@@ -80,12 +82,21 @@ def _stop_provider_group(proc):
             os.killpg(proc.pid, signal.SIGKILL)
 
 
-def run_provider(cmd, cwd, log, timeout):
+def _publish_activity(activity, **kwargs):
+    # Optional local telemetry must never interrupt provider/guard/PR control flow.
+    try:
+        activity.update(**kwargs)
+    except Exception:
+        pass
+
+
+def run_provider(cmd, cwd, log, timeout, activity=None):
     """Stream AI output to a private local file; retain diagnostics on timeout.
 
     subprocess.run(capture_output=True) hid all progress until termination and
     returned empty logs for issue #82's three 30-minute timeouts. This
     implementation exposes only elapsed time/byte counts to worker telemetry.
+    A separate private summary contains allowlisted observational metadata.
     Logs stay in .nova-private and are never attached to GitHub comments.
     """
     log = pathlib.Path(log)
@@ -97,7 +108,12 @@ def run_provider(cmd, cwd, log, timeout):
         os.chmod(log, 0o600)
     settings = {'start_new_session': True} if os.name == 'posix' else {}
     started = time.monotonic()
+    heartbeat_due = started + 60
     timed_out = False
+    if activity is None:
+        structured = cmd[:2] == ['codex', 'exec'] and '--json' in cmd[2:-1]
+        activity = activity_feed.ActivityFeed(log, structured=structured)
+    _publish_activity(activity, force=True)
     try:
         with os.fdopen(descriptor, 'wb') as sink:
             proc = subprocess.Popen(cmd, cwd=cwd, stdout=sink,
@@ -110,18 +126,22 @@ def run_provider(cmd, cwd, log, timeout):
                         _stop_provider_group(proc)
                         break
                     try:
-                        proc.wait(timeout=min(60, remaining))
+                        proc.wait(timeout=min(activity_feed.POLL_SECONDS, remaining))
                         break
                     except subprocess.TimeoutExpired:
-                        elapsed = int(time.monotonic() - started)
-                        if elapsed >= 60:
+                        current = time.monotonic()
+                        _publish_activity(activity)
+                        elapsed = int(current - started)
+                        if current >= heartbeat_due:
                             note(f'AI provider still running: elapsed={elapsed}s; '
                                  f'local_log_bytes={log.stat().st_size}')
+                            heartbeat_due = current + 60
             except BaseException:
                 _stop_provider_group(proc)
                 raise
             sink.flush()
     except BaseException:
+        _publish_activity(activity, force=True, returncode=1)
         # os.fdopen owns descriptor after successful construction. On errors
         # before ownership is transferred, close the raw descriptor safely.
         try:
@@ -129,6 +149,8 @@ def run_provider(cmd, cwd, log, timeout):
         except OSError:
             pass
         raise
+    _publish_activity(activity, force=True,
+                      returncode=124 if timed_out else proc.returncode)
     output = _tail_file(log)
     return subprocess.CompletedProcess(
         cmd, 124 if timed_out else proc.returncode, stdout=output,
@@ -179,9 +201,21 @@ def claim(gh, issue, user, maxwait=100, saved=None):
     return None
 
 
+@lru_cache(maxsize=1)
+def _codex_json_supported():
+    """One bounded local help probe, never launch a model or require a login."""
+    try:
+        cp = subprocess.run(['codex', 'exec', '--help'], capture_output=True,
+                            text=True, timeout=3, check=False)
+        return cp.returncode == 0 and '--json' in (cp.stdout or '').split()
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        return False
+
+
 def command_for(provider,prompt):
     if provider=='codex':
-        return ['codex','exec','--ephemeral','--sandbox','workspace-write',prompt]
+        options = ['--json'] if _codex_json_supported() else []
+        return ['codex','exec','--ephemeral','--sandbox','workspace-write',*options,prompt]
     if provider=='claude':
         # Limit tools to file operations by default. No shell execution is auto-approved.
         return ['claude','-p',prompt,'--max-turns','12','--allowedTools','Read','Edit','Write','Glob','Grep','--output-format','text']
@@ -426,7 +460,10 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                 prompt=session_prompt(issue,k,handoff,allowed,binary_root)
                 cmd=command_for(provider,prompt)
                 note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
-                cp=run_provider(cmd,work,private_round_log(work,k),timeout=ai_session_timeout())
+                log=private_round_log(work,k)
+                structured=provider == 'codex' and '--json' in cmd[2:-1]
+                activity=activity_feed.ActivityFeed(log, structured=structured)
+                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
                 try:
@@ -435,6 +472,8 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                     note(f'WARN #{n}: GitHub activity signal unavailable: {exc}')
                 note(f'#{n} Codex/AI session finished: exit={cp.returncode}; checking changed files')
                 paths=validate_scope(work,allowed)
+                _publish_activity(activity, force=True, returncode=cp.returncode,
+                                  file_changed_count=len(paths))
                 recovery.update(root,n,changed_files=len(paths))
                 handoff=record_handoff(work,k,cmd,cp,paths,streamed=True)
                 recovery.update(root,n,phase='checkpoint',round=k)
