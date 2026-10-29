@@ -383,9 +383,30 @@ def historical_onboarding(cfg, choice=None):
     cfg['historical_onboarding_seen'] = True
 
 
+def launch_browser_gui(a, cfg):
+    """Optional local-only browser onboarding (issue #128).
+
+    Deliberately does not call ensure_dependencies(): the GUI must never run a
+    sudo/package-manager install. It reuses the same provider/worker backends
+    and the same owner/admin gate as the terminal flow.
+    """
+    root = Path(__file__).resolve().parent
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from tools.setup import contributor_desktop
+    py = python_command()
+    return contributor_desktop.run_gui(
+        repo=a.repo or os.environ.get('NOVA3_REPO') or cfg.get('repo') or '',
+        workdir=cfg.get('workdir'),
+        python=py or [sys.executable],
+        open_browser=os.environ.get('NOVA3_GUI_NO_BROWSER', '') != '1')
+
+
 def main(argv=None):
     ap=argparse.ArgumentParser(description='NOVA3 one-click contributor launcher')
     ap.add_argument('--repo',help='Override shared repository (OWNER/REPO)')
+    ap.add_argument('--gui',action='store_true',
+                    help='optional local-only browser onboarding on 127.0.0.1 (no sudo, no remote access)')
     ap.add_argument('--provider',choices=tuple(PACKAGES))
     ap.add_argument('--providers',
                     help='Comma-separated installed/authenticated providers for bounded slots, e.g. codex,claude')
@@ -415,6 +436,10 @@ def main(argv=None):
     add_private_npm_path()
     if sys.platform=='darwin':
         os.environ['PATH']='/opt/homebrew/bin:/usr/local/bin:'+os.environ.get('PATH','')
+    # Issue #128: opt-in loopback browser onboarding. Explicit flag only; the
+    # terminal flow below is unchanged when --gui is absent.
+    if a.gui:
+        return launch_browser_gui(a, cfg)
     msg('NOVA3 distributed reconstruction — first-run setup and worker')
     print('Private GitHub access and one AI account required. No game binaries downloaded.')
     ensure_dependencies()
