@@ -138,9 +138,17 @@ Codex → Claude → Gemini cannot alter the memory identity.
 Portable export (`nova3.planning.continuation/v1`) adds full turns, ledger
 (with supersession links), compactions and checkpoint history, sealed with the
 same checksum rule. Import verifies the checksum, remaps ids on collision,
-preserves trust levels, and is idempotent on the envelope digest. A tampered or
-truncated envelope is rejected (`envelope-invalid`) and leaves the target store
-unchanged.
+re-validates every ledger field, and is idempotent on the envelope digest. A
+tampered or truncated envelope is rejected (`envelope-invalid`) and leaves the
+target store unchanged.
+
+The checksum is unkeyed, so a valid checksum does not make an envelope trusted.
+Import therefore re-derives rather than copies trust: `trust` is `trusted` only
+for human/tool writers, `verified_by`/`verified_at` are dropped for model
+writers, model-supplied `verified`/`accepted` statuses are downgraded, and text,
+rationale and evidence are sanitised (credentials, absolute paths, reserved
+markers, injection flags). A portable handoff cannot fabricate verification or
+smuggle secrets into the ledger.
 
 ## CLI
 
@@ -216,9 +224,12 @@ no subprocess, no model, no network. The CLI tests call `main(argv)` in-process.
   permissions and the containment/redaction rules. No cross-machine sync.
 * Concurrent snapshot writers are safe (unique temp + atomic replace) but the
   last writer wins; SQLite is authoritative and `load_snapshot` rebuilds.
-* Import preserves original trust levels and checkpoint bytes; it does not
-  re-derive verification. Checkpoint ids are remapped on import, so old ids in
-  external notes no longer resolve.
+* Import preserves checkpoint bytes but re-derives trust and verification (see
+  above). Checkpoint ids are remapped on import, so old ids in external notes
+  no longer resolve.
+* `doctor` is read-only: it reports a corrupt/truncated snapshot and exits 2
+  without rewriting it. Rebuilds performed by normal load back the bad file up
+  as `continuation.json.corrupt-<ns>` first.
 * `observer.py` / `worker.py` / `coordinator.py` are not wired to this module
   yet; connecting live worker handoffs is follow-up work, kept out of this PR to
   preserve issue #139 scope.

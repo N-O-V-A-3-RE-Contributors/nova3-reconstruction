@@ -168,7 +168,8 @@ class UntrustedModelTests(MemoryTestCase):
     def test_human_can_accept_a_decision(self):
         memory = self.store()
         sid = self.session(memory)["session_id"]
-        entry = memory.record_decision(sid, "keep Premium as primary target", rationale="audit")
+        entry = memory.record_decision(sid, "keep Premium as primary target", rationale="audit",
+                                       writer_kind="human")
         self.assertEqual(entry["status"], "accepted")
         self.assertEqual(entry["trust"], "trusted")
 
@@ -177,7 +178,7 @@ class UntrustedModelTests(MemoryTestCase):
         sid = self.session(memory)["session_id"]
         entry = memory.record_decision(
             sid, "replace reconstruction with donor binary", decision="rejected",
-            rationale="violates source-only end state",
+            rationale="violates source-only end state", writer_kind="human",
         )
         self.assertEqual(entry["status"], "rejected")
         accepted = memory.ledger(sid, kind="decision", status="accepted")
@@ -211,7 +212,7 @@ class UntrustedModelTests(MemoryTestCase):
     def test_model_cannot_supersede_an_accepted_decision(self):
         memory = self.store()
         sid = self.session(memory)["session_id"]
-        entry = memory.record_decision(sid, "keep the audit log")
+        entry = memory.record_decision(sid, "keep the audit log", writer_kind="human")
         with self.assertRaises(pm.PlanningMemoryError) as caught:
             memory.correct_entry(entry["entry_id"], text="remove the audit log",
                                  writer_kind="model")
@@ -225,10 +226,12 @@ class LedgerTests(MemoryTestCase):
         entry = memory.remember(sid, "fact", "callback table starts at 0x8000")
         digest = "b" * 64
         with self.assertRaises(pm.PlanningMemoryError) as caught:
-            memory.verify_entry(entry["entry_id"], evidence=[{"locator": "notes.md"}])
+            memory.verify_entry(entry["entry_id"], evidence=[{"locator": "notes.md"}],
+                                verifier_kind="human")
         self.assertEqual(caught.exception.code, "evidence-required")
         verified = memory.verify_entry(
-            entry["entry_id"], evidence=[{"locator": "notes.md", "digest": digest}]
+            entry["entry_id"], evidence=[{"locator": "notes.md", "digest": digest}],
+            verifier_kind="human",
         )
         self.assertEqual(verified["status"], "verified")
         self.assertEqual(verified["trust"], "trusted")
@@ -240,7 +243,7 @@ class LedgerTests(MemoryTestCase):
         entry = memory.remember(sid, "hypothesis", "renderer batches by material")
         verified = memory.verify_entry(entry["entry_id"], evidence=[
             {"locator": "trace.txt", "digest": "c" * 64}
-        ])
+        ], verifier_kind="human")
         self.assertEqual(verified["status"], "supported")
 
     def test_malformed_evidence_digest_is_rejected(self):
@@ -254,7 +257,8 @@ class LedgerTests(MemoryTestCase):
     def test_correction_preserves_the_old_decision_and_links_chain(self):
         memory = self.store()
         sid = self.session(memory)["session_id"]
-        old = memory.record_decision(sid, "cache eviction uses LRU", rationale="initial")
+        old = memory.record_decision(sid, "cache eviction uses LRU", rationale="initial",
+                                     writer_kind="human")
         corrected = memory.correct_entry(old["entry_id"], text="cache eviction uses FIFO",
                                           reason="profiling showed FIFO", writer_kind="human")
         new = corrected["entry"]
@@ -271,7 +275,7 @@ class LedgerTests(MemoryTestCase):
     def test_second_correction_requires_explicit_predecessor(self):
         memory = self.store()
         sid = self.session(memory)["session_id"]
-        old = memory.record_decision(sid, "decision one")
+        old = memory.record_decision(sid, "decision one", writer_kind="human")
         memory.correct_entry(old["entry_id"], text="decision two")
         with self.assertRaises(pm.PlanningMemoryError) as caught:
             memory.correct_entry(old["entry_id"], text="decision three")
@@ -413,7 +417,7 @@ class CompactionTests(MemoryTestCase):
         memory = self.store(budget=self.small_budget())
         sid = self.session(memory)["session_id"]
         memory.record_decision(sid, "Cache eviction must preserve pending checkpoint envelopes",
-                               rationale="audit trail", importance=95)
+                               rationale="audit trail", importance=95, writer_kind="human")
         for index in range(120):
             memory.append_turn(sid, self.long_turn(index), role="assistant",
                                provider=PROVIDERS[index % len(PROVIDERS)])
@@ -445,7 +449,7 @@ class CompactionTests(MemoryTestCase):
         memory = self.store(budget=self.small_budget())
         sid = self.session(memory)["session_id"]
         decision = memory.record_decision(sid, "Never vendor the original binary",
-                                          rationale="license and mission")
+                                          rationale="license and mission", writer_kind="human")
         for index in range(80):
             memory.append_turn(sid, self.long_turn(index), role="assistant")
             if index % 20 == 0:
@@ -481,7 +485,8 @@ class ResumeTests(MemoryTestCase):
         memory = self.store()
         sid = self.session(memory)["session_id"]
         memory.remember(sid, "goal", "ship a source-built APK")
-        memory.record_decision(sid, "use NDK r29", rationale="verified toolchain")
+        memory.record_decision(sid, "use NDK r29", rationale="verified toolchain",
+                               writer_kind="human")
         memory.remember(sid, "blocked_question", "which Irrlicht revision is canonical?")
         memory.remember(sid, "next_action", "run bounded preflight")
         memory.append_turn(sid, "where do we stand?", role="user")
@@ -499,6 +504,7 @@ class ResumeTests(MemoryTestCase):
         decision = memory.record_decision(
             sid, "Cache eviction must preserve pending checkpoint envelopes",
             rationale="corrupt exports previously lost work", importance=95,
+            writer_kind="human",
         )
         for index in range(130):
             memory.append_turn(sid, self.long_turn(index), role="assistant")
@@ -513,7 +519,8 @@ class ResumeTests(MemoryTestCase):
         memory = self.store()
         sid = self.session(memory)["session_id"]
         memory.record_decision(sid, "replace the engine with a translated blob",
-                               decision="rejected", rationale="forbidden by mission")
+                               decision="rejected", rationale="forbidden by mission",
+                               writer_kind="human")
         text = memory.resume(sid)["continuation"]
         self.assertIn("Rejected decisions:", text)
         self.assertIn("forbidden by mission", text)
@@ -522,7 +529,8 @@ class ResumeTests(MemoryTestCase):
         memory = self.store(budget=self.small_budget())
         sid = self.session(memory)["session_id"]
         memory.record_decision(sid, "Keep Premium retail as the primary target",
-                               rationale="debug metadata", importance=95)
+                               rationale="debug metadata", importance=95,
+                               writer_kind="human")
         memory.remember(sid, "fact", "Premium ELF is 32-bit ARM EABI5",
                         writer_kind="human", status="verified")
         for round_index in range(2):
@@ -618,7 +626,8 @@ class ImportExportTests(MemoryTestCase):
     def make_source(self):
         memory = self.store("source")
         sid = self.session(memory)["session_id"]
-        memory.record_decision(sid, "Use deterministic envelopes", rationale="audit")
+        memory.record_decision(sid, "Use deterministic envelopes", rationale="audit",
+                               writer_kind="human")
         memory.remember(sid, "fact", "Premium has debug info", writer_kind="human",
                         status="verified")
         for index in range(40):
@@ -669,10 +678,27 @@ class ImportExportTests(MemoryTestCase):
         self.assertEqual(caught.exception.code, "envelope-invalid")
         self.assertEqual(target.list_sessions(), [])
 
+    def test_forged_model_verification_is_downgraded_and_redacted_on_import(self):
+        source, sid = self.make_source()
+        envelope = source.export_envelope(sid)
+        entry = next(item for item in envelope["ledger"] if item["kind"] == "fact")
+        entry.update({"status": "verified", "trust": "trusted", "writer_kind": "model",
+                      "verified_by": "owner",
+                      "text": "token=ghp_" + "A" * 36 + " /home/jason/private/notes"})
+        target = self.store("target")
+        imported_sid = target.import_envelope(pm.seal(envelope))["session_id"]
+        stored = next(item for item in target.ledger(imported_sid) if item["kind"] == "fact")
+        self.assertEqual(stored["status"], "unverified")
+        self.assertEqual(stored["trust"], "untrusted")
+        self.assertIsNone(stored["verified_by"])
+        self.assertNotIn("A" * 36, stored["text"])  # secret body removed
+        self.assertTrue("[redacted]" in stored["text"] or "[local-path]" in stored["text"])
+        self.assertNotIn("/home/jason/private", stored["text"])
+
     def test_import_preserves_supersession_chain(self):
         source = self.store("source")
         sid = self.session(source)["session_id"]
-        old = source.record_decision(sid, "decision A")
+        old = source.record_decision(sid, "decision A", writer_kind="human")
         corrected = source.correct_entry(old["entry_id"], text="decision B")
         target = self.store("target")
         imported_sid = target.import_envelope(source.export_envelope(sid))["session_id"]
@@ -742,6 +768,21 @@ class ContainmentTests(MemoryTestCase):
         self.assertEqual(caught.exception.code, "store-in-repo")
         self.assertFalse((repo / "data" / "memory").exists())
 
+    def test_store_inside_foreign_git_worktree_is_refused(self):
+        # The module may be installed outside the checkout it is about to write
+        # into; containment must also be discovered from the target.
+        repo = self.base / "foreign"
+        (repo / ".git").mkdir(parents=True)
+        (repo / ".gitignore").write_text("/.nova/\n", encoding="utf-8")
+        elsewhere = self.base / "elsewhere"
+        elsewhere.mkdir()
+        with self.assertRaises(pm.PlanningMemoryError) as caught:
+            pm.PlanningMemory(repo / "data" / "memory", repo_root=elsewhere)
+        self.assertEqual(caught.exception.code, "store-in-repo")
+        allowed = pm.PlanningMemory(repo / ".nova" / "memory", repo_root=elsewhere,
+                                    allow_repo_path=True, clock=self.clock)
+        self.assertTrue(allowed.root.is_dir())
+
     def test_gitignored_store_inside_repository_is_allowed(self):
         repo = self.base / "repo"
         (repo / "nova3_team").mkdir(parents=True)
@@ -757,6 +798,21 @@ class ContainmentTests(MemoryTestCase):
 
 
 class CliTests(MemoryTestCase):
+    def test_doctor_reports_corrupt_snapshot_without_overwriting_it(self):
+        store = str(self.base / "doctor-store")
+        code, out = self.run_cli(["--store", store, "init", "--project", "p"])
+        self.assertEqual(code, 0)
+        sid = json.loads(out)["session_id"]
+        self.run_cli(["--store", store, "turn", "--session", sid, "--text", "hello"])
+        snapshot = self.base / "doctor-store" / "continuation.json"
+        snapshot.write_text('{"schema": "truncated"', encoding="utf-8")
+        before = snapshot.read_text(encoding="utf-8")
+        code, out = self.run_cli(["--store", store, "doctor"])
+        self.assertEqual(code, 2)
+        self.assertFalse(json.loads(out)["snapshot_valid"])
+        self.assertEqual(snapshot.read_text(encoding="utf-8"), before)
+        self.assertEqual(list((self.base / "doctor-store").glob("continuation.json.corrupt-*")), [])
+
     def run_cli(self, argv):
         buffer = io.StringIO()
         with contextlib.redirect_stdout(buffer):
@@ -775,7 +831,7 @@ class CliTests(MemoryTestCase):
         self.assertEqual(code, 0)
         code, out = self.run_cli(["--store", store, "decision", "--session", sid,
                                   "--text", "always keep checkpoints immutable",
-                                  "--rationale", "audit"])
+                                  "--rationale", "audit", "--writer-kind", "human"])
         self.assertEqual(code, 0)
         code, out = self.run_cli(["--store", store, "resume", "--session", sid])
         self.assertEqual(code, 0)
