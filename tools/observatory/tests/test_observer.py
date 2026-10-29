@@ -79,18 +79,19 @@ class Tests(unittest.TestCase):
         self.assertEqual(o.median_session_seconds(ev),600)
         self.assertEqual(len(ev['failures']),1)
 
-    def test_eta_assumptions(self):
+    def test_missing_evidence_has_no_assumed_task_rate(self):
         a=o.build_estimates([issue(29),issue(30)],[],{}, {},workers=1)
-        self.assertEqual(a['queue_seconds']['fast'],2*35*60)
-        self.assertEqual(a['queue_seconds']['likely'],2*90*60)
-        self.assertEqual(a['queue_seconds']['slow'],2*210*60)
+        self.assertEqual(a['queue_seconds'], {})
+        self.assertIsNone(a['forecast']['queue']['all_supplied_queue_seconds'])
+        self.assertIn('incomplete_queue_snapshot', a['forecast']['queue']['reasons'])
         self.assertIsNone(a['throughput_seconds'])
 
-    def test_eta_parallelism(self):
+    def test_configured_slots_do_not_create_capacity(self):
         data=[issue(29),issue(30)]
-        one=o.build_estimates(data,[],{}, {},1)
-        two=o.build_estimates(data,[],{}, {},2)
-        self.assertEqual(one['queue_seconds']['likely'],two['queue_seconds']['likely']*2)
+        now=datetime(2026,10,29,tzinfo=timezone.utc)
+        one=o.build_estimates(data,[],{}, {},1, now)
+        two=o.build_estimates(data,[],{}, {},2, now)
+        self.assertEqual(one['forecast']['queue'], two['forecast']['queue'])
 
     def test_coverage_not_conflated_with_merging(self):
         item=issue(29,title='Reconstruct functions 0x00112233, 0x00112244')
@@ -201,12 +202,12 @@ class Tests(unittest.TestCase):
             self.assertEqual(data['issues'],[])
             self.assertEqual(len(data['errors']),1)
 
-    def test_hypothetical_eta_bounds(self):
+    def test_zero_matches_never_extrapolates_whole_game(self):
         inv={'available': True,'count':2400,'integrated':0,'verified':0}
         result=o.build_estimates([],[],inv,{},1)
-        self.assertLess(result['whole_game_seconds']['fast'], result['whole_game_seconds']['likely'])
-        self.assertLess(result['whole_game_seconds']['likely'], result['whole_game_seconds']['slow'])
-        self.assertEqual(result['hypothetical_inventory_coverage']['likely'], .30)
+        self.assertEqual(result['whole_game_seconds'], {})
+        self.assertEqual(result['forecast']['whole_game']['label'], 'UNKNOWN')
+        self.assertIn('zero_verified_original_matches', result['forecast']['whole_game']['reasons'])
 
     def test_health_quiet_long_session(self):
         now=datetime.now(timezone.utc)

@@ -19,6 +19,7 @@ from pathlib import Path
 import queue
 import re
 import statistics
+import stat
 import subprocess
 import sys
 import threading
@@ -50,6 +51,13 @@ if _presence_spec is None or _presence_spec.loader is None:
     raise ImportError('NOVA3 Observatory worker presence viewer missing')
 presence_view = _importlib_util.module_from_spec(_presence_spec)
 _presence_spec.loader.exec_module(presence_view)
+_forecast_spec = _importlib_util.spec_from_file_location(
+    "nova3_private_observer_forecast", Path(__file__).resolve().parent / "forecast_model.py")
+if _forecast_spec is None or _forecast_spec.loader is None:
+    raise ImportError('NOVA3 Observatory forecast model missing; reinstall Observatory')
+forecast_model = _importlib_util.module_from_spec(_forecast_spec)
+sys.modules[_forecast_spec.name] = forecast_model
+_forecast_spec.loader.exec_module(forecast_model)
 
 VERSION = "3.0.0"
 DEFAULT_REPO = "N-O-V-A-3-RE-Contributors/nova3-reconstruction"
@@ -81,8 +89,195 @@ SERVICE_INTERVAL = 6
 MAX_ISSUES = 1000
 MAX_PRS = 500
 MAX_RUNS = 80
-MINUTES_PER_TASK = {"fast": 35, "likely": 90, "slow": 210}
-TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "HELP"]
+TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "ACTIVITY", "HELP"]
+
+# One selected repository, two listing levels, never recursive/home-wide scans.
+ACTIVITY_MAX_ENTRIES = 1024
+ACTIVITY_MAX_CHECKOUTS = 64
+ACTIVITY_MAX_FILES = 128
+ACTIVITY_MAX_BYTES = 8192
+ACTIVITY_MAX_RECORDS = 16
+ACTIVITY_FRESH_SECONDS = 90
+ACTIVITY_KEEP_SECONDS = 7 * 86400
+ACTIVITY_STATUSES = {'UNKNOWN', 'RUNNING', 'TESTING', 'EDITING', 'QUIET', 'FINISHED', 'FAILED'}
+ACTIVITY_CATEGORIES = {'unknown', 'lifecycle', 'error', 'file_change', 'test', 'command', 'message'}
+
+
+def _directory_fd(path: Path) -> int:
+    """Pin every component without following symlinks, including ancestors."""
+    if not path.is_absolute() or '..' in path.parts:
+        raise ValueError('unsafe directory')
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    descriptor = os.open(path.anchor, flags)
+    try:
+        for part in path.parts[1:]:
+            child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def _activity_summary(data: Any, issue: int, round_number: int) -> dict:
+    """Strict projection: no untrusted strings or extra JSON fields escape."""
+    if not isinstance(data, dict) or type(data.get('schema_version')) is not int or data['schema_version'] != 1:
+        raise ValueError('unsupported summary')
+    if data.get('status') not in ACTIVITY_STATUSES or data.get('event_category') not in ACTIVITY_CATEGORIES:
+        raise ValueError('unsupported observation')
+    raw_time = data.get('timestamp_utc')
+    if not isinstance(raw_time, str) or len(raw_time) > 40:
+        raise ValueError('invalid timestamp')
+    timestamp = datetime.fromisoformat(raw_time.replace('Z', '+00:00'))
+    if timestamp.tzinfo is None or timestamp.utcoffset() != timedelta(0):
+        raise ValueError('invalid timestamp')
+    result = {'issue': issue, 'round': round_number, 'timestamp_utc': timestamp.astimezone(timezone.utc).isoformat(),
+              'status': data['status'], 'event_category': data['event_category']}
+    for key in ('counts_complete', 'structured_events'):
+        if type(data.get(key)) is not bool:
+            raise ValueError('invalid flags')
+        result[key] = data[key]
+    for key in ('last_activity_age_seconds', 'commands_started', 'commands_completed',
+                'tests_started', 'tests_completed', 'file_changed_count'):
+        value = data.get(key)
+        if value is None and key in ('last_activity_age_seconds', 'file_changed_count'):
+            result[key] = None
+        elif type(value) is int and 0 <= value <= 10**9:
+            result[key] = value
+        else:
+            raise ValueError('invalid count')
+    if not result['structured_events']:
+        result['event_category'] = 'unknown'
+        if result['status'] not in ('FINISHED', 'FAILED'):
+            result['status'] = 'UNKNOWN'
+    return result
+
+
+def collect_activity(repo: str, *, home: Path | None = None, now: datetime | None = None) -> dict:
+    """Read only worker-produced round-N.activity.json, never raw logs.
+
+    Descriptor-relative opens prevent checkout/file replacement from redirecting
+    reads. Unsupported platforms fail closed. Diagnostics contain fixed labels.
+    Limits cover *all* directory entries, not just matching files.
+    """
+    result = {'records': [], 'state': 'MISSING', 'limited': False, 'rejected': 0}
+    if (not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo)
+            or any(part in ('.', '..') for part in repo.split('/'))):
+        result['state'] = 'UNAVAILABLE'
+        return result
+    if not all(hasattr(os, flag) for flag in ('O_DIRECTORY', 'O_NOFOLLOW', 'O_NONBLOCK')):
+        result['state'] = 'UNAVAILABLE'
+        return result
+    now = now or datetime.now(timezone.utc)
+    base = (home or Path.home()) / '.cache/nova3-team' / repo.replace('/', '_') / '.nova-private'
+    entries = checkouts = files = 0
+    try:
+        base_fd = _directory_fd(base)
+        try:
+            with os.scandir(base_fd) as folders:
+                for folder in folders:
+                    entries += 1
+                    if entries > ACTIVITY_MAX_ENTRIES:
+                        result['limited'] = True
+                        break
+                    match = re.fullmatch(r'([1-9][0-9]{0,8})-[A-Za-z0-9-]{1,80}', folder.name)
+                    if not match:
+                        continue
+                    checkouts += 1
+                    if checkouts > ACTIVITY_MAX_CHECKOUTS:
+                        result['limited'] = True
+                        break
+                    try:
+                        child_fd = os.open(folder.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=base_fd)
+                    except OSError:
+                        result['rejected'] += 1
+                        continue
+                    try:
+                        with os.scandir(child_fd) as summaries:
+                            for entry in summaries:
+                                entries += 1
+                                if entries > ACTIVITY_MAX_ENTRIES:
+                                    result['limited'] = True
+                                    break
+                                round_match = re.fullmatch(r'round-([1-9][0-9]{0,5})\.activity\.json', entry.name)
+                                if not round_match:
+                                    continue
+                                files += 1
+                                if files > ACTIVITY_MAX_FILES:
+                                    result['limited'] = True
+                                    break
+                                try:
+                                    descriptor = os.open(entry.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=child_fd)
+                                    with os.fdopen(descriptor, 'rb') as source:
+                                        info = os.fstat(source.fileno())
+                                        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                                                or info.st_size > ACTIVITY_MAX_BYTES):
+                                            raise ValueError('unsafe summary')
+                                        if now.timestamp() - info.st_mtime > ACTIVITY_KEEP_SECONDS:
+                                            continue
+                                        payload = source.read(ACTIVITY_MAX_BYTES + 1)
+                                    if len(payload) > ACTIVITY_MAX_BYTES:
+                                        raise ValueError('large summary')
+                                    record = _activity_summary(json.loads(payload), int(match[1]), int(round_match[1]))
+                                    age = (now - dt(record['timestamp_utc'])).total_seconds()
+                                    if age > ACTIVITY_KEEP_SECONDS:
+                                        continue
+                                    result['records'].append(record)
+                                    result['records'].sort(key=lambda r: r['timestamp_utc'], reverse=True)
+                                    del result['records'][ACTIVITY_MAX_RECORDS:]
+                                except (OSError, ValueError, TypeError, RecursionError, OverflowError):
+                                    result['rejected'] += 1
+                    finally:
+                        os.close(child_fd)
+                    if result['limited']:
+                        break
+        finally:
+            os.close(base_fd)
+    except FileNotFoundError:
+        return result
+    except (OSError, ValueError):
+        result['state'] = 'UNAVAILABLE'
+        return result
+    result['state'] = 'OBSERVED' if result['records'] else 'UNKNOWN'
+    return result
+
+
+def activity_records(snap, now: datetime | None = None) -> list[dict]:
+    """Re-evaluate freshness on every draw, even if the collector has stalled."""
+    now = now or datetime.now(timezone.utc)
+    issues = {i.get('number'): i for i in snap.issues}
+    newest = {}
+    for record in snap.activity.get('records', []):
+        key = (record['timestamp_utc'], record['round'])
+        newest[record['issue']] = max(newest.get(record['issue'], ('', 0)), key)
+    records = []
+    for raw in snap.activity.get('records', []):
+        item = dict(raw)
+        age = (now - dt(item['timestamp_utc'])).total_seconds()
+        item['fresh'] = 0 <= age <= ACTIVITY_FRESH_SECONDS
+        item['display_status'] = item['status'] if item['fresh'] else 'STALE' if age >= 0 else 'UNKNOWN'
+        issue = issues.get(item['issue'])
+        stage = issue_stage(issue) if issue else 'UNKNOWN'
+        item['task_stage'] = stage
+        past = stage in ('INTEGRATED', 'VERIFIED', 'CLOSED*')
+        superseded = (item['timestamp_utc'], item['round']) != newest[item['issue']]
+        item['task_relation'] = ('SUPERSEDED' if superseded else 'PAST TASK' if past
+                                 else 'TASK UNKNOWN' if issue is None else stage)
+        item['active'] = (item['fresh'] and item['status'] in ('RUNNING', 'TESTING', 'EDITING', 'QUIET')
+                          and stage in ('CLAIMED', 'UNKNOWN') and not past and not superseded)
+        records.append(item)
+    return sorted(records, key=lambda r: (not r['active'], -dt(r['timestamp_utc']).timestamp()))
+
+
+def activity_line(snap, now: datetime | None = None) -> str:
+    records = activity_records(snap, now)
+    if not records:
+        return 'AI UNKNOWN: local feed ' + snap.activity.get('state', 'MISSING') + ' (older/missing provider)'
+    r = records[0]
+    prefix = 'AI observed' if r['active'] else 'AI recent'
+    limit = ' [partial scan]' if snap.activity.get('limited') else ''
+    return f"{prefix} #{r['issue']} r{r['round']} {r['display_status']} / {r['event_category']} ({r['task_relation']}){limit}"
 
 
 def toolchain_module():
@@ -334,92 +529,136 @@ def pr_stats(prs: list[dict], now: datetime | None = None) -> dict:
     }
 
 
-def build_estimates(issues: list[dict], prs: list[dict], inventory: dict, events: dict,
-                    workers: int = 1, now: datetime | None = None) -> dict:
-    """Explicit planning scenarios, not promises or a claimed game completion ETA."""
+def normalized_forecast(snap, now: datetime | None = None):
+    """Adapt observed metadata; absent cohorts/retry histories stay unavailable.
+
+    GitHub list limits cannot prove a complete queue. Issue updatedAt is not a
+    stage start; session exit=0 is not review readiness. Ledger status labels
+    are not reviewed source matching evidence. No such substitutions are made.
+    """
+    f = forecast_model
     now = now or datetime.now(timezone.utc)
-    workers = max(1, min(32, int(workers)))
+    observed = dt(snap.github_updated)
+    observed_at = observed.timestamp() if observed else 0
+    tasks, prs, checks, workers = [], [], [], []
+    stage_map = {'QUEUED': 'queued', 'CLAIMED': 'active', 'REVIEW': 'review',
+                 'BLOCKED': 'blocked', 'INTEGRATED': 'done', 'VERIFIED': 'done'}
+    known = set()
+    for issue in snap.issues[:MAX_PRS]:  # <=1516 model records, including PR/CI/workers
+        number = issue.get('number')
+        if not is_task(issue) or type(number) is not int or number <= 0 or str(number) in known:
+            continue
+        task_id = str(number)
+        known.add(task_id)
+        stage = issue_stage(issue)
+        reasons = []
+        if stage not in stage_map:
+            reasons.append('unreconciled_task_stage')
+        # No current issue contract identifies comparable size/provider cohorts.
+        tasks.append(f.Task(task_id, 'unclassified', kind='unknown',
+                            stage=stage_map.get(stage, 'blocked'), blockers=tuple(reasons)))
+    linked = collections.defaultdict(list)
+    for pr in snap.prs[:MAX_PRS]:
+        refs = {str(i.get('number')) for i in (pr.get('closingIssuesReferences') or [])[:MAX_ISSUES]
+                if isinstance(i, dict)}
+        title_ref = re.match(r'^#([0-9]+)\s*:', pr.get('title') or '')
+        if not refs and title_ref:
+            refs.add(title_ref[1])
+        for task_id in refs & known:
+            linked[task_id].append(pr)
+    for task_id in sorted(known):
+        candidates = linked[task_id]
+        if not candidates:
+            continue
+        # Conflicting open PRs cannot be resolved by guessing the newest title.
+        open_prs = [pr for pr in candidates if pr.get('state') == 'OPEN']
+        if len(open_prs) > 1:
+            continue
+        pr = open_prs[0] if open_prs else max(candidates, key=lambda pr: pr.get('updatedAt') or '')
+        state = 'merged' if pr.get('mergedAt') else 'open' if pr.get('state') == 'OPEN' else 'closed'
+        prs.append(f.PullRequest(task_id, observed_at, state, bool(pr.get('isDraft'))))
+        # Rollup is current-head data, but cannot prove all required checks are
+        # configured/present. Report observed failures/pending, never infer PASS
+        # from a historic workflow listing or an empty/partial green rollup.
+        rollup = pr.get('statusCheckRollup') or []
+        ci_state = 'unknown'
+        if isinstance(rollup, list) and rollup:
+            states = {str(row.get('conclusion') or row.get('state') or row.get('status') or '').upper()
+                      for row in rollup if isinstance(row, dict)}
+            if states & {'FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE'}:
+                ci_state = 'failed'
+            elif states & {'PENDING', 'QUEUED', 'IN_PROGRESS', 'WAITING', 'REQUESTED'}:
+                ci_state = 'pending'
+        checks.append(f.CI(task_id, observed_at, ci_state))
+    for index, record in enumerate(activity_records(snap, now)):
+        task_id = str(record['issue'])
+        if task_id in known:
+            state = 'active' if record['active'] else 'blocked' if record['status'] == 'FAILED' else 'offline'
+            workers.append(f.Worker(f'local-{index}', task_id,
+                                    dt(record['timestamp_utc']).timestamp(), state))
+    matching = f.MatchingEvidence()
+    if snap.inventory.get('available') and snap.inventory.get('verified') == 0:
+        matching = f.MatchingEvidence(verified_original_matches=0,
+                                     verified_count_evidence='local_ledger_reports_zero')
+    return f.Snapshot(now=now.timestamp(), observed_at=observed_at,
+                      scope='bounded GitHub task sample; completeness unverified',
+                      queue_complete=False, tasks=tuple(tasks), prs=tuple(prs), ci=tuple(checks),
+                      workers=tuple(workers), matching=matching)
+
+
+def forecast_lines(report: dict) -> list[str]:
+    """Shared PULSE/FORECAST/text labels from the pure model's result only."""
+    queue = report['queue']
+    values = queue['all_supplied_queue_seconds']
+    estimate = ('UNKNOWN' if values is None else
+                ' / '.join(duration(values[key]) for key in ('p20', 'median', 'p80')))
+    reasons = list(dict.fromkeys(queue['all_supplied_queue_reasons'] + queue['reasons']))
+    match = report['source_matching']
+    lines = [
+        'Whole-game ETA: ' + report['whole_game']['label'],
+        'Queue stage work: ' + estimate,
+        f"Queue samples: {queue['sample_size']} | confidence: {queue['confidence']}",
+        'Setup readiness: ' + report['setup']['state'].upper(),
+        'Queue: ' + (', '.join(reasons) if reasons else queue['state']),
+        f"Blocked tasks: {len(queue['blocked_tasks'])}",
+    ]
+    for task_id, blockers in queue['blocked_tasks'].items():
+        lines.append('#' + task_id + ': ' + ', '.join(blockers))
+    lines.extend([
+        'Scope: ' + queue['scope'],
+        'Setup: ' + (', '.join(report['setup']['reasons']) or 'evidenced milestones only'),
+        'Verified original source matches: ' + (str(match['verified_original_matches'])
+                                              if match['verified_original_matches'] is not None else 'UNKNOWN'),
+        f"Source matching samples: {match['sample_size']} | confidence: {match['confidence']}",
+        'Matching: ' + ', '.join(match['target_reasons']),
+        queue['completion_boundary'],
+        ('Queue history: no qualifying comparable stage samples.' if queue['sample_size'] == 0 else
+         'Queue history: observed comparable stage samples only.'),
+        'PR merges, session exits and host tests do not prove original source matches.',
+    ])
+    return lines
+
+
+def build_estimates(issues: list[dict], prs: list[dict], inventory: dict, events: dict,
+                    workers: int = 1, now: datetime | None = None, *, snapshot=None) -> dict:
+    """Metadata compatibility wrapper; all displayed time estimates use #109."""
+    now = now or datetime.now(timezone.utc)
+    snap = snapshot if snapshot is not None else Snapshot(issues=issues, prs=prs, inventory=inventory)
     counts = task_counts(issues, prs)
-    remaining = sum(counts.get(k, 0) for k in ("QUEUED", "CLAIMED", "REVIEW", "BLOCKED"))
-    stats = pr_stats(prs, now)
-    median_ai = median_session_seconds(events)
-    merged_set = merged_issue_ids(prs)
-    known_tasks = {x["number"]: x for x in issues if is_task(x)}
-    merged_fns = set()
-    discovered = set()
-    for issue in known_tasks.values():
-        addrs = function_addrs(issue.get("title", ""))
-        discovered.update(addrs)
-        if issue.get("number") in merged_set:
-            merged_fns.update(addrs)
-    # No proven function verification is inferred from a PR merge.
-    baseline = MINUTES_PER_TASK.copy()
-    # AI median helps calibrate low-end processing effort, with review/verification allowance.
-    if median_ai is not None:
-        observed_minutes = median_ai / 60
-        baseline["fast"] = max(15, round(observed_minutes * 0.9 + 10))
-        baseline["likely"] = max(30, round(observed_minutes * 1.6 + 35))
-        baseline["slow"] = max(75, round(observed_minutes * 3 + 90))
-    durations = {k: remaining * val * 60 / workers for k, val in baseline.items()}
-    known = inventory.get("count", 0) if inventory.get("available") else 0
-    if known:
-        # Count verified in ledger, or merged code separately; never sum as verified.
-        already_integrated = max(min(known, inventory.get("integrated", 0)), min(known, len(merged_fns)))
-        remaining_fn = max(0, known - already_integrated)
-        # Function clusters are 4 addresses per task in current auto-feed template.
-        remaining_batches = math.ceil(remaining_fn / 4)
-        scope = "local identified function inventory"
-    elif discovered:
-        remaining_fn = max(0, len(discovered) - len(merged_fns))
-        remaining_batches = math.ceil(remaining_fn / 4)
-        scope = "addressed functions in generated GitHub tasks"
-    else:
-        remaining_fn = None
-        remaining_batches = None
-        scope = "not available"
-    function_projection = {k: remaining_batches * val * 60 / workers for k, val in baseline.items()} if remaining_batches is not None else {}
-    # Explicitly speculative game-wide reconstruction scenarios. The known
-    # ledger can be severely incomplete and need not include all libraries.
-    # Coverage fractions are user-visible hypothetical assumptions, not facts.
-    completeness = {"fast": 0.75, "likely": 0.30, "slow": 0.10}
-    if known or discovered:
-        identified = known or len(discovered)
-        completed_known = min(identified, max(inventory.get("integrated", 0), len(merged_fns)))
-        hypothetical_game = {}
-        for mode, fraction in completeness.items():
-            assumed_total = math.ceil(identified / fraction)
-            hypothetical_game[mode] = math.ceil(max(0, assumed_total - completed_known) / 4) * baseline[mode] * 60 / workers
-    else:
-        hypothetical_game = {}
-    # Throughput: don't annualize zero; no model unless merged samples exist.
-    merged = [p for p in prs if dt(p.get("mergedAt"))]
-    observed_rate = None
-    if merged:
-        earliest = min((dt(x.get("createdAt")) for x in issues if dt(x.get("createdAt"))), default=None)
-        if earliest:
-            elapsed_days = max(0.25, (now - earliest).total_seconds() / 86400)
-            observed_rate = len(merged) / elapsed_days
-    throughput_seconds = (remaining / observed_rate * 86400) if observed_rate and remaining else (0 if remaining == 0 else None)
+    discovered = set().union(*(function_addrs(i.get('title', '')) for i in issues if is_task(i)))
+    merged = merged_issue_ids(prs)
+    integrated = set().union(*(function_addrs(i.get('title', '')) for i in issues if i.get('number') in merged))
     return {
-        "workers": workers,
-        "remaining_queue": remaining,
-        "per_task_minutes": baseline,
-        "queue_seconds": durations,
-        "throughput_seconds": throughput_seconds,
-        "empirical_merges_per_day": observed_rate,
-        "functions_scope": scope,
-        "known_functions": known or len(discovered),
-        "integrated_function_addresses": len(merged_fns),
-        "verified_ledger_functions": inventory.get("verified", 0) if inventory.get("available") else None,
-        "function_remaining": remaining_fn,
-        "function_batches": remaining_batches,
-        "function_seconds": function_projection,
-        "whole_game_seconds": hypothetical_game,
-        "hypothetical_inventory_coverage": completeness,
-        "stats": stats,
-        "median_ai_seconds": median_ai,
-        "assumptions": "1 task ≈ 4 identified functions; estimates include allowance for review and integration",
-        "coverage_warning": "Not an ETA for the complete game; inventory completeness is unverified",
+        'forecast': forecast_model.forecast(normalized_forecast(snap, now)),
+        'remaining_queue': sum(counts[k] for k in ('QUEUED', 'CLAIMED', 'REVIEW', 'BLOCKED')),
+        'stats': pr_stats(prs, now), 'median_ai_seconds': median_session_seconds(events),
+        'known_functions': inventory.get('count', 0) if inventory.get('available') else len(discovered),
+        'functions_scope': 'identified boundaries; completeness unverified',
+        'integrated_function_addresses': len(integrated),
+        'verified_ledger_functions': inventory.get('verified') if inventory.get('available') else None,
+        # No speculative legacy caller can accidentally recover a numeric ETA.
+        'queue_seconds': {}, 'function_seconds': {}, 'whole_game_seconds': {},
+        'throughput_seconds': None,
     }
 
 
@@ -473,7 +712,7 @@ def gh_json(args: list[str], timeout: int = 30) -> list | dict:
 
 def gh_collect(repo: str) -> dict:
     issue_fields = "number,title,body,state,labels,createdAt,closedAt,updatedAt,url"
-    pr_fields = "number,title,state,isDraft,createdAt,mergedAt,closedAt,updatedAt,headRefName,baseRefName,url,mergeable,reviewDecision,additions,deletions,changedFiles,closingIssuesReferences"
+    pr_fields = "number,title,state,isDraft,createdAt,mergedAt,closedAt,updatedAt,headRefName,baseRefName,url,mergeable,reviewDecision,additions,deletions,changedFiles,closingIssuesReferences,statusCheckRollup"
     run_fields = "databaseId,workflowName,displayTitle,status,conclusion,createdAt,updatedAt,url,headBranch,event"
     result = {"issues": [], "prs": [], "runs": [], "errors": []}
     commands = (
@@ -563,13 +802,15 @@ class Snapshot:
     presence_updated: str = ''
     presence_error: str = ''
     repo_role: str = 'UNKNOWN'
+    activity: dict = field(default_factory=dict)
 
 
 class Collector:
     def __init__(self, repo: str, root: Path, service: str, state_dir: Path,
-                 *, demo: bool = False, gh_interval: int = GH_INTERVAL):
+                 *, demo: bool = False, gh_interval: int = GH_INTERVAL, offline: bool = False):
         self.repo, self.root, self.service, self.state_dir = repo, root, service, state_dir
         self.demo, self.gh_interval = demo, gh_interval
+        self.offline = offline
         self.lock = threading.RLock()
         self.snapshot = Snapshot()
         self.stop_event = threading.Event()
@@ -580,10 +821,13 @@ class Collector:
         self.mgmt_thread = None
         self.merge_preview = None
         self._load_cache()
+        if not demo:
+            self.snapshot.activity = collect_activity(repo)
         if demo:
             self.snapshot = sample_snapshot()
 
     def _load_cache(self):
+        self.snapshot.inventory = load_inventory(self.root)
         fp = self.state_dir / "snapshot.json"
         try:
             data = json.loads(fp.read_text(encoding="utf-8"))
@@ -591,7 +835,6 @@ class Collector:
                 value = data.get(name)
                 if isinstance(value, type(getattr(self.snapshot, name))):
                     setattr(self.snapshot, name, value)
-            self.snapshot.inventory = load_inventory(self.root)
             self.snapshot.roadmap = progress_map.load_roadmap(self.root)
             self.snapshot.coverage = progress_map.source_map(self.root, self.snapshot.issues, self.snapshot.prs)
         except (OSError, ValueError, TypeError):
@@ -608,9 +851,10 @@ class Collector:
         if self.demo:
             return
         self.log_thread = threading.Thread(target=self._log_loop, daemon=True, name="nova-log-poller")
-        self.gh_thread = threading.Thread(target=self._gh_loop, daemon=True, name="nova-gh-poller")
         self.log_thread.start()
-        self.gh_thread.start()
+        if not self.offline:
+            self.gh_thread = threading.Thread(target=self._gh_loop, daemon=True, name="nova-gh-poller")
+            self.gh_thread.start()
 
     def close(self):
         self.stop_event.set()
@@ -623,6 +867,13 @@ class Collector:
 
     def _log_loop(self):
         while not self.stop_event.is_set():
+            activity = collect_activity(self.repo)
+            if self.offline:
+                with self.lock:
+                    self.snapshot.activity = activity
+                if self.stop_event.wait(LOG_INTERVAL):
+                    break
+                continue
             service = service_collect(self.service)
             logs = journal_collect(self.service)
             try:
@@ -632,6 +883,7 @@ class Collector:
             except (OSError, ValueError, RuntimeError) as exc:
                 discovery, git_state, discovery_logs = {'message': str(exc)}, {'note': str(exc)}, [str(exc)]
             with self.lock:
+                self.snapshot.activity = activity
                 self.snapshot.discovery = discovery
                 self.snapshot.git_alignment = git_state
                 self.snapshot.discovery_logs = discovery_logs
@@ -988,7 +1240,9 @@ class Observatory:
         if h < 18 or w < 72:
             self.put(1, 2, "NOVA3 // OBSERVATORY", "cyan")
             self.put(3, 2, "Terminal too small. Resize to >= 72 x 18.", "yellow")
-            self.put(5, 2, "q to exit. No project files are changed.", "muted")
+            self.put(5, 2, activity_line(self.snap), "cyan", max(0, w-4))
+            self.put(7, 2, "Whole-game ETA: UNKNOWN", "yellow")
+            self.put(9, 2, "q to exit. No project files are changed.", "muted")
             screen.refresh()
             return
         now = datetime.now(timezone.utc)
@@ -999,7 +1253,7 @@ class Observatory:
         gh_ok = bool(self.snap.github_updated) and not self.snap.github_errors
         self.put(1, 2, f"{self.collector.repo} • {'DEMO' if self.collector.demo else 'LIVE READ-ONLY'} • GitHub role {self.snap.repo_role}", "muted", w-4)
         self.put(2, 0, "─" * (w-1), "muted")
-        labels = ['1','2','3','4','5','6','7','8','9','0','W','?']
+        labels = ['1','2','3','4','5','6','7','8','9','0','W','H','A','?']
         lengths = [len(x)+3 for x in TABS]
         if sum(lengths) + 20 < w:
             pos = 2
@@ -1013,7 +1267,7 @@ class Observatory:
         self.put(5, 0, "─" * (w-1), "muted")
         counts = task_counts(self.snap.issues, self.snap.prs)
         events = parse_log_events(self.snap.logs)
-        estimate = build_estimates(self.snap.issues, self.snap.prs, self.snap.inventory, events, self.workers, now)
+        estimate = build_estimates(self.snap.issues, self.snap.prs, self.snap.inventory, events, self.workers, now, snapshot=self.snap)
         health, description = classify_health(self.snap.service,
                                                "; ".join(self.snap.github_errors), counts, events, now)
         bottom = h - 3
@@ -1044,16 +1298,18 @@ class Observatory:
             self.draw_workers(6, bottom, w)
         elif self.tab == 11:
             self.draw_toolchain(6, bottom, w)
+        elif self.tab == 12:
+            self.draw_activity(6, bottom, w)
         else:
             self.draw_help(6, bottom, w)
         self.put(h-3, 0, "─"*(w-1), "muted")
         refreshed = fmt_age(dt(self.snap.github_updated), now)
         gh_txt = "LIVE" if gh_ok else ("CACHED" if self.snap.github_updated else "OFFLINE")
-        bottom_left = f" GitHub {gh_txt} · {refreshed}  │  systemd {health}  │  workers(plan) {self.workers} "
+        bottom_left = f" GitHub {gh_txt} · {refreshed}  │  systemd {health}  │  slots(config) {self.workers} "
         self.put(h-2, 1, bottom_left, "yellow" if not gh_ok else "muted", w-3)
-        foot = (" TAB / 1-9 pages  W workers  H toolchain  0 owner ops  G sync  ? help  Q quit "
+        foot = (" TAB / 1-9 pages  W workers  H toolchain  A activity  0 owner ops  G sync  ? help  Q quit "
                 if self.snap.repo_role in operator_ops.OWNER_ROLES else
-                " TAB / 1-9 pages  W workers  H toolchain  0 owner ops LOCKED  G sync  ? help  Q quit ")
+                " TAB / 1-9 pages  W workers  H toolchain  A activity  0 owner ops LOCKED  G sync  ? help  Q quit ")
         self.put(h-1, 1, foot, "muted", w-3)
         if self.notice and time.monotonic() < self.notice_until:
             self.put(h-4, 2, self.notice, "yellow", w-4)
@@ -1077,64 +1333,42 @@ class Observatory:
         self.put(y+1, x, "╰"+"─"*(size-2)+"╯", color, size)
 
     def draw_pulse(self, y, end, w, counts, events, est, health, description):
-        usable = end - y
-        left = max(41, int(w*.58))
-        right = w-left-3
-        left_x, right_x = 1, left+1
-        self.frame(y, left_x, 10, left-1, " WORKER TELEMETRY ")
-        self.put(y+2, 4, "SYSTEMD", "muted")
-        self.put(y+2, 17, health, "green" if health == "RUNNING" else "yellow" if health in {"QUIET", "ATTENTION", "IDLE"} else "red")
-        self.put(y+3, 4, "DETAIL", "muted")
-        self.put(y+3, 17, description, "normal", left-22)
-        self.put(y+4, 4, "MAIN PID", "muted")
-        self.put(y+4, 17, self.snap.service.get("pid", "?"), "normal")
-        self.put(y+5, 4, "ACTIVE TASK", "muted")
-        in_flight = events.get("unfinished") or []
-        task = in_flight[-1] if in_flight else None
-        last = events.get("last_task")
-        self.put(y+5, 17, f"#{task}" if task else
-                 f"None (last #{last})" if last else "None observed", "cyan")
-        self.put(y+6, 4, "LAST LOG", "muted")
-        self.put(y+6, 17, fmt_age(events.get("last_event")), "normal")
-        self.put(y+7, 4, "AI SESSIONS", "muted")
-        self.put(y+7, 17, str(len(events.get("sessions", []))) + " observed in retained journal", "normal", left-23)
-        self.put(y+8, 4, "RESTARTS", "muted")
-        self.put(y+8, 17, self.snap.service.get("restarts", "?"), "normal")
-        self.frame(y, right_x, 10, right, " TASK PIPELINE ")
-        stages = [("QUEUED", "cyan"), ("CLAIMED", "blue"), ("REVIEW", "yellow"),
-                  ("BLOCKED", "red"), ("INTEGRATED", "green"), ("VERIFIED", "green")]
-        for i, (s, col) in enumerate(stages):
-            self.put(y+2+i, right_x+3, f"{s:<12} {counts.get(s,0):>5}", col)
-            if right > 27:
-                self.bar(y+2+i, right_x+22, right-26, counts.get(s,0), max(1, counts["TOTAL"]), col)
-        if usable < 22:
-            self.put(y+11, 4, "Enlarge terminal to see ETA and activity sections.", "muted")
-            return
-        self.frame(y+11, left_x, 9, left-1, " TIME MACHINE  •  ESTIMATES ")
-        self.put(y+13, 4, "TASKS LEFT", "muted")
-        self.put(y+13, 22, str(est["remaining_queue"]), "cyan")
-        for i, (name, color) in enumerate((('fast','green'),('likely','cyan'),('slow','yellow'))):
-            txt = duration(est["queue_seconds"][name])
-            self.put(y+14+i, 4, f"{name.upper():<13}", color)
-            self.put(y+14+i, 22, txt, "normal")
-        self.put(y+18, 4, "For current queue, not the whole game", "muted", left-8)
-        self.frame(y+11, right_x, 9, right, " SIGNALS  •  LIVE ")
-        self.put(y+13, right_x+3, f"Merged PRs: {est['stats']['merged']}", "green")
-        self.put(y+14, right_x+3, f"Open PRs:   {est['stats']['open']}", "normal")
-        self.put(y+15, right_x+3, f"CI runs:    {len(self.snap.runs)} shown", "normal")
-        self.put(y+16, right_x+3, f"7-day PR merges: {est['stats']['merged_7d']}", "normal")
-        self.put(y+17, right_x+3, f"AI median: {duration(est['median_ai_seconds'])}", "normal")
-        cov = self.snap.coverage or {}
-        if usable >= 24:
-            self.put(y+20, 4,
-                     f"FUNCTIONS  identified {cov.get('known','?')} / original total UNKNOWN   |  "
-                     f"PR merged {cov.get('integrated','?')}   |  independently verified {cov.get('verified','?')}",
-                     "cyan", w-9)
-        if usable >= 25:
-            self.frame(y+21, left_x, min(usable-21, 6), w-3, " RECENT WORKER TRAFFIC ")
-            for i, line in enumerate(reversed(self.snap.logs[-max(1, min(usable-24,3)):])):
-                color = "red" if "FAILED" in line or "ALERT" in line else "cyan" if "session" in line else "muted"
-                self.put(y+23+i, 4, line[-(w-10):], color, w-10)
+        lines = [activity_line(self.snap),
+                 f"Systemd: {health} | {description}",
+                 ' / '.join(f'{stage} {counts[stage]}' for stage in ('QUEUED', 'CLAIMED', 'REVIEW', 'BLOCKED')),
+                 *forecast_lines(est['forecast'])[:6],
+                 f"PRs: {est['stats']['merged']} merged / {est['stats']['open']} open (workflow only)",
+                 'A: sanitized local activity | TAB: pages']
+        self.frame(y, 1, end-y, w-3, ' PULSE  /  OBSERVATIONS ')
+        for index, line in enumerate(lines[:max(0, end-y-2)]):
+            self.put(y+1+index, 3, line, 'cyan' if index in (0, 3) else 'normal', w-7)
+
+    def draw_activity(self, y, end, w):
+        lines = [activity_line(self.snap),
+                 'Local JSON observations; no assistant reasoning or internal thoughts.',
+                 'Counters are observed starts/completions, never proof tests passed.',
+                 f"Feed: {self.snap.activity.get('state', 'MISSING')} | "
+                 f"scan limited: {bool(self.snap.activity.get('limited'))} | "
+                 f"rejected: {self.snap.activity.get('rejected', 0)}",
+                 'Newest observations within scan limits; timestamps are worker-observed UTC.']
+        for record in activity_records(self.snap):
+            lines.extend([
+                f"#{record['issue']} round {record['round']}  {record['display_status']} / {record['event_category']}  {record['task_relation']}",
+                f"Observed {record['timestamp_utc']} | {fmt_age(dt(record['timestamp_utc']))}",
+                f"Commands {record['commands_started']} started / {record['commands_completed']} completed; "
+                f"tests {record['tests_started']} / {record['tests_completed']}",
+                f"Changed files: {record['file_changed_count'] if record['file_changed_count'] is not None else 'UNKNOWN'} | "
+                f"counts: {'complete' if record['counts_complete'] else 'lower bounds'} | "
+                f"event age at observation: {duration(record['last_activity_age_seconds'])}",
+            ])
+        if not self.snap.activity.get('records'):
+            lines.append('Missing/older providers: UNKNOWN. Upgrade/restart worker separately; no raw logs read.')
+        wrapped = [part for line in lines for part in textwrap.wrap(line, max(10, w-8))]
+        start = min(self.scroll['activity'], max(0, len(wrapped)-1))
+        self.scroll['activity'] = start
+        self.frame(y, 1, end-y, w-3, ' PRIVATE LOCAL ACTIVITY  /  UP-DOWN SCROLL ')
+        for index, line in enumerate(wrapped[start:start+max(0, end-y-2)]):
+            self.put(y+1+index, 3, line, 'normal', w-7)
 
     def _table(self, y, end, w, title, records, formatter, selector_key):
         self.frame(y, 1, end-y-1, w-3, title)
@@ -1208,38 +1442,19 @@ class Observatory:
         self.put(end-3, 4, f"{len(logs)} lines   ↓ {offset} older lines hidden   source: journalctl --user -u {self.collector.service}", "muted", w-9)
 
     def draw_forecast(self, y, end, w, counts, events, est):
-        left = max(41, int(w*.52))
-        right = w-left-3
-        self.frame(y, 1, min(16,end-y-1), left-1, " QUEUE CLEARANCE SCENARIOS ")
-        self.put(y+2, 4, f"Open work: {est['remaining_queue']} tasks", "cyan")
-        self.put(y+3, 4, f"Planning parallelism: {self.workers} worker(s)   +/- adjust", "normal", left-7)
-        for idx, (name, col) in enumerate((('fast','green'),('likely','cyan'),('slow','yellow'))):
-            secs = est["queue_seconds"][name]
-            self.put(y+5+idx*2, 4, f"{name.upper():<8} {duration(secs):<12} @ {est['per_task_minutes'][name]}m/task", col, left-7)
-        self.put(y+12, 4, "EMPIRICAL MERGE VELOCITY", "muted")
-        self.put(y+13, 4, f"{est['empirical_merges_per_day']:.2f} PRs/day" if est["empirical_merges_per_day"] is not None else "Insufficient merged PR history", "normal")
-        self.put(y+14, 4, f"Queue ETA at measured rate: {duration(est['throughput_seconds'])}", "normal", left-8)
-        self.frame(y, left+1, min(16,end-y-1), right, " INVENTORY PROJECTION ")
-        self.put(y+2, left+4, f"Scope: {est['functions_scope']}", "muted", right-8)
-        self.put(y+4, left+4, f"Known addresses: {est['known_functions']}", "normal")
-        self.put(y+5, left+4, f"PR-merged addresses: {est['integrated_function_addresses']}", "normal")
-        verified = est["verified_ledger_functions"]
-        self.put(y+6, left+4, "Ledger-verified: " + (str(verified) if verified is not None else "unknown"), "green")
-        self.put(y+7, left+4, f"Batch equivalents left: {est['function_batches'] if est['function_batches'] is not None else '?'}", "cyan")
-        for idx, (name, col) in enumerate((('fast','green'),('likely','cyan'),('slow','yellow'))):
-            self.put(y+9+idx, left+4, f"{name.upper():<8} {duration(est['function_seconds'].get(name))}", col)
-        if end-y > 19:
-            panel_h = min(14, end-y-18)
-            self.frame(y+17, 1, panel_h, w-3, " HYPOTHETICAL WHOLE-GAME ETA  •  VERY LOW CONFIDENCE ")
-            self.put(y+19, 4, "Assume known functions represent 75% / 30% / 10% of all functions (unverified)", "yellow", w-8)
-            for j, (mode, col) in enumerate((("fast", "green"), ("likely", "cyan"), ("slow", "yellow"))):
-                self.put(y+20+j, 4, f"{mode.upper():<8} {duration(est['whole_game_seconds'].get(mode)):<12} if currently identified functions cover {est['hypothetical_inventory_coverage'][mode]:.0%} of the game", col, w-8)
-            if panel_h > 8:
-                self.put(y+24, 4, "Excludes porting, graphics upgrades, review delays, missing binaries and major discoveries", "muted", w-8)
-                self.put(y+25, 4, "Assumptions: " + est["assumptions"], "muted", w-8)
-                if self.snap.history:
-                    history = self.snap.history
-                    self.put(y+27, 4, "MERGED PR TREND  " + simple_sparkline([x.get("merged", 0) for x in history], min(40,w-30)), "green", w-8)
+        report = est['forecast']
+        lines = forecast_lines(report)
+        lines.insert(3, f"GitHub observed: {self.snap.github_updated or 'UNKNOWN'} | "
+                     f"{fmt_age(dt(self.snap.github_updated))}")
+        self.frame(y, 1, end-y, w-3, ' EVIDENCE-GATED FORECAST ')
+        # Put setup/matching before potentially long task blocker details.
+        concise = [line for line in lines if not line.startswith('#')]
+        details = [line for line in lines if line.startswith('#')]
+        wrapped = [part for line in concise + details for part in textwrap.wrap(line, max(10, w-8))]
+        start = min(self.scroll['forecast'], max(0, len(wrapped)-1))
+        self.scroll['forecast'] = start
+        for index, line in enumerate(wrapped[start:start+max(0, end-y-2)]):
+            self.put(y+1+index, 3, line, 'cyan' if line.startswith('Whole-game') else 'normal', w-7)
 
     def draw_source_map(self, y, end, w):
         cov=self.snap.coverage or {}
@@ -1317,16 +1532,12 @@ class Observatory:
     def draw_roadmap(self, y, end, w):
         plan=self.snap.roadmap or {}
         status=progress_map.roadmap_status(self.snap.issues,self.snap.prs,plan)
-        base=build_estimates(self.snap.issues,self.snap.prs,self.snap.inventory,
-                             parse_log_events(self.snap.logs),self.workers)
-        horizon=progress_map.project_forecast(status,base,self.workers)
         self.frame(y,1,end-y-1,w-3," LONG-RUNNING ROADMAP  •  ONE AI ISSUE POOL ")
         self.put(y+2,4,"RECONSTRUCT  >  READABLE CORE  >  NATIVE PORTS  >  RUNTIME  >  EXTENSIONS",'cyan',w-9)
         self.put(y+3,4,"Engineering gate progress != original-game parity or verified gameplay.",'yellow',w-9)
-        self.put(y+4,4,"PROJECT ETA*   "+'  |  '.join(
-            mode.upper()+': '+duration(horizon['seconds'].get(mode)) for mode in ('fast','likely','slow')),
-            'cyan',w-9)
-        self.put(y+5,4,"* Very speculative: known inventory = 75%/30%/10% of original + estimated port/QA effort",'muted',w-9)
+        self.put(y+4,4,"Whole-game ETA: " + forecast_model.forecast(normalized_forecast(self.snap))['whole_game']['label'],
+                 'cyan',w-9)
+        self.put(y+5,4,"Setup/queue forecasts are separate; no calibrated gameplay/integration history.",'muted',w-9)
         self.put(y+6,4,"Targets: Windows/Linux x86_64 · Android ARM64/x86_64 · iOS ARM64 · iOS Simulator",'muted',w-9)
         stages=status['stages']
         start=y+8
@@ -1338,11 +1549,6 @@ class Observatory:
             self.put(yy,4,text,'green' if count and merged==count else 'cyan',w-9)
             self.bar(yy+1,4,min(50,w-11),merged,max(1,count))
             self.put(yy+2,5,'Gate: '+stage['gate']+'   |   not issued '+str(stage['unissued']),'muted',w-10)
-        if end-y>=31:
-            yy=end-7
-            self.put(yy,4,"FORWARD PLANNING (NOT PROOF OF READINESS)",'yellow',w-9)
-            for i,(name,values) in enumerate(list(horizon.get('stage_seconds',{}).items())[:3]):
-                self.put(yy+1+i,6,f"{name:<18} likely {duration(values.get('likely'))} labour ETA",'muted',w-11)
         self.put(end-3,4,"No new AI accounts. For actual features: nova3-feature 'Describe feature'",'muted',w-9)
 
     def draw_operator_locked(self, y, end, w):
@@ -1458,7 +1664,8 @@ class Observatory:
             ("GITHUB", "G immediately refreshes issues, PRs and workflows. F triggers feeder (confirm)."),
             ("WORKER", "S start service (confirm)   X stop service (confirm)   R restart (confirm)"),
             ("LOGS", "E cycles log filters   PgUp/PgDn scroll back   End jumps to live tail"),
-            ("ESTIMATES", "+/- change assumed worker parallelism (1–32). Not actual detected workers."),
+            ("FORECAST", "Evidence-gated stage work; up/down scroll. Slots +/- do not establish throughput."),
+            ("ACTIVITY", "A opens local sanitized JSON observations. No internal thoughts or raw logs."),
             ("APPEARANCE", "T switches highlight palette   Q exits TUI (worker stays running)"),
             ("OWNER OPS", "0 opens private controls: timer, one-shot scans, bulk PR merge, diagnostics."),
             ("BULK MERGE", "On PR page B marks a PR, A marks all, Z clears; C checks GitHub then confirms."),
@@ -1472,7 +1679,7 @@ class Observatory:
             ("PRESENCE", "Needs upgraded workers; no token, IP, hostname or decompiler data sent."),
 
             ("RELIABILITY", "Worker exit code 3 stops systemd restarts by design; this UI won't override it."),
-            ("CAUTION", "Planning ETAs are speculative; a merged PR is not a verified byte match."),
+            ("CAUTION", "Whole-game ETA UNKNOWN; a merged PR is not a verified source match."),
             ("FUNCTIONS", "Only grounded ledger addresses are mapped. No invented total or byte match."),
             ("LIFECYCLE", "Project roadmap tasks use existing nova:queued AI worker pool."),
             ("EXPANSION", "Gameplay features require a concrete spec; roadmap handles scaffolding."),
@@ -1532,6 +1739,9 @@ class Observatory:
             return True
         if key in (ord('w'),ord('W')):
             self.tab = 10
+            return True
+        if key in (ord('a'),ord('A')) and self.tab != 2:
+            self.tab = 12
             return True
         if key in (ord('h'),ord('H')):
             self.tab = 11
@@ -1624,6 +1834,14 @@ class Observatory:
         elif self.tab == 11 and key in (ord('v'), ord('V')):
             self._toolchain_text = historical_setup_text()
             self.show_notice('Compiler discovery refreshed; no compiler executed')
+        elif self.tab == 5 and key in (curses.KEY_UP, ord('k'), ord('K')):
+            self.scroll['forecast'] = max(0, self.scroll['forecast']-1)
+        elif self.tab == 5 and key in (curses.KEY_DOWN, ord('j'), ord('J')):
+            self.scroll['forecast'] += 1
+        elif self.tab == 12 and key in (curses.KEY_UP, ord('k'), ord('K')):
+            self.scroll['activity'] = max(0, self.scroll['activity']-1)
+        elif self.tab == 12 and key in (curses.KEY_DOWN, ord('j'), ord('J')):
+            self.scroll['activity'] += 1
         elif key in (ord('+'),ord('=')):
             self.workers = min(32, self.workers+1)
         elif key == ord('-'):
@@ -1669,28 +1887,26 @@ class Observatory:
 
 def text_once(snap: Snapshot, workers: int) -> str:
     counts = task_counts(snap.issues, snap.prs)
-    est = build_estimates(snap.issues, snap.prs, snap.inventory, parse_log_events(snap.logs), workers)
-    def fmt(name, vals):
-        return ", ".join(f"{mode}={duration(value)}" for mode, value in vals.items())
+    est = build_estimates(snap.issues, snap.prs, snap.inventory, parse_log_events(snap.logs),
+                          workers, snapshot=snap)
+    report = est['forecast']
     return "\n".join([
         "NOVA3 OBSERVATORY — NONINTERACTIVE REPORT",
         f"Service: {snap.service.get('active','unknown')}, PID {snap.service.get('pid','?')}",
         f"GitHub fetched: {snap.github_updated or 'not yet'}",
-        f"GitHub errors: {'; '.join(snap.github_errors) if snap.github_errors else 'none'}",
+        f"GitHub collection errors: {len(snap.github_errors)}",
         f"Contributor presence: {presence_view.summary(snap.worker_presence)}",
-        f"Contributor presence source: {snap.presence_error or 'ok'}",
         "Tasks: " + ", ".join(f"{k.lower()}={counts[k]}" for k in ("QUEUED","CLAIMED","REVIEW","BLOCKED","INTEGRATED","VERIFIED")),
         f"Pull requests: merged={est['stats']['merged']} open={est['stats']['open']} recent_7d={est['stats']['merged_7d']}",
-        "Queue planning: " + fmt("queue", est["queue_seconds"]),
         f"Inventory known functions: {est['known_functions']} ({est['functions_scope']})",
-        f"Function atlas: identified={snap.coverage.get('known','?')} merged={snap.coverage.get('integrated','?')} verified={snap.coverage.get('verified','?')} original_total=UNKNOWN",
+        f"Function atlas: identified={snap.coverage.get('known','?')} merged={snap.coverage.get('integrated','?')} original_total=UNKNOWN",
         f"Reconstructed C/C++ source: files={snap.coverage.get('source',{}).get('files','?')} lines={snap.coverage.get('source',{}).get('lines','?')}",
         f"Indexed APK packages: {len(snap.coverage.get('package',{}).get('apks', []))} (metadata only)",
-        "Inventory projection: " + (fmt("fn",est["function_seconds"]) if est["function_seconds"] else "unknown"),
-        "Hypothetical entire-game ETA: " + (fmt("game",est["whole_game_seconds"]) if est["whole_game_seconds"] else "unknown"),
-        "IMPORTANT: estimates are planning scenarios; not completion of entire game.",
-        "Last journal messages:",
-        *["  " + x for x in snap.logs[-10:]],
+        activity_line(snap),
+        'Local summary observations only; no assistant reasoning.',
+        'Queue planning: evidence-gated; configured worker slots do not establish throughput.',
+        *forecast_lines(report),
+        'IMPORTANT: merged issues/PRs are not verified source matches.',
     ])
 
 
@@ -1700,10 +1916,11 @@ def cli(argv=None):
     p.add_argument("--root", type=Path, default=DEFAULT_ROOT)
     p.add_argument("--service", default=DEFAULT_SERVICE)
     p.add_argument("--state-dir", type=Path, default=Path(os.getenv("XDG_STATE_HOME", str(Path.home()/".local/state"))) / STATE_FOLDER)
-    p.add_argument("--workers", type=int, default=1, help="assumed parallel workers for forecasting only")
+    p.add_argument("--workers", type=int, default=1, help="legacy configured slots; forecasts require observed worker capacity")
     p.add_argument("--refresh-seconds", type=int, default=GH_INTERVAL)
     p.add_argument("--demo", action="store_true", help="show clearly synthetic offline data")
     p.add_argument("--once", action="store_true", help="print one snapshot, no terminal UI")
+    p.add_argument("--offline", action="store_true", help="local summaries/cached metadata only; no GitHub login or subprocess collection")
     p.add_argument("--toolchain-setup", action="store_true",
                    help="offline optional compiler status/manual recipe; no login, install or compiler execution")
     args=p.parse_args(argv)
@@ -1715,16 +1932,17 @@ def cli(argv=None):
     if not re.fullmatch(r"[a-zA-Z0-9@_.-]+\.service", args.service):
         p.error("--service must be a systemd user .service unit")
     c=Collector(args.repo, args.root.expanduser(), args.service, args.state_dir.expanduser(),
-                demo=args.demo, gh_interval=max(15,min(args.refresh_seconds,3600)))
+                demo=args.demo, gh_interval=max(15,min(args.refresh_seconds,3600)), offline=args.offline)
     workers=max(1,min(32,args.workers))
     if args.once:
-        if not args.demo:
+        if not args.demo and not args.offline:
             packet=gh_collect(args.repo)
             for name in ("issues","prs","runs"):
                 if not any(x.startswith(name+":") for x in packet["errors"]):
                     setattr(c.snapshot,name,packet[name])
             c.snapshot.github_errors=packet["errors"]
             c.snapshot.github_updated=datetime.now(timezone.utc).isoformat() if not packet["errors"] else c.snapshot.github_updated
+            c.snapshot.activity=collect_activity(args.repo)
             c.snapshot.logs=journal_collect(args.service)
             c.snapshot.service=service_collect(args.service)
             c.snapshot.inventory=load_inventory(args.root.expanduser())
