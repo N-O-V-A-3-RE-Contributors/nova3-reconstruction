@@ -29,7 +29,7 @@ import threading
 import time
 import textwrap
 import webbrowser
-from typing import Any
+from typing import Any, Callable
 # Load the bundled module relative to this script even when unittest imports
 # observer.py by file path (and without trusting a third-party `progress`).
 import importlib.util as _importlib_util
@@ -95,6 +95,20 @@ except (ImportError, OSError, AttributeError):
     # Minimal standalone bundles (and older installs) keep every original page;
     # the Accounts page reports that the optional module must be reinstalled.
     provider_accounts = None
+
+try:
+    _planning_spec = _importlib_util.spec_from_file_location(
+        "nova3_private_observer_planning_chat",
+        Path(__file__).resolve().parent / "planning_chat.py")
+    if _planning_spec is None or _planning_spec.loader is None:
+        raise ImportError('planning chat module missing')
+    planning_chat = _importlib_util.module_from_spec(_planning_spec)
+    sys.modules[_planning_spec.name] = planning_chat
+    _planning_spec.loader.exec_module(planning_chat)
+except (ImportError, OSError, AttributeError):
+    # A minimal bundle keeps every other page; Plan & Chat reports honestly that
+    # the module must be reinstalled instead of silently degrading.
+    planning_chat = None
 
 VERSION = "3.1.0"
 DEFAULT_REPO = "N-O-V-A-3-RE-Contributors/nova3-reconstruction"
@@ -898,6 +912,8 @@ class Collector:
         self.gh_thread = None
         self.mgmt_thread = None
         self.merge_preview = None
+        # Optional fresh authorization seam for Plan & Chat; tests inject fakes.
+        self.owner_access_provider: Callable[[], dict] | None = None
         self._load_cache()
         if not demo:
             self.snapshot.activity = collect_activity(repo)
@@ -1261,6 +1277,21 @@ class Observatory:
         self.journal_choices = []
         self.journal_index = 0
         self.journal_scroll = 0
+        self.planning = None
+        self.plan_mode = False
+        self.plan_error = None
+        self.plan_input = None
+        self.plan_buffer = ''
+        self.plan_phrase = None
+        self.plan_pending_fp = None
+        self.plan_publish_input = ''
+        self.plan_detail = []
+        self.plan_selected_draft = 0
+        self.plan_role = None
+        self.plan_job = None
+        self.plan_events = None
+        self.plan_stream = []
+        self.plan_result = None
         self.stdscr = None
         self.snap = Snapshot()
         self.C = {}
@@ -1356,7 +1387,7 @@ class Observatory:
         self.layout = ui_components.Layout(w, h)
         if self.layout.density == 'tiny':
             rows = [("NOVA3 // CONTROL CENTER", 'cyan'),
-                    (TAB_GROUPS[self.current_group()][0]+' / '+TABS[self.tab], 'muted'),
+                    (TAB_GROUPS[self.current_group()][0]+' / '+(TABS[self.tab] if not self.plan_mode else 'PLAN & CHAT'), 'muted'),
                     ("Resize to >= 72 x 18. Q quits.", 'yellow'),
                     (activity_line(self.snap), 'cyan'),
                     ("Whole-game ETA: UNKNOWN", 'yellow'),
@@ -1404,7 +1435,9 @@ class Observatory:
                                                    "; ".join(self.snap.github_errors), counts, events, now)
         content = self.layout.content
         top, bottom = content.y, content.y + content.h
-        if self.tab == 0:
+        if self.plan_mode:
+            self.draw_plan(top, bottom, w)
+        elif self.tab == 0:
             self.draw_pulse(top, bottom, w, counts, events, estimate, health, description)
         elif self.tab == 1:
             self.draw_tasks(top, bottom, w, counts)
@@ -1447,7 +1480,9 @@ class Observatory:
         self.put(h-2, 1, bottom_left, "yellow" if not gh_ok else "muted", w-3)
         context = ('/ search D details' if self.tab in (1, 2, 3) else
                    'PgUp/Dn cards' if self.tab in (0, 9) else
-                   'J/K select T test E enable' if self.tab == ACCOUNTS_TAB else 'Up/Down scroll')
+                   'J/K select T test E enable' if self.tab == ACCOUNTS_TAB else
+                   'I send  T thread  P provider  Esc close' if self.plan_mode else
+                   'Up/Down scroll')
         foot = f"Tab pages  {{ }} groups  {context}  ? help  Q quit"
         if not self.layout.compact:
             foot += ' | 1-9,0 W H A shortcuts | G sync | ' + (
@@ -1466,6 +1501,18 @@ class Observatory:
             self.put(h-1, 1, 'Search: '+value+'_'+hint, 'cyan', w-3)
         if self.merge_phrase is not None:
             self.modal('TYPE '+self.merge_phrase+' TO MERGE: '+self.merge_input+'_   (ESC cancels)', 'red')
+        if self.plan_phrase is not None:
+            self.modal('TYPE ' + self.plan_phrase + ' TO PUBLISH A NON-QUEUED DRAFT: '
+                       + self.plan_publish_input + '_   (ESC cancels)', 'red')
+        if self.plan_input is not None:
+            self.put(h-1, 1, ' ' * (w-3), 'normal', w-3)
+            label = {'chat': 'Message', 'decision': 'Pin decision',
+                     'correct': 'Correct decision', 'objective': 'Objective',
+                     'next': 'Next action', 'question': 'Open question'}.get(
+                         self.plan_input, 'Input')
+            budget = max(1, w-3-len(label)-len('Connect: _  (Enter save, Esc cancel)'))
+            self.put(h-1, 1, label + ': ' + self.plan_buffer[-budget:] + '_  '
+                     '(Enter save, Esc cancel)', 'cyan', w-3)
         if self.confirm:
             warning = ("Read a LOCAL private worker log? It stays on this host, is redacted and never uploaded. Y open / N cancel"
                        if self.confirm == 'journal-open' else
@@ -2232,6 +2279,12 @@ class Observatory:
             ("ACCOUNTS", "U shows optional AI provider readiness and read-only GitHub identity. R probes local CLIs."),
             ("ACCOUNT KEYS", "Up/Down select, T test connection, E enable/disable, L official login guidance, M members."),
             ("ACCOUNT SAFETY", "No passwords/tokens collected. Owner settings open only after a fresh ADMIN/org-owner check."),
+            ("PLAN & CHAT", "C opens the owner planning workspace: durable per-thread memory, provider switch, decisions, checkpoints, private export."),
+            ("PLAN KEYS", "T new, [ ] history, P provider, M model, I message (X cancel, R retry), V pin decision, F correct, O objective, N next, lowercase C question."),
+            ("PLAN TOOLS", "K checkpoint inspection, E private export (0600), G draft from proposal JSON, B typed-confirmation publish, D remove from history."),
+            ("PLAN MEMORY", "Context compacts before the provider limit; CONTEXT REFRESHED means older prose was summarised, not lost."),
+            ("PLAN DRAFTS", "G accepts a full JSON proposal only; B requires typed PUBLISH and fresh ADMIN; drafts are never queued or auto-created."),
+            ("PLAN PRIVACY", "Per-user local ledger outside the repo; E exports 0600. Contributors see a help surface only, never owner memory."),
             ("ONBOARDING", "First run: gh auth login, repo access, provider readiness, toolchain, game files, budget."),
             ("CONTRIBUTOR", "Inspect status, install/login your own provider, read approved work, submit evidence/PR."),
             ("ROLES", "Organization owner or repo ADMIN only; hidden from contributors and rechecked per action."),
@@ -2261,6 +2314,407 @@ class Observatory:
         rows += [('', 'normal')]
         rows += [(left+': '+right, 'normal') for left, right in lines]
         self.scroll['help'] = card.scrolled(rows, self.scroll['help'])
+
+    def _plan_role_provider(self):
+        """Fresh owner/admin resolution seam; network only in the real CLI path."""
+        provider = getattr(self.collector, 'owner_access_provider', None)
+        if provider is not None:
+            return provider()
+        if getattr(self.collector, 'demo', False):
+            return {'allowed': False, 'role': 'DEMO',
+                    'reason': 'Demo mode has no authenticated owner session'}
+        # No injected operator seam: fail closed. A cached UI role is not proof
+        # of authority and must never open owner planning memory.
+        return {'allowed': False, 'role': 'UNKNOWN',
+                'reason': 'No fresh authorization seam configured'}
+
+    def _planning_user(self) -> str:
+        explicit = getattr(self.collector, 'viewer_login', None)
+        if explicit:
+            return str(explicit)
+        return os.environ.get('NOVA3_VIEWER') or os.environ.get('USER') or 'owner'
+
+    def ensure_planning(self, *, refresh: bool = False):
+        """Create the workspace lazily; refresh only at entry, never per repaint."""
+        if planning_chat is None:
+            self.plan_error = 'Plan & Chat module unavailable; reinstall the Control Center'
+            return None
+        if self.planning is None:
+            state_dir = getattr(self.collector, 'state_dir', None) or (
+                Path(os.getenv('XDG_STATE_HOME', str(Path.home()/'.local/state')))
+                / STATE_FOLDER)
+            try:
+                self.planning = planning_chat.ChatWorkspace(
+                    store_root=Path(state_dir) / 'planning_chat',
+                    repo=self.collector.repo,
+                    user=self._planning_user(),
+                    role_provider=self._plan_role_provider,
+                    adapters=getattr(self.collector, 'planning_adapters', None) or {},
+                )
+            except Exception as exc:
+                self.plan_error = ('Planning workspace unavailable: '
+                                   + type(exc).__name__ + ': ' + str(exc)[:120])
+                return None
+            # The constructor already performed the entry authorization check.
+            refresh = False
+        if refresh:
+            try:
+                self.plan_role = self.planning.resolve_role()
+                self.plan_error = None
+            except Exception as exc:
+                self.plan_error = 'Role recheck failed: ' + str(exc)[:120]
+        return self.planning
+
+    def _drain_plan_events(self) -> None:
+        """Move streamed redacted events from the turn thread into the view."""
+        if self.plan_events is None:
+            return
+        while True:
+            try:
+                event = self.plan_events.get_nowait()
+            except queue.Empty:
+                break
+            if event.get('kind') == '__done__':
+                self.plan_result = event.get('result')
+                self.plan_job = None
+                self.plan_stream = []
+                result = event.get('result') or {}
+                if result.get('status') == 'ok':
+                    self.show_notice('Turn saved; context ' +
+                                     str(result.get('context_tokens')) + ' tokens' +
+                                     (' · CONTEXT REFRESHED' if result.get('compacted') else '') +
+                                     ' · autosave verified')
+                else:
+                    error = str(result.get('error') or result.get('status'))[:130]
+                    self.show_notice(('DENIED ' if 'owner-required' in error else '') + error)
+            elif event.get('kind') == 'delta':
+                if self.plan_stream and self.plan_stream[-1][1] == 'normal':
+                    self.plan_stream[-1] = (self.plan_stream[-1][0] + event.get('text', ''), 'normal')
+                else:
+                    self.plan_stream.append((event.get('text', ''), 'normal'))
+            elif event.get('kind') == 'tool':
+                self.plan_stream.append((f"tool · {event.get('name')} · "
+                                         f"{event.get('state')} · {event.get('summary')}", 'cyan'))
+        del self.plan_stream[:-4]
+
+    def _start_plan_turn(self, text: str, *, retry: bool = False) -> bool:
+        planning = self.ensure_planning()
+        if planning is None:
+            return False
+        if self.plan_job is not None and self.plan_job.is_alive():
+            self.show_notice('A planning response is already streaming; X cancels it')
+            return False
+        self.plan_stream = []
+        self.plan_events = queue.Queue()
+        events = self.plan_events
+
+        def work():
+            try:
+                if retry:
+                    result = planning.retry()
+                else:
+                    result = planning.run_turn(text, on_event=events.put)
+            except Exception as exc:
+                result = {'status': 'error', 'error': getattr(exc, 'code', 'error') +
+                          ': ' + str(getattr(exc, 'detail', '') or exc)[:140]}
+            events.put({'kind': '__done__', 'result': result})
+
+        self.plan_job = threading.Thread(target=work, name='nova3-planning-turn', daemon=True)
+        self.plan_job.start()
+        return True
+
+    def draw_plan(self, y, end, w):
+        planning = self.ensure_planning()
+        self._drain_plan_events()
+        state = planning.state() if planning is not None else None
+        area = ui_components.Rect(y, 1, end-y, w-2)
+        if state is None:
+            card = self.card(area, 'PLAN & CHAT', 'UNAVAILABLE', 'red')
+            card.scrolled([(self.plan_error or 'Planning module unavailable', 'red'),
+                           ('Owner planning memory was not opened.', 'yellow'),
+                           ('Every other page and the running worker are unaffected.', 'muted')],
+                          self.scroll['plan'])
+            return
+        if not state['allowed']:
+            rows = [('Owner/admin planning is not available to this account.', 'yellow'),
+                    'Role: ' + state['role'] + ' — ' + state['role_reason'],
+                    ('Owner planning memory was NOT opened. No transcript is read.', 'muted'),
+                    ('', 'normal')]
+            rows += [(line, 'normal') for line in state['contributor_help']]
+            card = self.card(area, 'PLAN & CHAT', 'OWNER / ADMIN ONLY', 'yellow')
+            self.scroll['plan'] = card.scrolled(rows, self.scroll['plan'])
+            return
+        context = state['context']
+        thread = state['thread']
+        if thread is None:
+            rows = [('No planning thread yet.', 'yellow'),
+                    'T creates a private plan; history is per signed-in user.',
+                    'Context and decisions live in the local #139 ledger.',
+                    ('Owner memory store is outside the public repository.', 'muted')]
+            card = self.card(area, 'PLAN & CHAT', 'NO THREAD', 'cyan')
+            self.scroll['plan'] = card.scrolled(rows, self.scroll['plan'])
+            return
+        autosave = state['autosave']
+        save_style = 'red' if ('ERROR' in autosave or 'NOT SAVED' in autosave) else 'green'
+        refreshed = 'CONTEXT REFRESHED (pre-limit compaction)' if state['context_refreshed'] else ''
+        summary = [
+            ('THREAD  ' + thread['title'][:max(10, w-30)], 'cyan'),
+            f"Provider {thread['provider']}/{thread['model']} · {thread['provider_state']}",
+            f"CONTEXT {context['percent']}% of {context['available']} tok · "
+            f"{context['mode']} · {context['compactions']} compactions · "
+            f"stale {context['stale']}",
+            (('CONTEXT REFRESHED' if refreshed else 'Context: no compaction this session'),
+             'yellow' if refreshed else 'muted'),
+            ('AUTOSAVE  ' + autosave, save_style),
+            'Checkpoint ' + context['last_checkpoint'] + ' · ' + context['last_checkpoint_at'],
+            ('PRIVACY  ' + state['privacy'], 'yellow'),
+            'OBJECTIVE: ' + state['objective'][:max(20, w-16)],
+        ]
+        if state['next_actions']:
+            summary.append('NEXT: ' + state['next_actions'][0])
+        else:
+            summary.append('NEXT: none recorded (N adds one)')
+        for text in state['open_questions'][:1]:
+            summary.append(('OPEN Q: ' + text, 'yellow'))
+        if state['error']:
+            summary.append(('ERROR  ' + state['error'], 'red'))
+        transcript_lines = []
+        for row in state['transcript'][-8:]:
+            prefix = ('U' if row['role'] == 'user' else 'A') + str(row['seq'])
+            if row['untrusted']:
+                prefix += '[model/untrusted]'
+            transcript_lines.append((prefix + ' ' + row['text'][:max(20, w-14)],
+                                     'normal' if row['role'] == 'user' else 'muted'))
+        for event in state['events'][-4:]:
+            if event.get('kind') == 'tool':
+                transcript_lines.append((f"tool · {event.get('name')} · {event.get('state')}"[:max(20, w-12)], 'cyan'))
+        if state['streaming'] or self.plan_stream:
+            transcript_lines.append(('STREAMING (redacted) · X cancels', 'yellow'))
+            transcript_lines += self.plan_stream[-3:]
+        proposals = state['proposals']
+        proposal_lines = []
+        for index, draft in enumerate(proposals[:4]):
+            marker = '>' if index == self.plan_selected_draft % max(1, len(proposals)) else ' '
+            proposal_lines.append((f"{marker} {draft['state']} {draft['title'][:max(12, w-26)]}", 'normal'))
+        if not proposal_lines:
+            proposal_lines.append(('No local drafts. G accepts a full JSON proposal only.', 'muted'))
+        if self.plan_detail:
+            transcript_lines += [('CHECKPOINT', 'cyan')] + [
+                (str(line)[:max(20, w-12)], 'muted') for line in self.plan_detail[:6]]
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0] if self.stdscr else 24)
+        if layout.compact or w < 120:
+            rows = list(summary)
+            rows.append(('', 'normal'))
+            rows += transcript_lines + proposal_lines
+            rows.append(('T thread  [ ] history  P provider  M model  I message  X cancel  R retry', 'yellow'))
+            rows.append(('V pin  E export  K checkpoints  G draft  B publish  D remove', 'yellow'))
+            card = self.card(area, 'PLAN & CHAT', thread['title'][:20], 'cyan')
+            self.scroll['plan'] = card.scrolled(rows, self.scroll['plan'])
+            return
+        cards = layout.cards(area, 4)
+        thread_rows = [(row['title'][:max(10, cards[0].w-8)] + (' *' if row['active'] else ''),
+                        'cyan' if row['active'] else 'normal') for row in state['threads'][:8]]
+        thread_rows += [('', 'normal'), ('T new  [ ] switch', 'yellow')]
+        info = [('THREAD', 'cyan')] + thread_rows + [
+            ('', 'normal'), ('PROVIDER', 'cyan'),
+            (f"{thread['provider']}/{thread['model']} · {thread['provider_state']}", 'normal'),
+            (f"CONTEXT {context['percent']}% · {context['tokens']}/{context['available']} tok", 'normal'),
+            (f"mode {context['mode']} · {context['compactions']} compactions", 'normal'),
+            (('CONTEXT REFRESHED' if refreshed else 'no compaction this session'),
+             'yellow' if refreshed else 'muted'),
+            ('AUTOSAVE ' + autosave, save_style),
+            ('Checkpoint ' + context['last_checkpoint'], 'normal'),
+            (context['last_checkpoint_at'], 'muted'),
+            ('PRIVACY ' + state['privacy'], 'yellow')]
+        objective_rows = [('OBJECTIVE', 'cyan'), (state['objective'], 'normal'), ('', 'normal'),
+                          ('NEXT ACTIONS', 'cyan')]
+        objective_rows += [(text, 'normal') for text in state['next_actions'][:4]] or [('none', 'muted')]
+        objective_rows += [('', 'normal'), ('OPEN QUESTIONS', 'cyan')]
+        objective_rows += [(text, 'yellow') for text in state['open_questions'][:4]] or [('none', 'muted')]
+        objective_rows += [('', 'normal'), ('Stale evidence: ' + str(context['stale']) +
+                                            ' (UNKNOWN until re-verified)', 'muted')]
+        if state['error']:
+            objective_rows.append(('ERROR ' + state['error'], 'red'))
+        offsets = []
+        for rect, (title, rows) in zip(cards, (
+                ('THREAD / PROVIDER', info),
+                ('OBJECTIVE / LEDGER', objective_rows),
+                ('CONVERSATION (redacted)', transcript_lines or [('no turns yet', 'muted')]),
+                ('TASK PROPOSALS (local drafts)', proposal_lines))):
+            card = self.card(rect, title, 'owner', 'cyan')
+            offsets.append(card.scrolled(rows, self.scroll['plan']))
+        self.scroll['plan'] = max(offsets, default=0)
+
+    def _plan_notice(self, exc) -> None:
+        code = getattr(exc, 'code', 'error')
+        detail = getattr(exc, 'detail', '') or str(exc)
+        clean = str(detail)
+        if planning_chat is not None:
+            clean = planning_chat.planning_memory.sanitize(str(detail))[0]
+        self.show_notice(('DENIED ' if code in ('owner-required', 'confirmation') else '') +
+                         str(code).upper() + ': ' + clean[:110])
+
+    def _submit_plan_input(self) -> None:
+        mode, text = self.plan_input, self.plan_buffer.strip()
+        self.plan_input, self.plan_buffer = None, ''
+        if not text:
+            return
+        planning = self.ensure_planning()
+        if planning is None:
+            return
+        try:
+            if mode == 'chat':
+                if self._start_plan_turn(text):
+                    self.show_notice('Streaming redacted activity; X cancels, R retries after')
+                return
+            elif mode == 'decision':
+                planning.pin_decision(text)
+                self.show_notice('Decision pinned locally with provenance')
+            elif mode == 'correct':
+                rows = planning.decisions()
+                if not rows:
+                    self.show_notice('No accepted decision to correct')
+                else:
+                    planning.correct_decision(rows[-1]['entry_id'], text, reason='owner correction')
+                    self.show_notice('Correction appended; the prior decision is retained')
+            elif mode == 'objective':
+                planning.set_objective(text)
+                self.show_notice('Objective saved to the private ledger')
+            elif mode == 'next':
+                planning.add_next_action(text)
+                self.show_notice('Next action saved')
+            elif mode == 'question':
+                planning.add_question(text)
+                self.show_notice('Open question saved')
+        except Exception as exc:
+            self._plan_notice(exc)
+
+    def _start_publish(self) -> None:
+        planning = self.ensure_planning()
+        if planning is None:
+            return
+        drafts = planning.proposals()
+        if not drafts:
+            self.show_notice('No local draft to publish; G drafts only from proposal JSON')
+            return
+        draft = drafts[self.plan_selected_draft % len(drafts)]
+        self.plan_pending_fp = draft['fingerprint']
+        self.plan_phrase = planning.publish_phrase(draft['fingerprint'])
+        self.plan_publish_input = ''
+
+    def handle_plan(self, key) -> bool:
+        """Keys local to Plan & Chat; navigation keys fall through."""
+        planning = self.ensure_planning()
+        if planning is None:
+            return key not in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
+                               ord('{'), ord('}'), ord('?'), ord('q'), ord('Q'))
+        if self.plan_phrase is not None:
+            if key == 27:
+                self.plan_phrase, self.plan_publish_input, self.plan_pending_fp = None, '', None
+                self.show_notice('Publish cancelled; nothing was sent to GitHub')
+            elif key in (10, 13, curses.KEY_ENTER):
+                phrase, fingerprint = self.plan_phrase, self.plan_pending_fp
+                supplied = self.plan_publish_input
+                self.plan_phrase, self.plan_publish_input, self.plan_pending_fp = None, '', None
+                if supplied.strip() != phrase:
+                    self.show_notice('Confirmation did not match; nothing published')
+                    return True
+                try:
+                    result = planning.publish_proposal(fingerprint, confirmation=supplied)
+                    self.show_notice('Draft #' + str(result.get('number')) +
+                                     ' created NON-QUEUED; queueing needs the #135 gate')
+                except Exception as exc:
+                    self._plan_notice(exc)
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                self.plan_publish_input = self.plan_publish_input[:-1]
+            elif 32 <= key < 127 and len(self.plan_publish_input) < 80:
+                self.plan_publish_input += chr(key)
+            return True
+        if self.plan_input is not None:
+            if key in (10, 13, curses.KEY_ENTER):
+                self._submit_plan_input()
+            elif key == 27:
+                self.plan_input, self.plan_buffer = None, ''
+                self.show_notice('Input cancelled; the draft text was discarded by choice')
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                self.plan_buffer = self.plan_buffer[:-1]
+            elif 32 <= key < 127 and len(self.plan_buffer) < 2000:
+                self.plan_buffer += chr(key)
+            return True
+        if key in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
+                   ord('{'), ord('}'), ord('?'), ord('q'), ord('Q')) or ord('1') <= key <= ord('9'):
+            return False
+        if key == curses.KEY_UP:
+            self.scroll['plan'] = max(0, self.scroll['plan'] - 1)
+            return True
+        if key == curses.KEY_DOWN:
+            self.scroll['plan'] += 1
+            return True
+        if key in (curses.KEY_PPAGE, curses.KEY_NPAGE):
+            self.scroll['plan'] = max(0, self.scroll['plan'] + (-4 if key == curses.KEY_PPAGE else 4))
+            return True
+        try:
+            if key in (ord('t'), ord('T')):
+                planning.create_thread('New plan')
+                self.plan_detail = []
+                self.show_notice('Private planning thread created locally')
+            elif key == ord('['):
+                planning.select_offset(-1)
+            elif key == ord(']'):
+                planning.select_offset(1)
+            elif key in (ord('p'), ord('P')):
+                row = planning.cycle_provider()
+                self.show_notice(f"Planner provider {row['provider']}/{row['model']} · "
+                                 f"{row['state']} · no worker touched")
+            elif key in (ord('m'), ord('M')):
+                row = planning.cycle_model()
+                self.show_notice('Planning model ' + row['model'] + ' (planning session only)')
+            elif key in (ord('i'), ord('I')):
+                self.plan_input, self.plan_buffer = 'chat', ''
+            elif key in (ord('v'), ord('V')):
+                self.plan_input, self.plan_buffer = 'decision', ''
+            elif key in (ord('f'), ord('F')):
+                self.plan_input, self.plan_buffer = 'correct', ''
+            elif key in (ord('o'), ord('O')):
+                self.plan_input, self.plan_buffer = 'objective', ''
+            elif key in (ord('n'), ord('N')):
+                self.plan_input, self.plan_buffer = 'next', ''
+            elif key in (ord('c'), ord('C')):
+                self.plan_input, self.plan_buffer = 'question', ''
+            elif key in (ord('x'), ord('X')):
+                self.show_notice('Cancel requested' if planning.cancel() else
+                                 'No streaming response to cancel')
+            elif key in (ord('r'), ord('R')):
+                if self._start_plan_turn('', retry=True):
+                    self.show_notice('Retrying the last owner message; X cancels')
+            elif key in (ord('e'), ord('E')):
+                result = planning.export_private()
+                self.show_notice('Private export written: ' + str(result['path'])[-42:]
+                                 + ' (0600, local only)')
+            elif key in (ord('k'), ord('K')):
+                detail = planning.inspect_checkpoint(-1)
+                row = detail['checkpoint']
+                self.plan_detail = [f"id {row['checkpoint_id']}", f"mode {row['mode']} · reason {row['reason']}",
+                                    f"through seq {row['seq_high']} · {row['turn_count']} turns",
+                                    f"tokens {row['tokens']} · checksum {row['checksum'][:16]}",
+                                    'sealed append-only; SQL rejects UPDATE/DELETE']
+                self.show_notice('Last checkpoint inspected locally')
+            elif key in (ord('g'), ord('G')):
+                try:
+                    draft = planning.draft_from_reply()
+                    self.show_notice('Local draft created (not published): ' + draft['title'][:60])
+                except Exception as exc:
+                    self._plan_notice(exc)
+            elif key in (ord('b'), ord('B')):
+                self._start_publish()
+            elif key in (ord('d'), ord('D')):
+                self.confirm = 'plan-archive'
+            else:
+                self.show_notice('Plan & Chat: I message, ? help for the full key list')
+            return True
+        except Exception as exc:
+            self._plan_notice(exc)
+            return True
 
     def show_notice(self, msg):
         self.notice = msg
@@ -2388,6 +2842,10 @@ class Observatory:
                 index = (getattr(self, 'journal_index', 0) + 1) % max(1, len(self.journal_choices))
                 self.open_journal(index)
             return True
+        if key == ord('C') and not self.plan_mode and self.tab not in (2, 9):
+            self.plan_mode = True
+            self.ensure_planning(refresh=True)
+            return True
         if self.search_edit:
             if key in (10, 13, curses.KEY_ENTER):
                 self.search_edit = False
@@ -2432,6 +2890,14 @@ class Observatory:
                         self.show_notice('Login cancelled: no official page was opened')
                 elif action == 'journal-open':
                     self.open_journal(getattr(self, 'journal_index', 0))
+                elif action == 'plan-archive':
+                    try:
+                        result = self.planning.archive_thread() if self.planning else None
+                        self.show_notice('Thread removed from history; ' +
+                                         ('sealed local checkpoints retained' if result else
+                                          'no planning workspace'))
+                    except Exception as exc:
+                        self._plan_notice(exc)
                 else:
                     self.collector.perform_action(action)
                     self.show_notice("Executing: " + action)
@@ -2439,6 +2905,24 @@ class Observatory:
                 self.confirm = None
                 self.accounts_login = None
             return True
+        if self.plan_mode:
+            if key == 27 and (self.plan_input is None and self.plan_phrase is None):
+                self.plan_mode = False
+                if self.planning is not None:
+                    self.planning.cancel()
+                self.show_notice('Plan & Chat closed; the worker was never touched')
+                return True
+            if key == ord('C') and self.plan_input is None and self.plan_phrase is None:
+                self.plan_mode = False
+                if self.planning is not None:
+                    self.planning.cancel()
+                self.show_notice('Plan & Chat closed; the worker was never touched')
+                return True
+            if key in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
+                       ord('{'), ord('}'), ord('?')) or ord('0') <= key <= ord('9'):
+                self.plan_mode = False  # leave the workspace, then navigate normally
+            elif self.handle_plan(key):
+                return True
         if self.tab == ACCOUNTS_TAB:
             if self.accounts is None:
                 if key not in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
@@ -2710,6 +3194,9 @@ def cli(argv=None):
         p.error("--service must be a systemd user .service unit")
     c=Collector(args.repo, args.root.expanduser(), args.service, args.state_dir.expanduser(),
                 demo=args.demo, gh_interval=max(15,min(args.refresh_seconds,3600)), offline=args.offline)
+    # Plan & Chat re-resolves owner/admin authority from GitHub on every entry
+    # and privileged action; injected here so tests and demo never hit the network.
+    c.owner_access_provider = lambda: operator_ops.owner_access(args.repo)
     workers=max(1,min(32,args.workers))
     if args.once:
         if not args.demo and not args.offline:
