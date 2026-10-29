@@ -550,6 +550,108 @@ def authorize(request: Request, evidence: Evidence, *, now: int,
         return deny(Reason.INVALID_EVIDENCE)
 
 
+_BINDING_KEYS = frozenset({
+    "version", "origin", "repository_id", "owner_id", "issue_id", "issue_number",
+    "task_spec_sha256", "action", "operation_sha256", "operation_arguments",
+    "nonce", "executor_user_id",
+})
+
+
+def _validate_binding(binding: object) -> None:
+    """Validate a binding dict supplied by durable state, not by a prompt.
+
+    The binding may come from the coordinator's lease, which is untrusted issue
+    text, so every field is re-validated here; approval-record equality still
+    supplies the cryptographic binding to the owner's comment.
+    """
+    if type(binding) is not dict or set(binding) != _BINDING_KEYS:
+        raise _Denied()
+    if type(binding["version"]) is not int or binding["version"] != POLICY_VERSION:
+        raise _Denied()
+    if binding["origin"] != API_ORIGIN:
+        raise _Denied()
+    for key in ("repository_id", "owner_id", "issue_id", "issue_number"):
+        _positive(binding[key])
+    _digest(binding["task_spec_sha256"])
+    _digest(binding["operation_sha256"])
+    _digest(binding["nonce"])
+    if not isinstance(binding["action"], str) or binding["action"] not in {a.value for a in Action}:
+        raise _Denied()
+    arguments = binding["operation_arguments"]
+    if type(arguments) is not dict:
+        raise _Denied()
+    if hashlib.sha256(_canonical_json(arguments).encode("utf-8")).hexdigest() != binding["operation_sha256"]:
+        raise _Denied()
+    if binding["executor_user_id"] is not None:
+        _positive(binding["executor_user_id"])
+
+
+def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvidence,
+                           request: Request, *, reader: int, now: int,
+                           organization: bool, replay: ReplayState | None,
+                           issue_updated_at: str | None = None) -> Decision:
+    """Re-verify one owner/admin approval against a previously checked binding.
+
+    Used by pre-publish worker revalidation, where the issue body has since been
+    extended with the coordinator's lease block and can no longer be re-hashed
+    as the approved task revision. The binding must be validated structurally
+    and must agree with the caller's Request; the approval comment, its current
+    author role and the replay ledger are re-read live.
+    """
+    role = Role.UNAUTHENTICATED
+
+    def deny(reason: Reason) -> Decision:
+        return Decision(False, role, reason)
+
+    try:
+        _validate_binding(binding)
+        if not isinstance(request, Request) or not isinstance(approval, ApprovalEvidence):
+            raise _Denied()
+        request.repository.path
+        _positive(request.issue_number)
+        _digest(request.operation_sha256)
+        _digest(request.nonce)
+        if (binding["repository_id"] != request.repository.id
+                or binding["owner_id"] != request.repository.owner_id
+                or binding["issue_number"] != request.issue_number
+                or binding["action"] != request.action.value
+                or binding["operation_sha256"] != request.operation_sha256
+                or binding["nonce"] != request.nonce
+                or binding["executor_user_id"] != request.executor_user_id):
+            raise _Denied()
+        _positive(reader)
+        if type(now) is not int or now < 0:
+            raise _Denied()
+        comment, record = _record(approval.comment, request, reader, now, dict(binding), kind="nova3.approval")
+        author_role, author_id, author_login = _role(
+            approval.author, request, reader, now, viewer=False, organization=organization)
+        if (author_role is not Role.OWNER
+                or _person(comment["user"]) != (author_id, author_login)
+                or record["actor_id"] != author_id or record["actor_login"] != author_login):
+            return deny(Reason.APPROVAL_REQUIRED)
+        if issue_updated_at is not None and _time(record["issued_at"]) < _time(issue_updated_at):
+            return deny(Reason.APPROVAL_REQUIRED)
+        if replay is not None:
+            if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
+                raise _Denied()
+            _fresh(replay.fetched_at, now)
+            if type(replay.consumed) is not frozenset or type(replay.revoked_comments) is not frozenset:
+                raise _Denied()
+            for key in replay.consumed:
+                if not isinstance(key, str) or not re.fullmatch(
+                        r"github:[1-9][0-9]*:(?:comment:[1-9][0-9]*|request:[0-9a-f]{64})", key):
+                    raise _Denied()
+            for ident in replay.revoked_comments:
+                _positive(ident)
+            if (f"github:{request.repository.id}:comment:{comment['id']}" in replay.consumed
+                    or f"github:{request.repository.id}:request:{request.nonce}" in replay.consumed
+                    or comment["id"] in replay.revoked_comments):
+                return deny(Reason.REPLAY)
+        return Decision(True, Role.OWNER, Reason.ALLOWED, operation_digest(dict(binding)))
+    except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return deny(Reason.INVALID_EVIDENCE)
+
+
 def verify_owner_approval(request: Request, evidence: Evidence, *, now: int) -> Decision:
     """Verify a *standing* owner/admin approval for one exact task revision.
 
@@ -602,35 +704,12 @@ def verify_owner_approval(request: Request, evidence: Evidence, *, now: int) -> 
         binding = _task_binding(request, issue)
         if _time(issue["updated_at"]) > now:
             raise _Denied()
-        digest = operation_digest(binding)
         if type(evidence.approvals) is not tuple or len(evidence.approvals) != 1:
             return deny(Reason.APPROVAL_REQUIRED)
-        approval = evidence.approvals[0]
-        comment, record = _record(approval.comment, request, reader, now, binding, kind="nova3.approval")
-        author_role, author_id, author_login = _role(
-            approval.author, request, reader, now, viewer=False, organization=organization)
-        if (author_role is not Role.OWNER
-                or _person(comment["user"]) != (author_id, author_login)
-                or record["actor_id"] != author_id or record["actor_login"] != author_login
-                or _time(record["issued_at"]) < _time(issue["updated_at"])):
-            return deny(Reason.APPROVAL_REQUIRED)
-        replay = evidence.replay
-        if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
-            raise _Denied()
-        _fresh(replay.fetched_at, now)
-        if type(replay.consumed) is not frozenset or type(replay.revoked_comments) is not frozenset:
-            raise _Denied()
-        for key in replay.consumed:
-            if not isinstance(key, str) or not re.fullmatch(
-                    r"github:[1-9][0-9]*:(?:comment:[1-9][0-9]*|request:[0-9a-f]{64})", key):
-                raise _Denied()
-        for ident in replay.revoked_comments:
-            _positive(ident)
-        if (f"github:{request.repository.id}:comment:{comment['id']}" in replay.consumed
-                or f"github:{request.repository.id}:request:{request.nonce}" in replay.consumed
-                or comment["id"] in replay.revoked_comments):
-            return deny(Reason.REPLAY)
-        return Decision(True, Role.OWNER, Reason.ALLOWED, digest)
+        return verify_approval_record(
+            binding, evidence.approvals[0], request, reader=reader, now=now,
+            organization=organization, replay=evidence.replay,
+            issue_updated_at=issue["updated_at"])
     except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return deny(Reason.INVALID_EVIDENCE)
 
