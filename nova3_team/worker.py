@@ -1,6 +1,6 @@
 """Cross-platform opt-in unattended worker. Runs one sandboxed local CLI at a time."""
 from __future__ import annotations
-import argparse, hashlib, json, os, pathlib, shutil, signal, subprocess, sys, time, uuid
+import argparse, hashlib, json, os, pathlib, shutil, signal, subprocess, sys, threading, time, uuid
 from datetime import datetime, timezone
 from functools import lru_cache
 from .common import GitHub, lease_active, lease_get, label_names
@@ -8,6 +8,7 @@ from .guard import check as guard_check
 from . import recovery  # NOVA3-DURABLE-RESUME-v1
 from . import reliability  # NOVA3-RELIABILITY-FAILSTOP-v2
 from . import activity_feed
+from . import provider_runtime
 
 
 def run(cmd, cwd=None, timeout=90, capture=True, check=True):
@@ -52,6 +53,11 @@ def _tail_file(path, limit=16000):
 def _stop_provider_group(proc):
     """Stop a timed-out CLI and its subprocesses, avoiding runaway local jobs."""
     if proc.poll() is not None:
+        if os.name == 'posix':
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         return
     try:
         if os.name == 'posix':
@@ -90,7 +96,39 @@ def _publish_activity(activity, **kwargs):
         pass
 
 
-def run_provider(cmd, cwd, log, timeout, activity=None):
+def _relay_provider_output(source, sink):
+    """Redact before persisting; never buffer an unbounded unterminated line."""
+    pending = b''
+    discarding = False
+    limit = 64 * 1024
+    while True:
+        chunk = source.read(4096)
+        if not chunk:
+            if pending and not discarding:
+                sink.write(provider_runtime.redact_diagnostic(
+                    pending.decode('utf-8', errors='replace')).encode('utf-8'))
+                sink.flush()
+            return
+        pending += chunk
+        while b'\n' in pending:
+            line, pending = pending.split(b'\n', 1)
+            if not discarding:
+                if len(line) <= limit:
+                    sink.write(provider_runtime.redact_diagnostic(
+                        line.decode('utf-8', errors='replace')).encode('utf-8') + b'\n')
+                else:
+                    sink.write(b'[oversized provider output line omitted]\n')
+            discarding = False
+            sink.flush()
+        if len(pending) > limit:
+            if not discarding:
+                sink.write(b'[oversized provider output line omitted]\n')
+                sink.flush()
+            pending = b''
+            discarding = True
+
+
+def run_provider(cmd, cwd, log, timeout, activity=None, env=None):
     """Stream AI output to a private local file; retain diagnostics on timeout.
 
     subprocess.run(capture_output=True) hid all progress until termination and
@@ -111,13 +149,27 @@ def run_provider(cmd, cwd, log, timeout, activity=None):
     heartbeat_due = started + 60
     timed_out = False
     if activity is None:
-        structured = cmd[:2] == ['codex', 'exec'] and '--json' in cmd[2:-1]
+        structured = (len(cmd) > 1 and provider_runtime.executable_stem(cmd[0]) == 'codex'
+                      and cmd[1] == 'exec' and '--json' in cmd[2:-1])
         activity = activity_feed.ActivityFeed(log, structured=structured)
     _publish_activity(activity, force=True)
     try:
         with os.fdopen(descriptor, 'wb') as sink:
-            proc = subprocess.Popen(cmd, cwd=cwd, stdout=sink,
-                                    stderr=subprocess.STDOUT, **settings)
+            try:
+                proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT, shell=False, bufsize=0,
+                                        env=env, **settings)
+            except OSError:
+                raise provider_runtime.ProviderUnavailable(
+                    'Provider could not start; check the local executable and permissions.') from None
+            relay_errors = []
+            def relay_output():
+                try:
+                    _relay_provider_output(proc.stdout, sink)
+                except Exception:
+                    relay_errors.append(True)
+            relay = threading.Thread(target=relay_output, daemon=True)
+            relay.start()
             try:
                 while True:
                     remaining = timeout - (time.monotonic() - started)
@@ -139,6 +191,17 @@ def run_provider(cmd, cwd, log, timeout, activity=None):
             except BaseException:
                 _stop_provider_group(proc)
                 raise
+            finally:
+                relay.join(timeout=1)
+                if relay.is_alive():
+                    # A child retaining stdout must not keep the log relay alive.
+                    _stop_provider_group(proc)
+                    proc.stdout.close()
+                    relay.join(timeout=1)
+                else:
+                    proc.stdout.close()
+            if relay_errors:
+                raise provider_runtime.ProviderUnavailable('Provider output could not be recorded safely.')
             sink.flush()
     except BaseException:
         _publish_activity(activity, force=True, returncode=1)
@@ -158,6 +221,7 @@ def run_provider(cmd, cwd, log, timeout, activity=None):
 
 
 def note(s):
+    s = provider_runtime.redact_diagnostic(s)
     print(f'[{datetime.now().strftime("%H:%M:%S")}] {s}', flush=True)
     # NOVA3_WORKER_PRESENCE_V1: nonblocking best-effort status; never logs credentials.
     reporter = globals().get('_nova_presence')
@@ -204,24 +268,23 @@ def claim(gh, issue, user, maxwait=100, saved=None):
 @lru_cache(maxsize=1)
 def _codex_json_supported():
     """One bounded local help probe, never launch a model or require a login."""
-    try:
-        cp = subprocess.run(['codex', 'exec', '--help'], capture_output=True,
-                            text=True, timeout=3, check=False)
-        return cp.returncode == 0 and '--json' in (cp.stdout or '').split()
-    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+    path = shutil.which('codex')
+    if not path or pathlib.Path(path).suffix.lower() in ('.cmd', '.bat'):
         return False
+    result = provider_runtime._probe([path, 'exec', '--help'])
+    return result.returncode == 0 and '--json' in result.output.split()
 
 
-def command_for(provider,prompt):
-    if provider=='codex':
-        options = ['--json'] if _codex_json_supported() else []
-        return ['codex','exec','--ephemeral','--sandbox','workspace-write',*options,prompt]
-    if provider=='claude':
-        # Limit tools to file operations by default. No shell execution is auto-approved.
-        return ['claude','-p',prompt,'--max-turns','12','--allowedTools','Read','Edit','Write','Glob','Grep','--output-format','text']
-    if provider=='gemini':
-        return ['gemini','-p',prompt,'--approval-mode','auto_edit','--output-format','text']
-    raise ValueError(provider)
+def command_for(provider, prompt, status=None, aux_dir=None):
+    # A legacy status may lack capability tokens (help text drift); fall back to
+    # the direct bounded probe rather than silently dropping --json.
+    codex_json = False
+    if provider == 'codex':
+        codex_json = ('--json' in status.capabilities) if status is not None else False
+        if not codex_json:
+            codex_json = _codex_json_supported()
+    return provider_runtime.build_command(
+        provider, prompt, status=status, aux_dir=aux_dir, codex_json=codex_json)
 
 
 def allowed_from_issue(body):
@@ -366,15 +429,16 @@ def record_handoff(workdir,round_num,cmd,cp,changes,streamed=False):
     log=private_round_log(workdir,round_num)
     folder=log.parent
     if not streamed:
-        log.write_text((cp.stdout or '')[-12000:]+'\nSTDERR:\n'+(cp.stderr or '')[-3000:],encoding='utf-8')
+        log.write_text(provider_runtime.redact_diagnostic(
+            (cp.stdout or '')[-12000:]+'\nSTDERR:\n'+(cp.stderr or '')[-3000:]),encoding='utf-8')
         if os.name == 'posix':
             log.chmod(0o600)
-    snippet=(cp.stdout or '')[-3500:]
+    snippet=provider_runtime.redact_diagnostic((cp.stdout or '')[-3500:])
     handoff=folder/'handoff.md'
     handoff.write_text(f'Round {round_num}; exit={cp.returncode}\n'
                        f'Changed files: {changes}\n'
                        f'Private full output: {log.name}\n'
-                       f'Provider diagnostic: {(cp.stderr or "")[:400]}\n'
+                       f'Provider diagnostic: {provider_runtime.redact_diagnostic(cp.stderr or "")[:400]}\n'
                        f'Last model output:\n{snippet}\n',encoding='utf-8')
     if os.name == 'posix':
         handoff.chmod(0o600)
@@ -386,6 +450,7 @@ def pause_failed_task(gh, root, number, token, provider, user, error):
 
     Never delete local checkouts. GitHub coordinator is the sole label writer.
     """
+    error = provider_runtime.redact_diagnostic(error)
     previous = recovery.load(root, number)
     decision = reliability.failure_decision(previous, error)
     recovery.update(root, number,
@@ -412,7 +477,7 @@ def pause_failed_task(gh, root, number, token, provider, user, error):
     return False
 
 
-def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
+def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_status=None):
     n=issue['number']
     prior=recovery.load(root,n)
     token=claim(gh,issue,user,saved=prior)
@@ -458,12 +523,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root):
                                 provider_started_unix=int(time.time()),
                                 provider_exit=None)
                 prompt=session_prompt(issue,k,handoff,allowed,binary_root)
-                cmd=command_for(provider,prompt)
-                note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 log=private_round_log(work,k)
+                # Bounded agent/profile files live beside the private log only.
+                aux_dir=log.parent/'provider-aux'
+                provider_runtime.prepare_aux_files(provider,aux_dir)
+                cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
+                note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 structured=provider == 'codex' and '--json' in cmd[2:-1]
                 activity=activity_feed.ActivityFeed(log, structured=structured)
-                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity)
+                provider_env={**os.environ, **provider_runtime.build_environment(provider)}
+                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
+                                env=provider_env)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
                 try:
@@ -594,9 +664,11 @@ def _kick_local_discovery_if_due():
 
 def main():
     p=argparse.ArgumentParser(description='Contribute continuously using your own installed AI CLI and GitHub account')
-    p.add_argument('command',choices=('run','status'))
+    p.add_argument('command',choices=('run','status','providers'))
     p.add_argument('--repo',help='OWNER/REPO (defaults to current repository)')
-    p.add_argument('--provider',choices=('codex','claude','gemini'),default='codex')
+    p.add_argument('--provider',choices=provider_runtime.provider_ids(),default='codex')
+    p.add_argument('--check-auth',action='store_true',
+                   help='With providers: use bounded vendor status checks, never login')
     p.add_argument('--once',action='store_true',help='Handle at most one task attempt')
     p.add_argument('--rounds',type=int,default=3)
     p.add_argument('--poll',type=int,default=90)
@@ -604,10 +676,43 @@ def main():
     args=p.parse_args()
     if args.rounds<1 or args.rounds>12:p.error('--rounds must be in 1..12')
     if args.poll<20:p.error('--poll must be at least 20 seconds')
-    if args.command=='run' and not shutil.which(args.provider):p.error(f'CLI missing: {args.provider}. Install and authenticate it first.')
+    if args.command=='providers':
+        reports=[]
+        for provider_id, spec in provider_runtime.PROVIDERS.items():
+            status=provider_runtime.probe_provider(provider_id)
+            report={'id':provider_id,'name':spec.display_name,'state':status.state.value,
+                    'version':status.version,'reason':status.reason,'docs':spec.docs_url,
+                    'install':spec.install_url,
+                    'permission_profile':spec.permission_profile,
+                    'unsupported':bool(spec.unsupported_reason),
+                    'login_guidance':spec.login_guidance}
+            if args.check_auth:
+                auth=provider_runtime.check_auth(provider_id)
+                report['auth']={'state':auth.state.value,'reason':auth.reason}
+            reports.append(report)
+        identity=(provider_runtime.check_github_identity() if args.check_auth else None)
+        print(json.dumps({'providers':reports,'github_identity':
+                          {'state':identity.state.value,'reason':identity.reason} if identity else
+                          {'state':'unknown','reason':'GitHub CLI identity is separately required.'}},indent=2))
+        return
+    ready=None
+    if args.command=='run':
+        ready=provider_runtime.probe_provider(args.provider)
+        if not ready.available:
+            # #127 freezes the argv of providers that predate the registry, so a
+            # help text change must not block an invocation that previously
+            # worked. Warn and launch; refuse only when there is no executable.
+            if provider_runtime.is_legacy(args.provider) and ready.executable_path:
+                note(f'WARN {provider_runtime.get_provider(args.provider).display_name}: '
+                     f'capability probe reported {ready.state.value} '
+                     f'({ready.reason}); launching the unchanged documented invocation. '
+                     'The probe is advisory for pre-registry providers.')
+            else:
+                p.error(ready.reason)
+        if not shutil.which('gh'):p.error('GitHub CLI is required separately; install gh and run gh auth login locally.')
     upstream=get_repo(args.repo)
     gh=GitHub(upstream);user=gh.me()
-    note(f'Repo={upstream} account={user} provider={args.provider}')
+    note(f'Repo={upstream} account={user} provider={provider_runtime.get_provider(args.provider).display_name}')
     # NOVA3_WORKER_PRESENCE_V1: one editable GitHub comment per machine.
     global _nova_presence
     try:
@@ -667,7 +772,8 @@ def main():
             else:
                 for issue in issues[:8]:
                     note(f'Trying #{issue["number"]}: {issue["title"]}')
-                    result=work_one(gh,upstream,user,issue,args.provider,root,args.rounds,args.binary_root)
+                    result=work_one(gh,upstream,user,issue,args.provider,root,args.rounds,args.binary_root,
+                                    provider_status=ready)
                     # An unresponsive GitHub/API setup must not burn hours or tokens.
                     if result is True:
                         consecutive_failures=0
