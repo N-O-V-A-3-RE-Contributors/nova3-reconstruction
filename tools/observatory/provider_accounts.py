@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import types
+import urllib.parse
 
 # Observatory installs are standalone directories.  Load a sibling runtime if
 # present (install.sh copies it), otherwise fall back to the repository package.
@@ -111,10 +112,22 @@ def redact(value: object, limit: int = 300) -> str:
 
 
 def safe_url(url: object) -> bool:
-    """Only official HTTPS destinations may reach the browser helper."""
-    if not isinstance(url, str) or len(url) > 300 or not url.startswith('https://'):
+    """Only official HTTPS destinations may reach the browser helper.
+
+    Parsed with urlsplit so userinfo tricks (``https://github.com:443@evil``)
+    cannot pass the allowlist: the username/password must be empty and the
+    hostname itself must be allowlisted.
+    """
+    if not isinstance(url, str) or len(url) > 300:
         return False
-    host = url.split('/', 3)[2].split(':', 1)[0].lower()
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        return False
+    if (parts.scheme != 'https' or parts.username is not None
+            or parts.password is not None or not parts.hostname):
+        return False
+    host = parts.hostname.lower()
     return host in {'github.com', 'www.github.com', 'developers.openai.com',
                     'code.claude.com', 'geminicli.com', 'www.kimi-cli.com',
                     'qwenlm.github.io', 'opencode.ai', 'docs.github.com'}
