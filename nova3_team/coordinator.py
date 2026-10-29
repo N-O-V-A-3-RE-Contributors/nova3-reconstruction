@@ -161,7 +161,6 @@ class QueueDecision:
     approval_id: int | None = None
     binding: dict | None = None
     task_text_sha256: str | None = None
-    approved_updated_at: str | None = None
 
 
 def approval_comment_id(issue: Mapping[str, object]) -> int | None:
@@ -275,26 +274,25 @@ class QueueApprovalGate:
             if not decision.allowed:
                 return QueueDecision(False, decision.reason.value, comment_id)
             binding = policy.request_binding(request, issue_payload)
-            updated = issue_payload.get('updated_at')
             return QueueDecision(
                 True, policy.Reason.ALLOWED.value, comment_id, binding,
                 task_text_sha256(issue_payload.get('body')),
-                updated if isinstance(updated, str) else None,
             )
         except Exception:
             # Fixed reason only: never echo a payload, task text or credential.
             return QueueDecision(False, policy.Reason.INVALID_EVIDENCE.value)
 
-    def revalidate(self, issue: Mapping[str, object], lease: Mapping[str, object] | None,
-                   *, allow_legacy_publish: bool = False) -> QueueDecision:
+    def revalidate(self, issue: Mapping[str, object], lease: Mapping[str, object] | None) -> QueueDecision:
         """Pre-publish check using the binding captured at admission time.
 
-        The coordinator lease changes the issue body/updated_at, so the original
-        task-spec hash cannot be recomputed. The captured binding, the approval
-        comment body, the author's current role and a lease-time digest of the
-        task text (lease envelope removed) are checked instead. ``allow_legacy_publish``
-        is the explicit one-release migration path for work committed before
-        this gate shipped; it never launches new AI work.
+        The coordinator lease changes the issue body, so the original task-spec
+        hash cannot be recomputed. The captured binding, the approval comment
+        body, the author's current role and a lease-time digest of the task text
+        (lease envelope removed) are checked instead.
+
+        There is deliberately no legacy bypass: work with no approval metadata
+        is unapproved work and must be re-approved by an owner/admin. Quarantine
+        it instead of publishing.
         """
         try:
             number = issue.get('number')
@@ -305,11 +303,8 @@ class QueueApprovalGate:
             binding = lease.get('approval_binding')
             comment_id = lease.get('approval_id')
             text_sha = lease.get('task_text_sha256')
-            approved_updated_at = lease.get('approved_updated_at')
             if not isinstance(binding, dict) or type(comment_id) is not int or comment_id <= 0 \
                     or not isinstance(text_sha, str):
-                if allow_legacy_publish:
-                    return QueueDecision(True, 'legacy_in_flight_publish_only')
                 return QueueDecision(False, 'owner_approval_required')
             if task_text_sha256(issue.get('body')) != text_sha:
                 return QueueDecision(False, 'task_text_edited', comment_id)
@@ -322,12 +317,29 @@ class QueueApprovalGate:
             evidence = self._evidence(number, comment, request.nonce, now_s, reader, include_issue=False)
             decision = policy.verify_approval_record(
                 binding, evidence.approvals[0], request, reader=reader, now=now_s,
-                organization=self._organization(), replay=evidence.replay,
-                issue_updated_at=approved_updated_at if isinstance(approved_updated_at, str) else None)
+                organization=self._organization(), replay=evidence.replay)
             return QueueDecision(decision.allowed, decision.reason.value, comment_id)
         except Exception:
             # Fixed reason only: never echo a payload, task text or credential.
             return QueueDecision(False, policy.Reason.INVALID_EVIDENCE.value)
+
+    def preflight(self) -> int:
+        """Validate pinned deployment identity before activating the queue.
+
+        Confirms the credential has an identity and that the live repository
+        payload matches the reviewed numeric repository/owner IDs. Any failure
+        raises EvidenceUnavailable; callers must exit without touching labels,
+        claims or providers.
+        """
+        reader = self.collector.identity()
+        if type(reader) is not int or reader <= 0:
+            raise EvidenceUnavailable('no authenticated reader identity')
+        try:
+            policy.verify_repository(self.collector.repository(), self.repository)
+        except ValueError:
+            raise EvidenceUnavailable(
+                'NOVA3_REPOSITORY_ID/NOVA3_OWNER_ID do not match the live repository') from None
+        return reader
 
     def _organization(self) -> bool:
         owner = self.collector.repository().get('owner')
@@ -354,7 +366,9 @@ def build_gate(gh: GitHub) -> QueueApprovalGate:
     if not owner or not name:
         raise EvidenceUnavailable('repository must be OWNER/REPO')
     repository = pinned_repository(owner, name)
-    return QueueApprovalGate(repository, GitHubEvidenceCollector(gh.token, repository))
+    gate = QueueApprovalGate(repository, GitHubEvidenceCollector(gh.token, repository))
+    gate.preflight()
+    return gate
 
 
 def quarantine(gh, issue: Mapping[str, object], reason: str, *, detail: str = '') -> None:
@@ -447,7 +461,6 @@ def process_comment(gh, event, *, admission=None):
                 'approval_id': admission.approval_id,
                 'approval_binding': admission.binding,
                 'task_text_sha256': admission.task_text_sha256,
-                'approved_updated_at': admission.approved_updated_at,
             })
         gh.patch(f'issues/{number}', {
             'body': lease_put(issue.get('body'), latest),

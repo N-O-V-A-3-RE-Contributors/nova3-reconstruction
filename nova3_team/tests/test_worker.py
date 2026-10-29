@@ -114,7 +114,7 @@ class QueueAdmissionTests(unittest.TestCase):
     def test_unapproved_tasks_are_filtered_before_any_launch(self):
         issues = [{'number': 1}, {'number': 2}, {'number': 3}]
         gate = FakeGate({1: co.QueueDecision(False, 'owner_approval_required'),
-                         2: co.QueueDecision(True, 'allowed', 900, {'a': 1}, '0' * 64, '2026-01-01T00:00:00Z')})
+                         2: co.QueueDecision(True, 'allowed', 900, {'a': 1}, '0' * 64)})
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             admitted = worker.admit_queue(gate, issues, root)
@@ -123,14 +123,15 @@ class QueueAdmissionTests(unittest.TestCase):
             self.assertEqual(worker.recovery.load(root, 2)['approval_id'], 900)
             self.assertEqual(worker.admit_queue(None, issues, root), [])
 
-    def test_revalidate_before_publish_passes_legacy_flag_and_denies_revocation(self):
+    def test_revalidate_before_publish_denies_revocation_without_bypass(self):
         gh = FakeGH()
         expires = datetime.now(timezone.utc) + timedelta(minutes=30)
         gh.item['body'] = 'Priority: 50\n' + lease_put('', {'approval_id': 900, 'expires_at': iso(expires)})
         gate = FakeGate({7: co.QueueDecision(False, 'approval_revoked')})
-        decision = worker.revalidate_before_publish(gh, gate, 7, allow_legacy_publish=True)
+        decision = worker.revalidate_before_publish(gh, gate, 7)
         self.assertFalse(decision.allowed)
-        self.assertTrue(gate.revalidated[0][2]['allow_legacy_publish'])
+        # The gate receives no legacy-publish switch at all.
+        self.assertEqual(gate.revalidated[0][2], {})
         self.assertEqual(gate.revalidated[0][1]['approval_id'], 900)
 
     def test_no_provider_launch_when_gate_unavailable(self):

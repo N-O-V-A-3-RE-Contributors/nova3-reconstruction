@@ -38,21 +38,69 @@ Missing/invalid values make `build_gate()` raise; the coordinator exits `6` and
 the worker exits `6` with the cause recorded (see exit codes below). There is no
 fallback to an ungated queue and no environment-supplied role.
 
+### Where these are configured
+
+IDs are public repository metadata, not secrets; do not store them as secrets.
+
+* **GitHub Actions coordinator** (`.github/workflows/nova-coordinator.yml`):
+  consumed from reviewed repository variables, which must be set once by an
+  owner/admin:
+
+  ```sh
+  gh variable set NOVA3_REPOSITORY_ID --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction --body 1433565792
+  gh variable set NOVA3_OWNER_ID      --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction --body 347984779
+  ```
+
+  `1433565792` is `GET /repos/... .id`; `347984779` is `.owner.id` for the
+  organization. The workflow passes both to the coordinator process.
+* **Local/systemd worker**: put the two exports in the worker's reviewed
+  environment (`~/.config/nova3-worker.env` or the systemd unit's
+  `Environment=`/`EnvironmentFile=`):
+
+  ```sh
+  NOVA3_REPOSITORY_ID=1433565792
+  NOVA3_OWNER_ID=347984779
+  ```
+
+  Then restart the worker. Verify the pinned identity matches live GitHub
+  before enabling a queue:
+
+  ```sh
+  gh api repos/N-O-V-A-3-RE-Contributors/nova3-reconstruction --jq '.id, .owner.id'
+  ```
+
+### Startup validation before queue activation
+
+`build_gate()` now performs `QueueApprovalGate.preflight()`: it reads the
+authenticated identity and the live repository payload and compares the numeric
+repository and owner IDs with the pinned values. It runs **before** any label,
+claim, lease or provider action. A mismatch, unauthenticated credential or API
+failure raises `EvidenceUnavailable`; coordinator and worker exit `6` without
+touching the queue. Preflight is repeated in-process for the values used later
+by `verify`/`revalidate`, so the queue is never activated against a name-reused
+repository.
+
 ## Approval record
 
 The approval is an ordinary GitHub issue comment written by a currently
 verified repository ADMIN or an active organization owner. It is a strict JSON
-object (exactly the version-2 binding from `docs/progress/CONTROL_AUTHORIZATION.md`)
+object (exactly the version-3 binding from `docs/progress/CONTROL_AUTHORIZATION.md`)
 with `kind = "nova3.approval"`, `action = "approve_queue"`,
 `executor_user_id = null` and canonical `operation_arguments`
 (`{"transition":"queue"}`). It binds:
 
 * numeric repository id, owner id, issue id and issue number;
-* `task_spec_sha256` over the exact issue `id`, `number`, `title`, `body` and
-  `updated_at` (so any edit, including edit-and-revert, invalidates it);
+* `task_spec_sha256` over the exact issue `id`, `number`, `title` and `body`;
 * the canonical operation arguments and their SHA256;
 * a unique nonce, actor numeric id/login and issuance/expiry timestamps
-  (issued after the current revision, at most one hour valid).
+  (not before issue creation, at most one hour valid).
+
+Issue `updated_at` is deliberately **not** bound (protocol v3). GitHub moves it
+for comments, labels and assignments, so binding it made any coordinator lease,
+review comment or label change revoke a fresh approval. Comments and metadata no
+longer invalidate approval; any title/body edit does. The coordinator still
+digests the lease-stripped task text separately, so a lease cannot smuggle new
+instructions into an approved body.
 
 The **locator** tells the coordinator which comment to fetch. It is not
 authorization. Exactly one of these must be present; zero or several conflict:
@@ -96,10 +144,10 @@ edit requires a fresh owner approval.
 * Immediately before push/PR: `revalidate_before_publish()` uses fresh evidence
   and the lease binding. A denial blocks the task (circuit breaker) and does not
   push or open a PR.
-* One-release migration: a lease with **no** approval metadata may still publish
-  work already in `committed`/`pushed` phase (it cannot start a new AI session).
-  This is the only grandfathering path and is logged as
-  `legacy_in_flight_publish_only`.
+* There is **no** legacy publishing exception. A lease with no approval metadata
+  is unapproved work: it is quarantined for fresh owner/admin approval and never
+  pushed. Re-approval is the migration path; the gate cannot be disabled to make
+  a worker run.
 
 ### Priority schema
 

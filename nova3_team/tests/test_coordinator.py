@@ -1,6 +1,8 @@
 import json
+import os
 import unittest
 from datetime import datetime, timezone
+from unittest import mock
 
 from nova3_team import access_policy as policy
 from nova3_team import coordinator as co
@@ -64,6 +66,7 @@ def issue_payload(number=NUMBER, body='Priority: 50\nAllowed paths: foo/',
                   updated=NOW - 60, labels=('nova:queued', 'nova:approved:900'), repo=REPO):
     return {
         'id': 500 + number, 'number': number, 'title': 'Bound task', 'body': body,
+        'created_at': iso(NOW - 600),
         'updated_at': iso(updated), 'state': 'open',
         'labels': [{'name': name} for name in labels],
         'repository_url': f'{policy.API_ORIGIN}{repo.path}',
@@ -200,13 +203,17 @@ class QueueGateTests(unittest.TestCase):
         issue = issue_payload()
         for kwargs in ({'actor_id': 202}, {'actor_login': 'crjase'},
                        {'action': policy.Action.MERGE_PR},
-                       {'repo': policy.Repository(42, 51, 'example-org', 'reconstruction')},
-                       {'issued': NOW - 90}):
+                       {'repo': policy.Repository(42, 51, 'example-org', 'reconstruction')}):
             with self.subTest(kwargs=kwargs):
                 collector = FakeCollector(issue=issue)
                 _, _, record = approval_record(issue, **kwargs)
                 collector.record = record
                 self.assertFalse(gate_for(collector).verify(issue).allowed)
+        # Approval age alone is not a revocation: content is unchanged.
+        collector = FakeCollector(issue=issue)
+        _, _, record = approval_record(issue, issued=NOW - 90)
+        collector.record = record
+        self.assertTrue(gate_for(collector).verify(issue).allowed)
 
     def test_github_failure_and_role_revocation_fail_closed(self):
         collector = FakeCollector(fail=True)
@@ -214,6 +221,61 @@ class QueueGateTests(unittest.TestCase):
                          policy.Reason.INVALID_EVIDENCE.value)
         collector = FakeCollector(permission='write')
         self.assertFalse(gate_for(collector).verify(collector.issue_data).allowed)
+
+    def test_preflight_enforces_pinned_repository_and_owner_ids(self):
+        gate = gate_for(FakeCollector())
+        self.assertEqual(gate.preflight(), READER)
+        mismatch = FakeCollector()
+        mismatch.repository = lambda: {'id': REPO.id + 1, 'name': REPO.name, 'private': False,
+                                       'owner': {'id': REPO.owner_id, 'login': REPO.owner,
+                                                 'type': 'Organization'}}
+        with self.assertRaises(co.EvidenceUnavailable):
+            gate_for(mismatch).preflight()
+        owner_mismatch = FakeCollector()
+        owner_mismatch.repository = lambda: {'id': REPO.id, 'name': REPO.name, 'private': False,
+                                             'owner': {'id': REPO.owner_id + 1, 'login': REPO.owner,
+                                                       'type': 'Organization'}}
+        with self.assertRaises(co.EvidenceUnavailable):
+            gate_for(owner_mismatch).preflight()
+        with self.assertRaises(co.EvidenceUnavailable):
+            gate_for(FakeCollector(fail=True)).preflight()
+
+    def test_pinned_repository_requires_positive_numeric_env_ids(self):
+        with mock.patch.dict(os.environ, {'NOVA3_REPOSITORY_ID': '41', 'NOVA3_OWNER_ID': '51'}):
+            self.assertEqual(co.pinned_repository('example-org', 'reconstruction'), REPO)
+        for repo_id, owner_id in (('', '51'), ('41', ''), ('abc', '51'), ('0', '51'),
+                                  ('41', '-1'), ('4 1', '51')):
+            with self.subTest(repo_id=repo_id, owner_id=owner_id):
+                with mock.patch.dict(os.environ, {'NOVA3_REPOSITORY_ID': repo_id,
+                                                  'NOVA3_OWNER_ID': owner_id}):
+                    with self.assertRaises(co.EvidenceUnavailable):
+                        co.pinned_repository('example-org', 'reconstruction')
+
+    def test_revalidate_denies_unapproved_lease_without_legacy_bypass(self):
+        # A lease that predates the gate (or was forged) has no captured binding.
+        # It must never publish, and the gate exposes no switch to allow it.
+        issue = issue_payload()
+        collector = FakeCollector(issue=issue)
+        gate = gate_for(collector)
+        lease = {'owner': 'alice', 'token': 'a' * 32, 'expires_at': iso(NOW + 3600)}
+        decision = gate.revalidate(issue, lease)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, 'owner_approval_required')
+        self.assertNotIn('allow_legacy_publish', gate.revalidate.__code__.co_varnames)
+
+    def test_revalidate_accepts_matching_captured_binding(self):
+        issue = issue_payload()
+        collector = FakeCollector(issue=issue)
+        gate = gate_for(collector)
+        admission = gate.verify(issue)
+        self.assertTrue(admission.allowed)
+        lease = {'owner': 'alice', 'token': 'a' * 32, 'expires_at': iso(NOW + 3600),
+                 'approval_id': admission.approval_id,
+                 'approval_binding': admission.binding,
+                 'task_text_sha256': admission.task_text_sha256}
+        self.assertTrue(gate.revalidate(issue, lease).allowed)
+        lease['task_text_sha256'] = '0' * 64
+        self.assertFalse(gate.revalidate(issue, lease).allowed)
 
 
 class CoordinatorAdmissionTests(unittest.TestCase):

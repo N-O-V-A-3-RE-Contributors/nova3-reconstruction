@@ -381,20 +381,23 @@ def admit_queue(gate, issues, root):
             continue
         recovery.update(root, issue['number'], approval_id=decision.approval_id,
                         approval_binding=decision.binding,
-                        task_text_sha256=decision.task_text_sha256,
-                        approved_updated_at=decision.approved_updated_at)
+                        task_text_sha256=decision.task_text_sha256)
         admitted.append(issue)
     return admitted
 
 
-def revalidate_before_publish(gh, gate, number, *, allow_legacy_publish=False):
-    """Recheck owner approval immediately before pushing/opening a PR."""
+def revalidate_before_publish(gh, gate, number):
+    """Recheck owner approval immediately before pushing/opening a PR.
+
+    No legacy/backfill bypass exists: a lease without a captured approval
+    binding cannot publish. Such work is quarantined for fresh owner review.
+    """
     issue = gh.issue(number)
     lease = lease_get(issue.get('body'))
     if not lease_active(lease):
         # The claim was lost/expired; another worker may own the task now.
         return QueueDecision(False, 'lease_inactive')
-    return gate.revalidate(issue, lease, allow_legacy_publish=allow_legacy_publish)
+    return gate.revalidate(issue, lease)
 
 
 def record_worker_failure(root, code, cause):
@@ -701,10 +704,9 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
         checklog=current.get('checklog','No verification run')
         if gate is not None and current.get('phase') in ('committed','pushed'):
             # Revalidate owner/admin approval with fresh evidence immediately
-            # before any push or PR; never publish unapproved work. The explicit
-            # legacy allowance publishes work already committed before this gate
-            # shipped and cannot start new AI sessions.
-            approval = revalidate_before_publish(gh,gate,n,allow_legacy_publish=True)
+            # before any push or PR; never publish unapproved work. Leases
+            # without captured approval metadata are quarantined, not published.
+            approval = revalidate_before_publish(gh,gate,n)
             if not approval.allowed:
                 return pause_failed_task(
                     gh,root,n,token,provider,user,
