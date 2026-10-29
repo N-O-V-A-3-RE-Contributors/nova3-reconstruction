@@ -15,7 +15,10 @@ Both dimensions must meet a breakpoint. A wide but short window stays compact.
 | 160 × 45 | Spacious | Larger balanced cards and more visible records |
 | 192 × 54 | Panoramic | Same hierarchy with additional room for card contents |
 
-Below 72 × 18, a friendly resize message replaces the dashboard. The PULSE
+Below 72 × 18, a friendly resize message replaces the dashboard. A pending
+action confirmation is never hidden by that message: the exact action and its
+`Y/N` keys stay on the first row, because `Y` still executes while resized.
+The PULSE
 summary retains four framed tiles at supported sizes. PgUp/PgDn opens each
 summary tile in a full card; Up/Down scrolls its wrapped details. OWNER OPS
 pages through one card at 80 × 24, two stacked cards at 100 × 30, and four cards

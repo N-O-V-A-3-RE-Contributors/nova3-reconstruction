@@ -495,6 +495,26 @@ class ResponsiveTests(unittest.TestCase):
                     self.assertIn('Commands 7 started / 6 completed', text)
                     self.assertIn('Tests 3 started / 2 completed', text)
 
+    def test_tiny_resize_keeps_pending_confirmation_visible(self):
+        # A pending confirmation still accepts Y, so a resize message must not
+        # hide which privileged action is about to run.
+        ui = self.make_ui(role='ADMIN')
+        ui.tab = 9
+        ui.handle(ord('d'))
+        self.assertIsNotNone(ui.confirm)
+        action = ui.confirm
+        for width, height in ((71, 40), (192, 17), (30, 6)):
+            ui.stdscr = StrictSurface(width, height)
+            ui.handle(o.curses.KEY_RESIZE)
+            ui.render()
+            text = ui.stdscr.text()
+            self.assertIn(action, text)
+            self.assertIn('Y/N', text)
+            self.assertIsNotNone(ui.confirm)
+        ui.handle(ord('n'))
+        self.assertIsNone(ui.confirm)
+        ui.collector.perform_action.assert_not_called()
+
     def test_owner_keys_preserved_and_guest_actions_locked(self):
         for role, demo in (('WRITE', False), ('READ', False), ('UNKNOWN', False), ('ADMIN', True)):
             ui = self.make_ui(role=role, demo=demo)

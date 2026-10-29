@@ -1265,6 +1265,12 @@ class Observatory:
                     (activity_line(self.snap), 'cyan'),
                     ("Whole-game ETA: UNKNOWN", 'yellow'),
                     ("? help after resizing; worker stays running.", 'muted')]
+            # A pending confirmation still accepts Y here, so it must never be
+            # hidden by the resize notice: show the exact action being confirmed.
+            if self.confirm:
+                rows.insert(0, ("CONFIRM " + self.confirm + " Y/N", 'red'))
+            if self.merge_phrase is not None:
+                rows.insert(0, ("TYPE " + self.merge_phrase + " to merge", 'red'))
             if h < 4:
                 rows = [rows[2], rows[1], rows[0]]
             for y, (text, style) in enumerate(rows[:h]):
