@@ -18,7 +18,7 @@ import re
 from typing import Mapping
 
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 API_ORIGIN = "https://api.github.com"
 MAX_EVIDENCE_AGE = 30  # seconds; fetch anew at EVERY action boundary
 MAX_APPROVAL_AGE = 3600
@@ -349,9 +349,14 @@ def _task_binding(request: Request, issue: Mapping[str, object]) -> dict[str, ob
     if (issue.get("repository_url") != f"{API_ORIGIN}{request.repository.path}"
             or issue.get("url") != issue_endpoint):
         raise _Denied()
+    # `updated_at` is activity metadata: GitHub bumps it for comments, label
+    # and assignment changes as well as edits. It must never be part of the
+    # authorization binding, or an unrelated comment invalidates a fresh
+    # approval. Bind only immutable issue identity and the exact task content.
     _time(issue["updated_at"])
+    _time(issue["created_at"])
     arguments = _operation_arguments(request)
-    task = {key: issue[key] for key in ("id", "number", "title", "body", "updated_at")}
+    task = {key: issue[key] for key in ("id", "number", "title", "body", "created_at")}
     return {
         "version": POLICY_VERSION, "origin": API_ORIGIN,
         "repository_id": request.repository.id, "owner_id": request.repository.owner_id,
@@ -366,8 +371,10 @@ def _task_binding(request: Request, issue: Mapping[str, object]) -> dict[str, ob
 def request_binding(request: Request, issue: Mapping[str, object]) -> dict[str, object]:
     """Build the record binding for the human approval UI; grants no authority.
 
-    Hashes exact title/body AND updated_at, so even edit-and-revert invalidates
-    an earlier approval. Caller must obtain issue through the trusted collector.
+    Hashes immutable issue identity plus exact title/body. Metadata timestamps
+    (updated_at) and comments are deliberately excluded: they are mutable
+    activity, not task content, and must not invalidate a valid approval.
+    Caller must obtain the issue through the trusted collector.
     """
     _validate_binding_request(request)
     return _task_binding(request, issue)
@@ -491,6 +498,7 @@ def authorize(request: Request, evidence: Evidence, *, now: int,
         binding = _task_binding(request, issue)
         if _time(issue["updated_at"]) > now:
             raise _Denied()
+        created = _time(issue["created_at"])
         digest = operation_digest(binding)
         if type(evidence.approvals) is not tuple or len(evidence.approvals) != 1:
             return deny(Reason.APPROVAL_REQUIRED)
@@ -500,7 +508,7 @@ def authorize(request: Request, evidence: Evidence, *, now: int,
                                                    viewer=False, organization=organization)
         if (author_role is not Role.OWNER or _person(comment["user"]) != (author_id, author_login)
                 or record["actor_id"] != author_id or record["actor_login"] != author_login
-                or _time(record["issued_at"]) < _time(issue["updated_at"])):
+                or _time(record["issued_at"]) < created):
             return deny(Reason.APPROVAL_REQUIRED)
         # A steering caller must explicitly approve its own action; a worker
         # may execute a different owner's approved assignment.
@@ -588,8 +596,7 @@ def _validate_binding(binding: object) -> None:
 
 def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvidence,
                            request: Request, *, reader: int, now: int,
-                           organization: bool, replay: ReplayState | None,
-                           issue_updated_at: str | None = None) -> Decision:
+                           organization: bool, replay: ReplayState | None) -> Decision:
     """Re-verify one owner/admin approval against a previously checked binding.
 
     Used by pre-publish worker revalidation, where the issue body has since been
@@ -628,8 +635,6 @@ def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvid
         if (author_role is not Role.OWNER
                 or _person(comment["user"]) != (author_id, author_login)
                 or record["actor_id"] != author_id or record["actor_login"] != author_login):
-            return deny(Reason.APPROVAL_REQUIRED)
-        if issue_updated_at is not None and _time(record["issued_at"]) < _time(issue_updated_at):
             return deny(Reason.APPROVAL_REQUIRED)
         if replay is not None:
             if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
@@ -706,10 +711,12 @@ def verify_owner_approval(request: Request, evidence: Evidence, *, now: int) -> 
             raise _Denied()
         if type(evidence.approvals) is not tuple or len(evidence.approvals) != 1:
             return deny(Reason.APPROVAL_REQUIRED)
+        approval = evidence.approvals[0]
+        if _time(approval.comment.payload.get("created_at")) < _time(issue["created_at"]):
+            return deny(Reason.APPROVAL_REQUIRED)
         return verify_approval_record(
-            binding, evidence.approvals[0], request, reader=reader, now=now,
-            organization=organization, replay=evidence.replay,
-            issue_updated_at=issue["updated_at"])
+            binding, approval, request, reader=reader, now=now,
+            organization=organization, replay=evidence.replay)
     except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return deny(Reason.INVALID_EVIDENCE)
 
