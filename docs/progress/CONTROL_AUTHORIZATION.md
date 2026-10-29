@@ -82,6 +82,15 @@ Collect these REST payloads directly, without model transformation:
 * For the approval author, independently read `/users/{login}` and the current
   permission/membership endpoints again. An approval does not preserve a
   revoked admin role, and the comment's author login alone proves nothing.
+  Approval-author receipts must use the **same authenticated reader ID** as the
+  executor's own `/user` receipt; this module deliberately offers no second
+  collector/service-credential trust root. If the executor's credential cannot
+  read another user's permission endpoint (GitHub commonly restricts that
+  endpoint to admins), the operation fails closed. In particular a plain
+  contributor's `run_assigned_work` may be unvalidatable until a separately
+  reviewed collector trust root exists; never fall back to trusting the
+  comment author's login or an owner token. Denial here is intentional and
+  tested, not a missing feature.
 * `/repos/{owner}/{repo}/issues/{number}` and
   `/repos/{owner}/{repo}/issues/comments/{comment_id}`: exact current snapshots.
   Verify endpoint identity, comment numeric ID and `issue_url`, authenticated
@@ -96,7 +105,7 @@ including worker starts, queue writes, approval/revocation writes and retries.
 Discard incomplete collections. Do not share mutable payloads with untrusted
 code; defensively copy/freeze transport snapshots before evaluation.
 
-## Exact approval protocol, version 1
+## Exact approval protocol, version 2
 
 Every mutating action has an open ordinary tracking issue. Creation of a new
 task is approved against a separate existing proposal/tracking issue; a request
@@ -105,7 +114,11 @@ tracking issue and bind the PR repository/number/head SHA in operation arguments
 
 Construct a `Request` with the exact action, pinned repository, issue number,
 authenticated executor's numeric ID, a unique cryptographically random 256-bit
-nonce from the trusted executor, and `operation_digest(arguments)`.
+nonce from the trusted executor, and the canonical `operation_arguments` JSON
+object plus `operation_digest(arguments)`. The policy recomputes the digest from
+the supplied arguments and denies on any mismatch, so a digest alone can never
+authorize an operation: the executor cannot approve one argument set and then
+perform another.
 The full action-specific argument schema must be validated by its executor:
 include assignee/provider, payer, currency and integer minor-unit price/limit,
 new priority, target member, policy revision, or PR head SHA as appropriate.
@@ -117,11 +130,18 @@ keys and custom objects. No whitespace or Unicode normalization is performed.
 
 `request_binding(request, issue)` constructs this exact record portion:
 
-* `version` = 1 and `origin` = `https://api.github.com`;
+* `version` = 2 and `origin` = `https://api.github.com`;
 * numeric `repository_id`, `owner_id`, `issue_id`, `issue_number`;
 * `task_spec_sha256`: canonical SHA256 of exact issue `id`, `number`, `title`,
   `body`, `updated_at` (revision included, stable for the same API snapshot);
-* `action`, `operation_sha256`, `nonce`, `executor_user_id`.
+* `action`, `operation_sha256`, `operation_arguments`, `nonce`,
+  `executor_user_id`.
+
+`operation_arguments` is a detached canonical copy of the exact JSON argument
+payload. Approval and assignment records therefore bind the precise argument
+values, not only an opaque hash; comparison is canonical-JSON equality, so a
+JSON boolean can never equal an integer at any nesting depth. Missing, extra or
+type-mismatched fields are rejected like every other record field.
 
 The approval is an entire, strictly parsed JSON GitHub comment, containing
 exactly those fields plus `kind` = `nova3.approval`, `actor_id`, `actor_login`,
@@ -220,21 +240,23 @@ Run offline, without installing dependencies or invoking existing workers:
 PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_access_policy -v
 ```
 
-Final execution on Python 3.14.8: **38 policy tests passed**, exit 0. A combined
-run with the existing coordinator, common, guard and task-queue tests passed
-**69 tests**, exit 0:
+Policy suite: **44 policy tests passed**, exit 0. Full offline discovery suite:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_access_policy nova3_team.tests.test_coordinator nova3_team.tests.test_common nova3_team.tests.test_guard nova3_team.tests.test_task_queue -q
+PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s nova3_team/tests -q
 ```
+
+**544 tests run, 6 skipped**, exit 0.
 
 Tests use only
 synthetic API payloads, fixed time and fake numeric IDs. Coverage includes all
 steering actions/permission levels, non-owner ADMIN and organization ownership,
 spoofed handles, anonymous/public/private status, maintainer denial, forged
-markers/authors, prompt injection, edited tasks/approvals, exact operation and
-repository binding, duplicate approvals, rate limits/unauthenticated API,
-revocation, expiry, explicit consent, signed-App assignments and one-use keys.
+markers/authors, prompt injection, edited tasks/approvals, exact operation,
+argument and repository binding, digest/argument substitution, nested
+bool-vs-int type confusion, unreadable approval-author evidence, duplicate
+approvals, rate limits/unauthenticated API, revocation, expiry, explicit
+consent, signed-App assignments and one-use keys.
 Secret handling checks assert no filesystem/network/subprocess/environment
 reads or output from decisions. No paid calls, live GitHub checks or protected
 settings changes were performed. No original game inputs were accessed.

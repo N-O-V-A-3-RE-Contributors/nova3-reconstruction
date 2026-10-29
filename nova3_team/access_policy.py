@@ -18,7 +18,7 @@ import re
 from typing import Mapping
 
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 API_ORIGIN = "https://api.github.com"
 MAX_EVIDENCE_AGE = 30  # seconds; fetch anew at EVERY action boundary
 MAX_APPROVAL_AGE = 3600
@@ -86,6 +86,7 @@ class Request:
     action: Action
     issue_number: int
     operation_sha256: str  # canonical digest of ALL operation arguments
+    operation_arguments: dict[str, object]  # exact canonical JSON arguments
     nonce: str  # unique 256-bit executor challenge, not a prompt-selected value
     executor_user_id: int | None = None  # binds approvals to the acting account
 
@@ -227,6 +228,12 @@ def _json_value(value: object, depth: int = 0) -> None:
     raise ValueError("invalid operation")
 
 
+def _canonical_json(value: object) -> str:
+    """Validated compact sorted-key ASCII JSON; rejects ambiguous values."""
+    _json_value(value)
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
 def operation_digest(arguments: dict[str, object]) -> str:
     """Stable exact JSON SHA256; include price, payor, head SHA, targets, etc.
 
@@ -234,9 +241,25 @@ def operation_digest(arguments: dict[str, object]) -> str:
     """
     if type(arguments) is not dict:
         raise ValueError("invalid operation")
-    _json_value(arguments)
-    wire = json.dumps(arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-    return hashlib.sha256(wire.encode("utf-8")).hexdigest()
+    return hashlib.sha256(_canonical_json(arguments).encode("utf-8")).hexdigest()
+
+
+def _operation_arguments(request: Request) -> dict[str, object]:
+    """Require the canonical arguments whose digest the request claims.
+
+    Returns a detached deep copy so later mutation of caller-held JSON cannot
+    change an approval binding built from this request.
+    """
+    arguments = request.operation_arguments
+    if type(arguments) is not dict or type(request.operation_sha256) is not str:
+        raise _Denied()
+    try:
+        wire = _canonical_json(arguments)
+    except ValueError:
+        raise _Denied() from None
+    if hashlib.sha256(wire.encode("utf-8")).hexdigest() != request.operation_sha256:
+        raise _Denied()
+    return json.loads(wire)
 
 
 def _read(receipt: GitHubRead | None, path: str, request: Request,
@@ -301,13 +324,15 @@ def _task_binding(request: Request, issue: Mapping[str, object]) -> dict[str, ob
             or issue.get("state") != "open" or "pull_request" in issue):
         raise _Denied()
     _time(issue["updated_at"])
+    arguments = _operation_arguments(request)
     task = {key: issue[key] for key in ("id", "number", "title", "body", "updated_at")}
     return {
         "version": POLICY_VERSION, "origin": API_ORIGIN,
         "repository_id": request.repository.id, "owner_id": request.repository.owner_id,
         "issue_id": issue["id"], "issue_number": request.issue_number,
         "task_spec_sha256": operation_digest(task), "action": request.action.value,
-        "operation_sha256": request.operation_sha256, "nonce": request.nonce,
+        "operation_sha256": request.operation_sha256,
+        "operation_arguments": arguments, "nonce": request.nonce,
         "executor_user_id": request.executor_user_id,
     }
 
@@ -328,6 +353,7 @@ def _validate_request(request: Request) -> None:
     request.repository.path
     _positive(request.issue_number)
     _digest(request.operation_sha256)
+    _operation_arguments(request)
     _digest(request.nonce)
     if request.executor_user_id is not None:
         _positive(request.executor_user_id)
@@ -362,9 +388,14 @@ def _record(comment: GitHubRead, request: Request, reader: int, now: int,
         extra |= {"assignee_id"}
     if not isinstance(record, dict) or record.keys() != binding.keys() | extra:
         raise _Denied()
-    # JSON bools must not masquerade as numeric IDs/version 1.
+    # Compare canonical JSON wire, not Python equality: bool must never equal
+    # int, including inside nested argument payloads.
     for key, value in binding.items():
-        if type(record[key]) is not type(value) or record[key] != value:
+        try:
+            same = _canonical_json(record[key]) == _canonical_json(value)
+        except ValueError:
+            raise _Denied() from None
+        if not same:
             raise _Denied()
     if record["kind"] != kind:
         raise _Denied()

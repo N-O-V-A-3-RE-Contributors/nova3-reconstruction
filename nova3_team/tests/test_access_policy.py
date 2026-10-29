@@ -27,8 +27,9 @@ def changed(read, **fields):
 
 
 def fixture(permission="admin", *, action=p.Action.APPROVE_QUEUE, org_owner=False,
-            login="another-admin", actor=101, public=False):
-    request = p.Request(REPO, action, 134, p.operation_digest({"priority": 99}), "a" * 64, actor)
+            login="another-admin", actor=101, public=False, arguments=None):
+    arguments = {"priority": 99} if arguments is None else arguments
+    request = p.Request(REPO, action, 134, p.operation_digest(arguments), arguments, "a" * 64, actor)
 
     def read(path, payload):
         return p.GitHubRead(path, actor, request.nonce, NOW, 200, payload)
@@ -278,7 +279,7 @@ class AccessPolicyTests(unittest.TestCase):
         request, evidence = fixture()
         for fields in ({"repository_id": 42}, {"owner_id": 52}, {"issue_number": 135},
                        {"issue_id": 13401}, {"action": "merge_pr"}, {"operation_sha256": "f" * 64},
-                       {"nonce": "b" * 64}, {"version": 2}, {"origin": "https://evil.invalid"},
+                       {"nonce": "b" * 64}, {"version": 1}, {"origin": "https://evil.invalid"},
                        {"version": True}, {"actor_id": True}, {"executor_user_id": 202}):
             with self.subTest(fields=fields):
                 self.assertDenied(request, approval_change(evidence, **fields))
@@ -424,6 +425,69 @@ class AccessPolicyTests(unittest.TestCase):
         for value in ({1: "x"}, {"x": 1.0}, {"x": float("nan")}, {"x": (1, 2)}, []):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 p.operation_digest(value)
+
+    def test_operation_arguments_are_verified_against_digest_and_bound_to_approval(self):
+        benign = {"priority": 1, "target": "queue"}
+        substituted = {"priority": 1, "target": "production"}
+        request, evidence = fixture(arguments=benign)
+        self.assertTrue(self.decide(request, evidence).allowed)
+        # The executor cannot swap in different arguments after human approval...
+        self.assertDenied(replace(request, operation_arguments=substituted), evidence)
+        # ...nor keep benign arguments while presenting a digest of other values...
+        self.assertDenied(replace(request, operation_sha256=p.operation_digest(substituted)), evidence)
+        # ...and an approval record naming other exact values is not reusable.
+        self.assertDenied(request, approval_change(evidence, operation_arguments=substituted))
+
+    def test_binding_contains_exact_canonical_argument_payload(self):
+        arguments = {"b": [1, True], "a": "x"}
+        request, evidence = fixture(arguments=arguments)
+        binding = p.request_binding(request, evidence.issue.payload)
+        self.assertEqual(binding["version"], p.POLICY_VERSION)
+        self.assertEqual(binding["operation_arguments"], arguments)
+        arguments["a"] = "mutated after binding"
+        self.assertEqual(binding["operation_arguments"]["a"], "x")
+
+    def test_approval_arguments_reject_bool_int_and_nested_type_confusion(self):
+        request, evidence = fixture(arguments={"priority": 1, "flags": {"force": False}})
+        self.assertTrue(self.decide(request, evidence).allowed)
+        for substituted in ({"priority": True, "flags": {"force": False}},
+                            {"priority": 1, "flags": {"force": 0}},
+                            {"priority": 1, "flags": []}):
+            with self.subTest(substituted=substituted):
+                self.assertDenied(request, approval_change(evidence, operation_arguments=substituted))
+
+    def test_missing_or_non_json_operation_arguments_fail_closed(self):
+        request, evidence = fixture()
+        for arguments in (None, [], "priority", {"priority": 1.0}, {"priority": (1, 2)},
+                          {1: "priority"}, {"nested": [object()]}):
+            with self.subTest(arguments=arguments):
+                self.assertDenied(replace(request, operation_arguments=arguments), evidence,
+                                  p.Reason.INVALID_EVIDENCE)
+
+    def test_approval_author_evidence_requires_same_authenticated_reader(self):
+        # Fail closed: a different collector/service credential cannot attest the
+        # approver's current role under the executor's reader identity. A
+        # contributor credential that cannot read the permission endpoint must
+        # deny rather than fall back to the comment author login.
+        request, evidence = fixture()
+        approval = evidence.approvals[0]
+        for field in ("user", "permission"):
+            with self.subTest(field=field):
+                read = getattr(approval.author, field)
+                author = replace(approval.author, **{field: replace(read, reader_id=202)})
+                self.assertDenied(request, replace(evidence, approvals=(replace(approval, author=author),)),
+                                  p.Reason.INVALID_EVIDENCE)
+
+    def test_contributor_worker_denies_when_owner_approval_is_unreadable(self):
+        # A plain contributor's credential may be unable to read the approver's
+        # permission endpoint. That is a fail-closed denial, never a reason to
+        # trust the comment author login or a service token.
+        request, evidence = fixture("write", action=p.Action.RUN_ASSIGNED_WORK)
+        approval = evidence.approvals[0]
+        author = replace(approval.author,
+                         permission=replace(approval.author.permission, status=403))
+        self.assertDenied(request, replace(evidence, approvals=(replace(approval, author=author),)),
+                          p.Reason.INVALID_EVIDENCE, coordinator=COORDINATOR)
 
     def test_malformed_inputs_fail_without_echoing_payloads(self):
         request, evidence = fixture()
