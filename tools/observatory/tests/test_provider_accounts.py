@@ -225,11 +225,15 @@ class OwnerGateTests(unittest.TestCase):
             self.assertEqual(c.identity.role, 'UNKNOWN' if role not in pa.ROLE_VALUES else role)
 
     def test_owner_roles_allow_only_the_official_url(self):
-        for role in ('ADMIN',):
-            c = self.controller(role)
-            self.assertTrue(c.authorize_owner()[0])
-            self.assertEqual(c.owner_member_url(),
-                             'https://github.com/owner/repo/settings/access')
+        # MAINTAIN is a contributor level and must never unlock owner actions.
+        c = self.controller('ADMIN')
+        self.assertTrue(c.authorize_owner()[0])
+        self.assertEqual(c.owner_member_url(),
+                         'https://github.com/owner/repo/settings/access')
+        for role in ('MAINTAIN', 'WRITE', 'TRIAGE', 'READ'):
+            denied = self.controller(role)
+            self.assertFalse(denied.authorize_owner()[0], role)
+            self.assertIsNone(denied.owner_member_url())
 
     def test_role_failure_fails_closed(self):
         c = pa.AccountsController('owner/repo', role_resolver=mock.Mock(side_effect=RuntimeError('offline')))
