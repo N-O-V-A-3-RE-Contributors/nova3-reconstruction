@@ -35,6 +35,7 @@ OPTIONS = frozenset({"order", "only", "allow_fallbacks", "zdr",
                      "require_parameters", "quantizations", "max_price"})
 State = Literal["PASS", "FAIL", "UNKNOWN"]
 MAX_EVIDENCE_AGE = 3600
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class GatewayError(ValueError):
@@ -537,7 +538,10 @@ def write_user_settings(path: Path, settings: dict, *, home: Path | None = None)
     """
     home = Path.home() if home is None else home
     expected = home / ".config" / "opencode" / "opencode.json"
-    if path.absolute() != expected.absolute() or Path.cwd().resolve() in expected.resolve().parents:
+    if path.absolute() != expected.absolute():
+        raise GatewayError("user_config_path_denied")
+    # Never write provider routing into this source checkout, whatever the cwd.
+    if expected.resolve().is_relative_to(REPO_ROOT):
         raise GatewayError("user_config_path_denied")
     _exclusive_json(path, settings)
 

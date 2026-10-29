@@ -53,8 +53,10 @@ All source matching claims remain **NOT MATCHED**. Test schemas and version
   review; this session did not verify those API semantics live.
 * `write_user_settings`: explicit, exclusive creation of
   `~/.config/opencode/opencode.json`, never merging/overwriting existing settings.
-  No credentials in generated JSON. Other paths, including a project-root
-  `opencode.json`, are rejected. Custom XDG locations require manual review.
+  No credentials in generated JSON. Other paths, a project-root `opencode.json`
+  and any location inside this source checkout are rejected regardless of the
+  current working directory, so running the documented command from `$HOME`
+  works. Custom XDG locations require manual review.
 * `PilotApproval` / `PilotSession`: explicit human confirmation of **one issue
   and the exact budget**, reserve at most one attempt, recheck freshness at
   reservation, no retries. Returns a manual-only plan; contains **no inference
@@ -222,12 +224,13 @@ fallback. Provider/runtime #127 and scheduler #126 may consume these APIs later;
 
 ## Verification and handoff
 
-On 2026-10-30, Python 3.14.8, after the schema-validation hardening in PR #144:
+On 2026-10-30, Python 3.14.9, after the schema-validation hardening and the
+`write_user_settings` path-guard repair in PR #144:
 
 | Command | Actual result |
 | --- | --- |
-| `PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s nova3_team/tests -q` | 535 tests passed, 6 skipped, exit 0. |
-| `PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_model_gateway -q` | 35 gateway tests passed, exit 0. |
+| `PYTHONDONTWRITEBYTECODE=1 python -m unittest discover -s nova3_team/tests -q` | 537 tests passed, 6 skipped, exit 0. |
+| `PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_model_gateway -q` | 37 gateway tests passed, exit 0. |
 
 Gateway tests cover model downgrade, provider/rate/precision/context drift, ZDR
 and account privacy failures, unknown metadata, stale evidence, native credential

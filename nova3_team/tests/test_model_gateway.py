@@ -373,6 +373,31 @@ class GatewayTests(unittest.TestCase):
             with self.assertRaises(g.GatewayError):
                 g.write_user_settings(home / "opencode.json", {}, home=home)
 
+    def test_user_settings_allowed_from_home_or_root_cwd(self):
+        # The documented command is often run from $HOME; an ancestor cwd is not
+        # a project checkout and must not deny the user-local config path.
+        with tempfile.TemporaryDirectory() as temp:
+            home = Path(temp)
+            path = home / ".config/opencode/opencode.json"
+            original = Path.cwd()
+            try:
+                for cwd in (home, Path(os.sep)):
+                    with self.subTest(cwd=str(cwd)):
+                        os.chdir(cwd)
+                        path.unlink(missing_ok=True)
+                        g.write_user_settings(path, {"model": "synthetic"}, home=home)
+                        self.assertTrue(path.exists())
+            finally:
+                os.chdir(original)
+
+    def test_user_settings_refused_inside_this_checkout(self):
+        with tempfile.TemporaryDirectory() as repo:
+            root = Path(repo)
+            with mock.patch.object(g, "REPO_ROOT", root):
+                with self.assertRaises(g.GatewayError) as caught:
+                    g.write_user_settings(root / ".config/opencode/opencode.json", {}, home=root)
+            self.assertEqual(caught.exception.args, ("user_config_path_denied",))
+
     @unittest.skipUnless(os.name == "posix", "symlink fixture")
     def test_symlink_destinations_denied(self):
         with tempfile.TemporaryDirectory() as temp:
