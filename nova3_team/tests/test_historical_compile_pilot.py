@@ -453,7 +453,9 @@ class HistoricalCompilePilotTests(unittest.TestCase):
         build = subprocess.run([compiler, '-std=c++03', '-pedantic-errors', '-Werror',
                                 '-c', str(source), '-o', str(obj)], capture_output=True, timeout=15)
         self.assertEqual(build.returncode, 0, build.stderr.decode())
-        symbols = subprocess.run([nm, '-g', str(obj)], capture_output=True, timeout=5, check=True)
+        # GitHub-hosted runners may briefly stall launching nm under load; this
+        # optional host-tool probe should not fail on a transient 5s scheduler delay.
+        symbols = subprocess.run([nm, '-g', str(obj)], capture_output=True, timeout=20, check=True)
         lines = symbols.stdout.decode().splitlines()
         undefined = {line.split()[-1] for line in lines if line.split()[0] == 'U'}
         # A host defaulting to PIE may also emit its toolchain GOT anchor.
