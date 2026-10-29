@@ -767,7 +767,14 @@ class PolicyQueueGate:
         approvals: list[access_policy.ApprovalEvidence] = []
         for stub in self.transport.issue_comments(owner, name, number):
             body = str(stub.get("body", ""))
-            if "nova3.approval" not in body:
+            # Only a structurally valid approval record may participate. A
+            # plain comment that merely mentions "nova3.approval" must not
+            # create ambiguity that blocks every approve-queue call.
+            try:
+                record = json.loads(body)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(record, dict) or record.get("kind") != "nova3.approval":
                 continue
             comment_id = int(stub.get("id", 0))
             comment = self.transport.comment(owner, name, comment_id)
