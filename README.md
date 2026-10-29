@@ -6,6 +6,19 @@
 
 On the maintainer's Linux checkout, run `bash START-LINUX.sh` to start or resume. Windows, macOS and Linux downloadable launchers are generated through the GitHub Actions **Build contributor launchers** workflow and appear under **Releases** after the maintainer creates a launcher tag. Private repository contributors must accept an invitation before downloading.
 
+First-run `START-LINUX.sh` / `nova3_easy.py` setup offers optional historical
+**ARM GCC 4.4.3 candidate** guidance. Use
+`python3 nova3_easy.py --historical-toolchain instructions` to view it offline,
+or `--historical-toolchain skip` to continue ordinary host-only worker tasks.
+The Observatory installer (`bash tools/observatory/install.sh`) advertises its
+**H / TOOLCHAIN** page and `nova3-observer --toolchain-setup`; watching tasks
+requires no compiler. Nothing downloads or executes GCC automatically.
+See [no-sudo XDG installation and publisher archive checks](docs/progress/HISTORICAL_TOOLCHAIN.md).
+NDK r8e is a hypothesis: select GCC 4.4.3 explicitly rather than its GCC 4.6
+default. Source matching is **NOT PROVEN**, with zero independently verified
+original object/source matches. The separate `nova3_start.py` and direct worker
+CLI do not show this new step; open the same offline guidance when using them.
+
 
 <!-- NOVA-CONTRIBUTOR-QUICKSTART -->
 ## Contribute with your own AI

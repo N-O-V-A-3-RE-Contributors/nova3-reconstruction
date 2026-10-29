@@ -15,6 +15,10 @@ esac
 for file in observer.py operator_ops.py presence_view.py progress.py project_roadmap.json; do
   [[ -f "$SOURCE_DIR/$file" ]] || { echo "Missing $file" >&2; exit 1; }
 done
+HISTORICAL_HELPER="$SOURCE_DIR/../../nova3_team/historical_toolchain.py"
+[[ -f "$HISTORICAL_HELPER" ]] || { echo 'Missing historical toolchain onboarding helper' >&2; exit 1; }
+HISTORICAL_GUIDE="$SOURCE_DIR/../../docs/progress/HISTORICAL_TOOLCHAIN.md"
+[[ -f "$HISTORICAL_GUIDE" ]] || { echo 'Missing historical toolchain guide' >&2; exit 1; }
 python3 -c 'import curses,sys; assert sys.version_info >= (3,10)'
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SOURCE_DIR/tests" -q
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/nova3-observatory"
@@ -23,6 +27,8 @@ install -d -m 700 "$TARGET" "$BINDIR"
 for file in observer.py operator_ops.py presence_view.py progress.py project_roadmap.json; do
   install -m 600 "$SOURCE_DIR/$file" "$TARGET/$file"
 done
+install -m 600 "$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"
+install -m 600 "$HISTORICAL_GUIDE" "$TARGET/HISTORICAL_TOOLCHAIN.md"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
@@ -33,6 +39,9 @@ echo "Observatory installed: $BINDIR/nova3-observer"
 echo 'Read-only contributor pages are available to anyone with repository access.'
 echo 'ADMIN/MAINTAIN GitHub permission is checked before every owner operation.'
 echo 'Opening the dashboard will not restart your running AI worker.'
+echo 'Optional historical ARM compiler: press H in the TUI, or run nova3-observer --toolchain-setup.'
+echo 'Read-only observers and ordinary host-only workers need no historical NDK.'
+echo 'No compiler is downloaded, installed or executed. Source matching remains NOT PROVEN.'
 if [[ "$SETUP_TIMER" -eq 1 ]]; then
   echo 'Optional owner-only Linux discovery timer setup requested.'
   if [[ "$(uname -s)" != Linux ]]; then

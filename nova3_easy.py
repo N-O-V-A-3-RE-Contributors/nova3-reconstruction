@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 from nova3_team import dashboard  # NOVA3-LIVE-DASHBOARD-v1
+from nova3_team import historical_toolchain
 
 OLD_REPO = 'crjase/nova3-reconstruction'
 PACKAGES = {'codex': '@openai/codex', 'claude': '@anthropic-ai/claude-code', 'gemini': '@google/gemini-cli'}
@@ -288,6 +289,28 @@ def select_provider(cfg, selected):
         print('Please enter 1, 2, or 3.')
 
 
+def historical_onboarding(cfg, choice=None):
+    """Optional first-run guidance. Never download, extract, or execute GCC."""
+    if choice is None and cfg.get('historical_onboarding_seen'):
+        return
+    msg('Optional historical ARM compiler candidate — source matching NOT PROVEN')
+    report = historical_toolchain.onboarding()
+    print('Compiler status: ' + report['status'])
+    for warning in report['warnings']:
+        print(warning)
+    print('Watching tasks and ordinary host-only work need no historical NDK.')
+    print('Reopen guidance: python3 nova3_easy.py --historical-toolchain instructions')
+    if choice is None:
+        choice = ('instructions' if sys.stdin.isatty() and
+                  ask('Show optional no-sudo GCC 4.4.3 installation instructions? [y/N] ', False)
+                  else 'skip')
+    if choice == 'instructions':
+        print(historical_toolchain.setup_instructions())
+    else:
+        print('Historical compiler setup skipped; no compiler execution authorized.')
+    cfg['historical_onboarding_seen'] = True
+
+
 def main(argv=None):
     ap=argparse.ArgumentParser(description='NOVA3 one-click contributor launcher')
     ap.add_argument('--repo',help='Override shared repository (OWNER/REPO)')
@@ -296,12 +319,19 @@ def main(argv=None):
     ap.add_argument('--once',action='store_true')
     ap.add_argument('--status',action='store_true')
     ap.add_argument('--self-test',action='store_true')
+    ap.add_argument('--historical-toolchain', choices=('skip', 'instructions'),
+                    help='skip optional compiler setup or show offline manual instructions and exit')
     a=ap.parse_args(argv)
     if a.self_test:
         assert 'codex' in PACKAGES and OLD_REPO and config_path()
         print('NOVA3 launcher self-test OK')
         return 0
     cfg=load_config()
+    # An offline help path, before login/dependency/network setup. Showing this
+    # recipe is not consent to run a downloaded compiler or install anything.
+    if a.historical_toolchain == 'instructions':
+        historical_onboarding(cfg, 'instructions')
+        return 0
     add_private_npm_path()
     if sys.platform=='darwin':
         os.environ['PATH']='/opt/homebrew/bin:/usr/local/bin:'+os.environ.get('PATH','')
@@ -324,6 +354,7 @@ def main(argv=None):
     if a.status:
         py=python_command()
         return command(py+['-m','nova3_team.worker','status','--repo',repo],cwd=directory).returncode
+    historical_onboarding(cfg, a.historical_toolchain)
     provider=select_provider({} if a.choose_provider else cfg,a.provider)
     if not exe(provider):
         if not ask(f'Install the {provider} coding CLI using your own Node.js setup? [Y/n] ',True):

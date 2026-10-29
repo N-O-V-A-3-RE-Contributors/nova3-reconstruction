@@ -11,12 +11,16 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import re
+import shlex
 import stat
 import subprocess
 import sys
 
-from .object_matching import SCHEMA as MATRIX_PROFILE_SCHEMA
+# Wire schema shared with object_matching; keep onboarding standalone so the
+# Observatory can bundle this module without the analysis/indexing packages.
+MATRIX_PROFILE_SCHEMA = "nova3.object-matching/1"
 
 SCHEMA = "nova3.historical-toolchain/1"
 MAX_PROFILES = 8
@@ -24,6 +28,11 @@ QUERY_TIMEOUT = 10
 MAX_FILE = 128 * 1024 * 1024
 MAX_OUTPUT = 1024 * 1024
 TARGET = "arm-linux-androideabi"
+ARCHIVE_NAME = "android-ndk-r8e-linux-x86_64.tar.bz2"
+ARCHIVE_URL = "https://dl.google.com/android/ndk/" + ARCHIVE_NAME
+ARCHIVE_SIZE = 466853553
+ARCHIVE_MD5 = "fa812352956067e7a9eefc0274675e9a"
+CHECKSUM_SOURCE = "https://android.googlesource.com/platform/frameworks/base/+/603dbd7^!/"
 DEFAULT_ROOTS = tuple(Path("/opt/android-ndk" + suffix) for suffix in
                       ("", "-r7", "-r7b", "-r7c", "-r8", "-r8b", "-r8c", "-r8d", "-r8e")) + (
     Path("/opt/android-sdk/ndk-bundle"), Path.home() / "Android/Sdk/ndk-bundle")
@@ -112,11 +121,23 @@ def profile_flags(count: int = 4) -> list[list[str]]:
             for frame in ([], ["-fomit-frame-pointer"])][:count]
 
 
+def user_local_root() -> Path:
+    """No-sudo default, evaluated at call time for XDG/environment changes."""
+    base = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share"))).expanduser()
+    if not base.is_absolute():  # XDG requires absolute paths.
+        base = Path.home() / ".local/share"
+    return base / "nova3-team/toolchains/android-ndk-r8e"
+
+
+def supported_host() -> bool:
+    return platform.system() == "Linux" and platform.machine().lower() in ("x86_64", "amd64")
+
+
 def discover(roots: list[Path] | None = None) -> dict:
     """No PATH execution, recursive scan, download or unbounded directory listing."""
     if roots is None:
         configured = os.environ.get("NOVA3_HISTORICAL_TOOLCHAIN_ROOT")
-        roots = ([Path(configured)] if configured else []) + list(DEFAULT_ROOTS)
+        roots = ([Path(configured)] if configured else []) + [user_local_root()] + list(DEFAULT_ROOTS)
     if not 1 <= len(roots) <= 16:
         raise ToolchainError("require one to sixteen bounded candidate roots")
     records, seen = [], set()
@@ -143,6 +164,136 @@ def discover(roots: list[Path] | None = None) -> dict:
                 else "MISSING_HISTORICAL_COMPILER",
                 GCC_4_4_3_CANDIDATE_AVAILABLE=False,
                 EXACT_HISTORICAL_TOOLCHAIN_VERIFIED=False)
+
+
+def onboarding(*, roots: list[Path] | None = None, compiler: Path | None = None,
+               trusted_sha256: str | None = None, source: Path | None = None,
+               source_sha256: str | None = None) -> dict:
+    """Read-only by default; only an explicit compiler + owner pin can execute.
+
+    Never installs, downloads, persists trust, or promotes source evidence.
+    """
+    if trusted_sha256 is not None and compiler is None:
+        raise ToolchainError("select a compiler explicitly before providing its pin")
+    if (source is None) != (source_sha256 is None):
+        raise ToolchainError("source candidate requires both path and reviewed SHA-256")
+    source_record = None
+    if source is not None:
+        if not SHA.fullmatch(source_sha256) or file_sha256(source) != source_sha256:
+            raise ToolchainError("source candidate SHA-256 mismatched")
+        source_record = dict(sha256=source_sha256, status="HASH_CHECKED_ONLY")
+    scan = discover(roots)
+    report = dict(schema=SCHEMA + "/onboarding", discovery=scan,
+                  status="AVAILABLE_BUT_UNTRUSTED" if any(x["present"] for x in scan["candidates"])
+                  else "MISSING", supported_host=supported_host(),
+                  user_local_root=str(user_local_root()), source_matching="NOT_PROVEN",
+                  source_candidate=source_record,
+                  match_to_original="NOT_MATCHED", warnings=[], fingerprint=None)
+    if not report["supported_host"]:
+        report["warnings"].append("Official r8e Linux x86_64 candidate needs a Linux x86_64 host; observer/host tasks remain available.")
+    if compiler is not None:
+        if not report["supported_host"] and trusted_sha256 is not None:
+            report["status"] = "UNSUPPORTED_HOST"
+        else:
+            try:
+                fp = fingerprint(compiler, trusted_sha256=trusted_sha256)
+                report["fingerprint"] = fp
+                report["status"] = ("PINNED_VERSION_TARGET_VERIFIED" if fp["GCC_4_4_3_CANDIDATE_AVAILABLE"]
+                                    else "AVAILABLE_BUT_UNTRUSTED" if trusted_sha256 is None
+                                    else "COMPILER_REJECTED")
+                if report["status"] == "COMPILER_REJECTED":
+                    report["warnings"].append("Compiler metadata rejected: " + fp["status"])
+            except (OSError, ToolchainError, subprocess.SubprocessError) as exc:
+                report.update(status="COMPILER_UNUSABLE", error_type=type(exc).__name__)
+                report["warnings"].append("Compiler missing, pin mismatched, not executable, or host loader/dependencies unavailable. Inspect file/readelf locally; do not install random compatibility libraries on Arch.")
+    if report["status"] == "MISSING":
+        report["warnings"].append("GCC 4.4.3 C++ compiler missing. Watching and ordinary host-only tasks can continue; original match cannot be inferred.")
+    return report
+
+
+def verify_archive(path: Path) -> dict:
+    """Verify the *compressed* publisher artifact offline; never extract/run it.
+
+    Historical publisher MD5 is a provenance cross-check, not modern signature
+    security. SHA-256 is recorded locally, never treated as an upstream pin.
+    """
+    with os.fdopen(_regular_fd(path, ARCHIVE_SIZE), "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if before.st_size != ARCHIVE_SIZE or stream.read(3) != b"BZh":
+            raise ToolchainError("expected original bzip2 archive and exact compressed byte count")
+        stream.seek(0)
+        md5, sha256, size = hashlib.md5(usedforsecurity=False), hashlib.sha256(), 0
+        while size <= ARCHIVE_SIZE:
+            block = stream.read(min(1024 * 1024, ARCHIVE_SIZE + 1 - size))
+            if not block:
+                break
+            md5.update(block)
+            sha256.update(block)
+            size += len(block)
+        after = os.fstat(stream.fileno())
+        if (size != ARCHIVE_SIZE or (before.st_size, before.st_mtime_ns, before.st_ctime_ns)
+                != (after.st_size, after.st_mtime_ns, after.st_ctime_ns)):
+            raise ToolchainError("archive changed while verifying")
+        if md5.hexdigest() != ARCHIVE_MD5:
+            raise ToolchainError("compressed archive publisher MD5 mismatch")
+    return dict(status="HISTORICAL_PUBLISHER_MD5_SIZE_SIGNATURE_CHECKED", size=size,
+                md5=md5.hexdigest(), sha256=sha256.hexdigest(), official_url=ARCHIVE_URL,
+                checksum_source=CHECKSUM_SOURCE, modern_signature_verified=False,
+                source_matching="NOT_PROVEN")
+
+
+def setup_instructions() -> str:
+    """Operator-run recipe only; no downloader or installer in onboarding."""
+    root = shlex.quote(str(user_local_root()))
+    return f"""Optional historical ARM compiler candidate (Linux x86_64, no sudo)
+Observer/read-only and ordinary host-only work do not need this compiler.
+Only opt in for tasks requiring an ARM GCC candidate. Source matching NOT PROVEN;
+legacy source inventory has zero independently verified original object/source matches.
+NDK r8e (March 2013) defaults to GCC 4.6: explicitly select 4.4.3 below.
+Official release history: https://developer.android.com/ndk/downloads/revision_history
+Official original compressed archive: {ARCHIVE_URL}
+Expected: bzip2, {ARCHIVE_SIZE} bytes, historical publisher MD5 {ARCHIVE_MD5}
+Publisher record: {CHECKSUM_SOURCE} (ndk.linux64_* fields; task-supplied provenance).
+MD5 is not a modern cryptographic integrity/signature guarantee. Use the pinned
+official HTTPS origin, byte count and digest together; record local SHA-256 too.
+An uncompressed .tar hash cannot be compared with this compressed-archive MD5.
+
+Manual opt-in only; nothing below runs automatically. In a new private directory:
+  umask 077
+  curl --fail --proto '=https' --tlsv1.2 --max-redirs 0 --output {ARCHIVE_NAME} '{ARCHIVE_URL}'
+  file -- {ARCHIVE_NAME}
+  wc -c < {ARCHIVE_NAME}
+  md5sum -- {ARCHIVE_NAME}
+  sha256sum -- {ARCHIVE_NAME}
+Do not use --compressed, redirects, mirrors, a transformed .tar, or an existing
+download destination. Stop unless type/size/publisher MD5 all agree. From the repo:
+  python3 -m nova3_team.historical_toolchain verify-archive /absolute/path/{ARCHIVE_NAME}
+Keep the archive and verification output privately; its local SHA-256 is not a
+new authenticated distribution checksum. Inspect members before extraction:
+  tar -tjf /absolute/path/{ARCHIVE_NAME}
+  tar -tvjf /absolute/path/{ARCHIVE_NAME}
+Require one android-ndk-r8e/ tree, no absolute/traversing names or escaping links.
+Use Python with tarfile.data_filter (updated Python 3.12+), in a fresh staging
+directory; reject unsafe archive members and never extract over an existing NDK.
+See docs/progress/HISTORICAL_TOOLCHAIN.md for the guarded extraction recipe.
+Default final root: {root}
+Discovery also recognizes /opt/android-ndk-r8e, custom --root, and
+NOVA3_HISTORICAL_TOOLCHAIN_ROOT. Export a custom root in the worker's environment.
+  export NOVA3_HISTORICAL_TOOLCHAIN_ROOT={root}
+  python3 -m nova3_team.historical_toolchain onboard
+Select toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++
+(linux-x86 may be present instead; inspect host ELF/loader first). Never use the
+default ndk-build to select this candidate. Before execution, inspect file and
+readelf -h -l -d for compiler/cc1plus/as/ld. Modern Arch may lack old loaders or
+libraries; do not run ldd on untrusted binaries or install arbitrary dependencies.
+After provenance review, hash the selected compiler with sha256sum and explicitly
+authorize metadata queries (a local owner pin is not distribution authentication):
+  python3 -m nova3_team.historical_toolchain onboard --compiler /approved/path/arm-linux-androideabi-g++ --trusted-sha256 REVIEWED_COMPILER_SHA256
+Status PINNED_VERSION_TARGET_VERIFIED means GCC 4.4.3/ARM metadata only.
+Next: bounded compiler pilot, record source/header/sysroot/tool hashes and flags,
+then separate object and linked-window comparisons. NOT MATCHED until evidenced.
+Never upload original ELF/APK, instruction bytes or private analysis reports.
+"""
 
 
 def _pin(path: Path, expected: str) -> dict:
@@ -314,6 +465,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     scan = sub.add_parser("discover")
     scan.add_argument("--root", type=Path, action="append")
+    onboard = sub.add_parser("onboard", help="optional setup status; no download/install")
+    onboard.add_argument("--root", type=Path, action="append")
+    onboard.add_argument("--compiler", type=Path)
+    onboard.add_argument("--trusted-sha256", help="explicit consent to metadata execution of this pinned compiler")
+    onboard.add_argument("--source", type=Path, help="optional source-owned candidate identity check before pilot")
+    onboard.add_argument("--source-sha256", help="separately reviewed source candidate SHA-256")
+    onboard.add_argument("--instructions", action="store_true", help="print manual no-sudo recipe only")
+    archive = sub.add_parser("verify-archive", help="offline compressed publisher size/MD5 check; no extraction")
+    archive.add_argument("archive", type=Path)
     inspect = sub.add_parser("fingerprint")
     inspect.add_argument("compiler", type=Path)
     inspect.add_argument("--trusted-sha256")
@@ -333,6 +493,19 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "discover":
             result = discover(args.root)
+        elif args.command == "onboard":
+            if args.instructions:
+                if any(v is not None for v in (args.compiler, args.trusted_sha256, args.source, args.source_sha256)):
+                    raise ToolchainError("instructions never authorize compiler execution")
+                print(setup_instructions())
+                return 0
+            result = onboarding(roots=args.root, compiler=args.compiler,
+                                trusted_sha256=args.trusted_sha256, source=args.source,
+                                source_sha256=args.source_sha256)
+            print(json.dumps(result, indent=2, sort_keys=True))
+            return 2 if result["status"] in ("COMPILER_UNUSABLE", "COMPILER_REJECTED", "UNSUPPORTED_HOST") else 0
+        elif args.command == "verify-archive":
+            result = verify_archive(args.archive)
         elif args.command == "fingerprint":
             tools = {}
             for name in ("linker", "assembler", "readelf"):
@@ -356,7 +529,8 @@ def main(argv: list[str] | None = None) -> int:
                                       trusted_tool_sha256=tuple(args.trusted_tool_sha256))
         print(json.dumps(result, indent=2, sort_keys=True))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as exc:
-        print("historical toolchain: " + type(exc).__name__, file=sys.stderr)
+        detail = str(exc) if isinstance(exc, ToolchainError) else type(exc).__name__
+        print("historical toolchain: " + detail, file=sys.stderr)
         return 2
     return 0
 
