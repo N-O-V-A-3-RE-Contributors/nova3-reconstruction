@@ -25,9 +25,22 @@ foreach ($file in @('observer.py','operator_ops.py','presence_view.py','progress
                     'onboarding.py','provider_accounts.py')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $stage $file) -Force
 }
+# Provider metadata is owned by nova3_team/provider_runtime.py; without it the
+# Accounts page silently disables, so require it and copy the optional Hermes
+# sibling when present.
+$runtime = Join-Path $source '../../nova3_team/provider_runtime.py'
+if (!(Test-Path -LiteralPath $runtime)) { throw 'Missing nova3_team/provider_runtime.py; refusing installation' }
+Copy-Item -LiteralPath $runtime -Destination (Join-Path $stage 'provider_runtime.py') -Force
+$hermes = Join-Path $source '../../nova3_team/hermes_runtime.py'
+if (Test-Path -LiteralPath $hermes) {
+  Copy-Item -LiteralPath $hermes -Destination (Join-Path $stage 'hermes_runtime.py') -Force
+}
 # Offline synthetic health check before replacing the installed directory.
 & $python -I (Join-Path $stage 'observer.py') --demo --once | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Staged NOVA3 Control Center health check failed; previous install preserved' }
+# Fail closed if the provider registry/Accounts page could not load.
+& $python -I -c "import sys; sys.path.insert(0, r'$stage'); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Staged Accounts/provider runtime check failed; previous install preserved' }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Force
 Remove-Item -Recurse -Force $stage

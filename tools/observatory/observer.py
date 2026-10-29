@@ -1791,6 +1791,13 @@ class Observatory:
         if not self.is_owner():
             self.show_notice('JOURNAL LOCKED: repository ADMIN or organization owner required')
             return False
+        # Local logs are private: re-check the live server-side role at the
+        # action boundary, not only the polled snapshot that painted the page.
+        try:
+            operator_ops.require_owner_access(self.collector.repo)
+        except Exception:
+            self.show_notice('JOURNAL LOCKED: owner authority could not be re-verified')
+            return False
         options = self.journal_candidates()
         if not options:
             self.show_notice('No local round journal was found under the protected state directory')

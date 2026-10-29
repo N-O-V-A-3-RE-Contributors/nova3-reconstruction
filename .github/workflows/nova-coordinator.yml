@@ -31,3 +31,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NOVA3_ALERT_USER: crjase
+          # Pinned deployment identity (public metadata, never secrets).
+          # Set once with `gh variable set`; empty values fail closed (exit 6).
+          NOVA3_REPOSITORY_ID: ${{ vars.NOVA3_REPOSITORY_ID }}
+          NOVA3_OWNER_ID: ${{ vars.NOVA3_OWNER_ID }}
