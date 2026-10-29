@@ -62,7 +62,7 @@ class ToolchainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / 'standalone'
             target.mkdir()
-            for name in ('observer.py', 'operator_ops.py', 'presence_view.py', 'progress.py', 'project_roadmap.json'):
+            for name in ('observer.py', 'operator_ops.py', 'presence_view.py', 'progress.py', 'forecast_model.py', 'project_roadmap.json'):
                 shutil.copyfile(HERE / name, target / name)
             helper = HERE.parents[1] / 'nova3_team/historical_toolchain.py'
             shutil.copyfile(helper, target / 'historical_toolchain.py')

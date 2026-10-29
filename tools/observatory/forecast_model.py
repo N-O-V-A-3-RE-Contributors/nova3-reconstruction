@@ -27,7 +27,7 @@ class Policy:
 class Task:
     id: str
     cohort: str
-    kind: str = "source"  # infrastructure/source/matching
+    kind: str = "source"  # infrastructure/source/matching/unknown (adapter has no classification)
     stage: str = "queued"  # queued/active/review/blocked/done
     stage_started_at: float | None = None
     blockers: tuple[str, ...] = ()
@@ -167,7 +167,7 @@ def _validate(s, p):
             raise ValueError(f"duplicate {key} in snapshot collection")
     for t in s.tasks:
         _text(t.cohort, "cohort")
-        _choice(t.kind, ("source", "infrastructure", "matching"), "task kind")
+        _choice(t.kind, ("source", "infrastructure", "matching", "unknown"), "task kind")
         _choice(t.stage, ("queued", "active", "review", "blocked", "done"), "task stage")
         if t.stage_started_at is not None:
             _number(t.stage_started_at, "stage_started_at")
@@ -339,6 +339,8 @@ def forecast(snapshot: Snapshot, policy: Policy = Policy()) -> dict:
         if t.stage == "done":
             continue
         reasons = list(t.blockers)
+        if t.kind == "unknown":
+            reasons.append("task_kind_and_comparable_cohort_unavailable")
         if t.stage == "blocked":
             reasons.append("task_blocked")
         if t.stage_started_at is not None and t.stage_started_at > s.now:
