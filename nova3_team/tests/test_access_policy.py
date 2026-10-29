@@ -27,12 +27,13 @@ def changed(read, **fields):
 
 
 def fixture(permission="admin", *, action=p.Action.APPROVE_QUEUE, org_owner=False,
-            login="another-admin", actor=101, public=False, arguments=None):
+            login="another-admin", actor=101, public=False, arguments=None,
+            nonce="a" * 64, executor=101, reader=101):
     arguments = {"priority": 99} if arguments is None else arguments
-    request = p.Request(REPO, action, 134, p.operation_digest(arguments), arguments, "a" * 64, actor)
+    request = p.Request(REPO, action, 134, p.operation_digest(arguments), arguments, nonce, executor)
 
     def read(path, payload):
-        return p.GitHubRead(path, actor, request.nonce, NOW, 200, payload)
+        return p.GitHubRead(path, reader, request.nonce, NOW, 200, payload)
 
     def access(user_id, name, level, *, viewer=False, owner=False):
         user = {"id": user_id, "login": name, "type": "User"}
@@ -52,6 +53,8 @@ def fixture(permission="admin", *, action=p.Action.APPROVE_QUEUE, org_owner=Fals
     issue = read(f"{REPO.path}/issues/134", {
         "id": 13400, "number": 134, "title": "Bound task", "body": "Allowed paths: source.cpp",
         "updated_at": iso(NOW - 60), "state": "open", "labels": [{"name": "nova:queued"}],
+        "repository_url": f"{p.API_ORIGIN}{REPO.path}",
+        "url": f"{p.API_ORIGIN}{REPO.path}/issues/134",
     })
     binding = p.request_binding(request, issue.payload)
     if permission == "admin" or org_owner:
@@ -499,6 +502,78 @@ class AccessPolicyTests(unittest.TestCase):
             self.assertDenied(request, value)
         for value in (True, -1, "now"):
             self.assertFalse(p.authorize(request, evidence, now=value).allowed)
+
+    def test_issue_payload_must_attest_the_pinned_repository(self):
+        # The receipt path shows where the collector asked, but the issue payload
+        # itself must also name this exact repository and issue endpoint. Without
+        # this a mixed-up/cross-repository collection could bind another repo's
+        # task body while repository_id was copied from the request.
+        request, evidence = fixture()
+        for fields in (
+            {"repository_url": f"{p.API_ORIGIN}/repos/other-org/reconstruction"},
+            {"repository_url": f"{p.API_ORIGIN}{REPO.path}/"},
+            {"url": f"{p.API_ORIGIN}{REPO.path}/issues/135"},
+            {"url": f"{p.API_ORIGIN}/repos/other-org/reconstruction/issues/134"},
+            {"repository_url": None},
+            {"url": None},
+        ):
+            with self.subTest(fields=fields):
+                issue = changed(evidence.issue, **fields)
+                self.assertDenied(request, replace(evidence, issue=issue))
+        for repo_fields in ({"name": "other-repo"}, {"owner": {"id": 52, "login": REPO.owner, "type": "Organization"}},
+                            {"owner": {"id": REPO.owner_id, "login": "other-org", "type": "Organization"}}):
+            with self.subTest(repo_fields=repo_fields):
+                repo = changed(evidence.repository, **repo_fields)
+                self.assertDenied(request, replace(evidence, repository=repo))
+
+    def test_standing_owner_approval_admits_only_the_exact_task_revision(self):
+        # Queue admission is verified by a coordinator/worker that is not the
+        # approver, so the standing-approval API must not require the caller's
+        # own repository role but must bind the owner's comment to the immutable
+        # task-spec digest.
+        request, evidence = fixture(nonce="c" * 64, executor=None)
+        result = p.verify_owner_approval(request, evidence, now=NOW)
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.role, p.Role.OWNER)
+        self.assertEqual(result.consume_keys, ())
+        self.assertIsNotNone(result.request_sha256)
+        for fields in ({"body": "Allowed paths: other.cpp"}, {"title": "Edited"},
+                       {"updated_at": iso(NOW - 15)}, {"id": 9999}, {"state": "closed"},
+                       {"number": 135}, {"pull_request": {}}):
+            with self.subTest(fields=fields):
+                issue = changed(evidence.issue, **fields)
+                self.assertFalse(p.verify_owner_approval(request, replace(evidence, issue=issue), now=NOW).allowed)
+        # Approver role is rechecked live: revocation and spoofing deny.
+        approval = evidence.approvals[0]
+        for level in ("maintain", "write", "read", "none"):
+            with self.subTest(level=level):
+                author = replace(approval.author, permission=changed(approval.author.permission, permission=level))
+                denied = p.verify_owner_approval(
+                    request, replace(evidence, approvals=(replace(approval, author=author),)), now=NOW)
+                self.assertEqual(denied.reason, p.Reason.APPROVAL_REQUIRED)
+        for fields in ({"actor_id": 202}, {"actor_login": "crjase"},
+                       {"task_spec_sha256": "0" * 64}, {"repository_id": 42},
+                       {"action": "merge_pr"}, {"nonce": "b" * 64}, {"executor_user_id": 101}):
+            with self.subTest(fields=fields):
+                self.assertFalse(p.verify_owner_approval(request, approval_change(evidence, **fields), now=NOW).allowed)
+        comment = changed(approval.comment, user={"id": 202, "login": "another-admin", "type": "User"})
+        self.assertFalse(p.verify_owner_approval(
+            request, replace(evidence, approvals=(replace(approval, comment=comment),)), now=NOW).allowed)
+        # Source of truth must be fresh and untampered.
+        for field in ("repository", "issue"):
+            stale = replace(getattr(evidence, field), fetched_at=NOW - 31)
+            self.assertFalse(p.verify_owner_approval(request, replace(evidence, **{field: stale}), now=NOW).allowed)
+        # Consumed/revoked approvals withdraw the standing grant.
+        key = f"github:{REPO.id}:comment:900"
+        revoked = replace(evidence.replay, consumed=frozenset({key}))
+        self.assertEqual(p.verify_owner_approval(request, replace(evidence, replay=revoked), now=NOW).reason,
+                         p.Reason.REPLAY)
+        revoked = replace(evidence.replay, revoked_comments=frozenset({900}))
+        self.assertEqual(p.verify_owner_approval(request, replace(evidence, replay=revoked), now=NOW).reason,
+                         p.Reason.REPLAY)
+        # Only a task-level (executor-less) steering approval is verifiable here.
+        self.assertFalse(p.verify_owner_approval(replace(request, executor_user_id=101), evidence, now=NOW).allowed)
+        self.assertFalse(p.verify_owner_approval(replace(request, action=p.Action.READ_STATUS), evidence, now=NOW).allowed)
 
     def test_no_secret_environment_file_network_subprocess_access_or_logs(self):
         request, evidence = fixture()

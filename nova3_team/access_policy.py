@@ -244,6 +244,24 @@ def operation_digest(arguments: dict[str, object]) -> str:
     return hashlib.sha256(_canonical_json(arguments).encode("utf-8")).hexdigest()
 
 
+def _validate_binding_request(request: Request) -> None:
+    """Validation for display/binding records; executor may be absent.
+
+    A standing task-level approval legitimately has no executor user ID, so
+    request_binding cannot reuse the stricter one-shot authorize validation.
+    This validates every field the binding exposes and grants no authority.
+    """
+    if not isinstance(request, Request) or not isinstance(request.action, Action):
+        raise _Denied()
+    request.repository.path
+    _positive(request.issue_number)
+    _digest(request.operation_sha256)
+    _operation_arguments(request)
+    _digest(request.nonce)
+    if request.executor_user_id is not None:
+        _positive(request.executor_user_id)
+
+
 def _operation_arguments(request: Request) -> dict[str, object]:
     """Require the canonical arguments whose digest the request claims.
 
@@ -323,6 +341,14 @@ def _task_binding(request: Request, issue: Mapping[str, object]) -> dict[str, ob
             or not isinstance(issue["title"], str) or not isinstance(issue["body"], str)
             or issue.get("state") != "open" or "pull_request" in issue):
         raise _Denied()
+    # The receipt path proves where the transport *asked*; the payload must also
+    # attest that it belongs to this exact repository. Without this, a mixed-up
+    # or cross-repository collection could bind another repo's issue body while
+    # the binding's repository_id was copied from the request.
+    issue_endpoint = f"{API_ORIGIN}{request.repository.path}/issues/{request.issue_number}"
+    if (issue.get("repository_url") != f"{API_ORIGIN}{request.repository.path}"
+            or issue.get("url") != issue_endpoint):
+        raise _Denied()
     _time(issue["updated_at"])
     arguments = _operation_arguments(request)
     task = {key: issue[key] for key in ("id", "number", "title", "body", "updated_at")}
@@ -343,7 +369,7 @@ def request_binding(request: Request, issue: Mapping[str, object]) -> dict[str, 
     Hashes exact title/body AND updated_at, so even edit-and-revert invalidates
     an earlier approval. Caller must obtain issue through the trusted collector.
     """
-    _validate_request(request)
+    _validate_binding_request(request)
     return _task_binding(request, issue)
 
 
@@ -521,6 +547,91 @@ def authorize(request: Request, evidence: Evidence, *, now: int,
         return Decision(True, role, Reason.ALLOWED, digest, tuple(keys))
     except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         # Fixed diagnostics only: never echo API payloads, task text or secrets.
+        return deny(Reason.INVALID_EVIDENCE)
+
+
+def verify_owner_approval(request: Request, evidence: Evidence, *, now: int) -> Decision:
+    """Verify a *standing* owner/admin approval for one exact task revision.
+
+    Unlike authorize(), the evaluating process is not the approver and needs no
+    repository role of its own: the GitHub comment written by a currently
+    verified repository ADMIN or organization owner is the human act being
+    checked. This is what a coordinator or worker uses to gate queue admission.
+
+    The approval is bound to the immutable task-spec digest, action, repository,
+    issue number and issue revision, but deliberately not to a worker's numeric
+    ID (`executor_user_id` must be None). One approval therefore admits exactly
+    this task revision; it is not transferable to an edited task or another
+    repository. Callers MUST deduplicate *transitions* themselves (for example a
+    `(repository, issue, task_spec_sha256, transition, token)` ledger) because
+    this standing grant is intentionally reusable for a legitimate release and
+    requeue of the same unchanged revision. Consumed/revoked approval comments
+    still deny, so an owner can withdraw the grant.
+
+    The local Consent object is not required here: it protects the owner's own
+    one-shot execution path (authorize), not a third party's verification of an
+    already-published approval. Never treat this result as permission for the
+    verifier to steer the repository itself.
+    """
+    role = Role.UNAUTHENTICATED
+
+    def deny(reason: Reason) -> Decision:
+        return Decision(False, role, reason)
+
+    try:
+        if not isinstance(request, Request) or request.action not in STEERING_ACTIONS:
+            raise _Denied()
+        request.repository.path
+        _positive(request.issue_number)
+        _digest(request.operation_sha256)
+        _operation_arguments(request)
+        _digest(request.nonce)
+        if request.executor_user_id is not None:
+            raise _Denied()
+        if type(now) is not int or now < 0 or not isinstance(evidence, Evidence):
+            raise _Denied()
+        base = request.repository.path
+        if not isinstance(evidence.repository, GitHubRead):
+            raise _Denied()
+        reader = evidence.repository.reader_id
+        _positive(reader)
+        repo = _read(evidence.repository, base, request, reader, now)
+        _repository_matches(repo, request.repository)
+        organization = repo["owner"]["type"] == "Organization"
+        issue = _read(evidence.issue, f"{base}/issues/{request.issue_number}", request, reader, now)
+        binding = _task_binding(request, issue)
+        if _time(issue["updated_at"]) > now:
+            raise _Denied()
+        digest = operation_digest(binding)
+        if type(evidence.approvals) is not tuple or len(evidence.approvals) != 1:
+            return deny(Reason.APPROVAL_REQUIRED)
+        approval = evidence.approvals[0]
+        comment, record = _record(approval.comment, request, reader, now, binding, kind="nova3.approval")
+        author_role, author_id, author_login = _role(
+            approval.author, request, reader, now, viewer=False, organization=organization)
+        if (author_role is not Role.OWNER
+                or _person(comment["user"]) != (author_id, author_login)
+                or record["actor_id"] != author_id or record["actor_login"] != author_login
+                or _time(record["issued_at"]) < _time(issue["updated_at"])):
+            return deny(Reason.APPROVAL_REQUIRED)
+        replay = evidence.replay
+        if not isinstance(replay, ReplayState) or replay.boundary != request.nonce:
+            raise _Denied()
+        _fresh(replay.fetched_at, now)
+        if type(replay.consumed) is not frozenset or type(replay.revoked_comments) is not frozenset:
+            raise _Denied()
+        for key in replay.consumed:
+            if not isinstance(key, str) or not re.fullmatch(
+                    r"github:[1-9][0-9]*:(?:comment:[1-9][0-9]*|request:[0-9a-f]{64})", key):
+                raise _Denied()
+        for ident in replay.revoked_comments:
+            _positive(ident)
+        if (f"github:{request.repository.id}:comment:{comment['id']}" in replay.consumed
+                or f"github:{request.repository.id}:request:{request.nonce}" in replay.consumed
+                or comment["id"] in replay.revoked_comments):
+            return deny(Reason.REPLAY)
+        return Decision(True, Role.OWNER, Reason.ALLOWED, digest)
+    except (_Denied, ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
         return deny(Reason.INVALID_EVIDENCE)
 
 
