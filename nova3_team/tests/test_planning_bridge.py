@@ -620,5 +620,29 @@ class CliTests(unittest.TestCase):
                                   "--repo", "not-a-slug"]), 2)
 
 
+class CliContextTests(unittest.TestCase):
+    def test_context_command_writes_sanitized_snapshot(self):
+        from unittest import mock
+
+        transport = FakeTransport()
+        with mock.patch.object(pb, "GhTransport", lambda *a, **k: transport):
+            handle = tempfile.NamedTemporaryFile("r", suffix=".json", delete=False)
+            path = handle.name
+            handle.close()
+            self.addCleanup(os.unlink, path)
+            self.assertEqual(
+                pb.main(["context", "--repo", f"{OWNER}/{NAME}", "--out", path]), 0)
+            with open(path, encoding="utf-8") as written:
+                snapshot = json.load(written)
+        self.assertEqual(len(snapshot["issues"]), 1)
+        pb.assert_sanitized(snapshot)
+
+    def test_module_guard_runs_after_all_definitions(self):
+        # `python3 -m nova3_team.planning_bridge` executes the guard at import
+        # time; placing it before build_context caused a real NameError.
+        source = open(pb.__file__, encoding="utf-8").read().rstrip()
+        self.assertTrue(source.endswith('raise SystemExit(main())'))
+
+
 if __name__ == "__main__":
     unittest.main()

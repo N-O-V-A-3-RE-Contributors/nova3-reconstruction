@@ -954,8 +954,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 2
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 # --------------------------------------------------------------------------
@@ -1017,3 +1015,7 @@ def assert_sanitized(snapshot: Mapping[str, object]) -> None:
     for prefix in ("originals/", "analysis/", "generated/"):
         if prefix in wire:
             raise ProposalError("context", "snapshot references private project data")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
