@@ -128,7 +128,7 @@ def _relay_provider_output(source, sink):
             discarding = True
 
 
-def run_provider(cmd, cwd, log, timeout, activity=None):
+def run_provider(cmd, cwd, log, timeout, activity=None, env=None):
     """Stream AI output to a private local file; retain diagnostics on timeout.
 
     subprocess.run(capture_output=True) hid all progress until termination and
@@ -157,7 +157,8 @@ def run_provider(cmd, cwd, log, timeout, activity=None):
         with os.fdopen(descriptor, 'wb') as sink:
             try:
                 proc = subprocess.Popen(cmd, cwd=cwd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT, shell=False, bufsize=0, **settings)
+                                        stderr=subprocess.STDOUT, shell=False, bufsize=0,
+                                        env=env, **settings)
             except OSError:
                 raise provider_runtime.ProviderUnavailable(
                     'Provider could not start; check the local executable and permissions.') from None
@@ -274,9 +275,9 @@ def _codex_json_supported():
     return result.returncode == 0 and '--json' in result.output.split()
 
 
-def command_for(provider, prompt, status=None):
+def command_for(provider, prompt, status=None, aux_dir=None):
     return provider_runtime.build_command(
-        provider, prompt, status=status,
+        provider, prompt, status=status, aux_dir=aux_dir,
         codex_json=(provider == 'codex' and
                     ('--json' in status.capabilities if status is not None
                      else _codex_json_supported())))
@@ -518,12 +519,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                                 provider_started_unix=int(time.time()),
                                 provider_exit=None)
                 prompt=session_prompt(issue,k,handoff,allowed,binary_root)
-                cmd=command_for(provider,prompt,status=provider_status)
-                note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 log=private_round_log(work,k)
+                # Bounded agent/profile files live beside the private log only.
+                aux_dir=log.parent/'provider-aux'
+                provider_runtime.prepare_aux_files(provider,aux_dir)
+                cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
+                note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 structured=provider == 'codex' and '--json' in cmd[2:-1]
                 activity=activity_feed.ActivityFeed(log, structured=structured)
-                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity)
+                provider_env={**os.environ, **provider_runtime.build_environment(provider)}
+                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
+                                env=provider_env)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
                 try:
@@ -672,7 +678,9 @@ def main():
             status=provider_runtime.probe_provider(provider_id)
             report={'id':provider_id,'name':spec.display_name,'state':status.state.value,
                     'version':status.version,'reason':status.reason,'docs':spec.docs_url,
+                    'install':spec.install_url,
                     'permission_profile':spec.permission_profile,
+                    'unsupported':bool(spec.unsupported_reason),
                     'login_guidance':spec.login_guidance}
             if args.check_auth:
                 auth=provider_runtime.check_auth(provider_id)

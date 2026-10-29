@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 import ntpath
 import os
 import re
@@ -51,6 +52,12 @@ class ProviderSpec:
     permission_profile: str = ''
     permission_docs_url: str = ''
     platforms: tuple[str, ...] = ('Linux', 'macOS', 'Windows (native executable)')
+    # Files the adapter must materialise in a private directory before launch,
+    # as (filename, content). Used only where the vendor's bounded permission
+    # profile is expressed as an agent/tool allowlist file, not a CLI flag.
+    aux_files: tuple[tuple[str, str], ...] = ()
+    # Extra environment entries for the child process only. Never secrets.
+    environment: tuple[tuple[str, str], ...] = ()
     # Empty for adapters with a documented bounded headless profile. Non-empty
     # only when official vendor documentation shows no such profile exists;
     # the text cites the documented behaviour, never a guess.
@@ -112,23 +119,27 @@ _SPECS = (
         permission_profile='gemini -p --approval-mode auto_edit (documented auto-edit approval mode)'),
     ProviderSpec(
         id='kimi', display_name='Kimi Code CLI', executable='kimi',
-        docs_url='https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html',
+        docs_url='https://www.kimi-cli.com/en/customization/print-mode.html',
         install_url='https://github.com/MoonshotAI/kimi-cli#installation',
-        login_guidance='Use the official Kimi Code CLI interactive login flow locally.',
-        help_args=('--help',), required_help=(),
-        unsupported_reason=(
-            'UNSUPPORTED: official print-mode docs state that --print implicitly '
-            'enables --afk, and that in AFK/YOLO mode all tool calls including '
-            'shell commands are auto-approved. kimi-cli exposes no per-tool '
-            'permission profile, so no bounded headless edit session can be '
-            'built without a blanket approval flag. Docs: '
-            'https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html '
-            'and https://moonshotai.github.io/kimi-cli/en/reference/kimi-command.html '
-            '#approval-control. No command is launched and no flag is guessed.'),
+        login_guidance='Run kimi login locally using the official vendor flow.',
+        help_args=('--help',),
+        # --print implicitly enables --afk (all tool calls auto-approved), so the
+        # bound must come from the agent's tool allowlist, not an approval flag.
+        required_help=('--print', '--agent-file', '--prompt', '--output-format'),
+        permission_profile='kimi --print --agent-file <ReadFile+WriteFile only> '
+                           '--output-format text -p PROMPT (no Shell/SearchWeb/FetchURL)',
+        permission_docs_url='https://www.kimi-cli.com/en/customization/agents.html',
+        aux_files=(('kimi-agent.yaml',
+                    'version: 1\n'
+                    'agent:\n'
+                    '  extend: default\n'
+                    '  tools:\n'
+                    '    - "kimi_cli.tools.file:ReadFile"\n'
+                    '    - "kimi_cli.tools.file:WriteFile"\n'),),
     ),
     ProviderSpec(
         id='qwen', display_name='Qwen Code', executable='qwen',
-        docs_url='https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/',
+        docs_url='https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/',
         install_url='https://github.com/QwenLM/qwen-code#installation',
         login_guidance='Open qwen locally and follow its official authentication flow.',
         help_args=('--help',),
@@ -139,19 +150,27 @@ _SPECS = (
     ),
     ProviderSpec(
         id='opencode', display_name='OpenCode', executable='opencode',
-        docs_url='https://opencode.ai/docs/cli/',
+        docs_url='https://opencode.ai/docs/cli/#run',
         install_url='https://opencode.ai/docs/',
         login_guidance='Run opencode auth login locally using the official vendor flow.',
-        help_args=('run', '--help'), required_help=(),
-        unsupported_reason=(
-            'UNSUPPORTED: `opencode run` is documented as non-interactive, but the '
-            'bounded edit profile is expressed only as opencode.json `permission` '
-            'rules; the CLI argument `--auto` auto-approves every request that is '
-            'not explicitly denied, which is a blanket approval this worker '
-            'prohibits. No per-run permission flag exists and this adapter does '
-            'not write vendor configuration files, so no verified bounded argv can '
-            'be produced. Docs: https://opencode.ai/docs/cli/ and '
-            'https://opencode.ai/docs/permissions/. No fallback is launched.'),
+        help_args=('run', '--help'),
+        required_help=('--auto', '--format', '--agent'),
+        permission_profile='opencode run --auto --agent nova3-bounded PROMPT with '
+                           'OPENCODE_CONFIG_CONTENT deny-by-default rules',
+        permission_docs_url='https://opencode.ai/docs/permissions/',
+        # Inline runtime config (documented precedence source) defines a custom
+        # primary agent whose permission table is deny-by-default with only
+        # read/edit/glob/grep allowed. --auto approves nothing the rules deny;
+        # it only prevents a non-interactive "ask" hang.
+        environment=(('OPENCODE_CONFIG_CONTENT', json.dumps({
+            'permission': {'*': 'deny', 'read': 'allow', 'edit': 'allow',
+                           'glob': 'allow', 'grep': 'allow'},
+            'agent': {'nova3-bounded': {
+                'description': 'N.O.V.A. 3 bounded worker: edits only, no shell or network.',
+                'mode': 'primary',
+                'permission': {'*': 'deny', 'read': 'allow', 'edit': 'allow',
+                               'glob': 'allow', 'grep': 'allow'}}},
+        }, sort_keys=True, separators=(',', ':'))),),
     ),
     ProviderSpec(
         id='copilot', display_name='GitHub Copilot CLI', executable='copilot',
@@ -182,6 +201,45 @@ def get_provider(provider_id: str) -> ProviderSpec:
 
 def executable_stem(path: str) -> str:
     return ntpath.basename(path).lower().removesuffix('.exe')
+
+
+def prepare_aux_files(provider_id: str, directory: str | os.PathLike[str]) -> dict[str, str]:
+    """Materialise a provider's documented allowlist file in a private directory.
+
+    Only fixed filenames declared by the registry are written, mode 0600 inside
+    a 0700 directory. Returns filename -> absolute path. Providers without aux
+    files return an empty mapping and no directory is created.
+    """
+    spec = get_provider(provider_id)
+    if not spec.aux_files:
+        return {}
+    folder = os.path.abspath(os.fspath(directory))
+    os.makedirs(folder, mode=0o700, exist_ok=True)
+    if os.name == 'posix':
+        os.chmod(folder, 0o700)
+    paths: dict[str, str] = {}
+    for name, content in spec.aux_files:
+        if os.path.basename(name) != name or name in ('', '.', '..'):
+            raise ProviderUnavailable('Provider profile filename is invalid.')
+        path = os.path.join(folder, name)
+        descriptor = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        try:
+            with os.fdopen(descriptor, 'w', encoding='utf-8', newline='\n') as handle:
+                handle.write(content)
+        finally:
+            if os.name == 'posix':
+                os.chmod(path, 0o600)
+        paths[name] = path
+    return paths
+
+
+def build_environment(provider_id: str) -> dict[str, str]:
+    """Child-process environment entries declared by the registry.
+
+    Contains no credentials: only vendor-documented non-secret configuration.
+    """
+    spec = get_provider(provider_id)
+    return {name: value for name, value in spec.environment}
 
 
 def redact_diagnostic(message: object) -> str:
@@ -300,12 +358,15 @@ def probe_provider(provider_id: str) -> ProviderStatus:
 
 
 def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
-                  status: ProviderStatus | None = None) -> list[str]:
+                  status: ProviderStatus | None = None,
+                  aux_dir: str | os.PathLike[str] | None = None) -> list[str]:
     """Build argv without shell interpolation; new adapters require probe evidence.
 
     Legacy builders retain their exact argv. Worker startup probes all providers
     before claiming work. These CLIs have their own permission boundaries; the
     worker independently validates issue scope and binary/source guards after it.
+    Providers with a documented agent-file allowlist require `aux_dir`, prepared
+    by `prepare_aux_files`, so the bound is a real file the CLI reads.
     """
     spec = get_provider(provider_id)
     if not isinstance(prompt, str) or not prompt.strip() or '\0' in prompt:
@@ -319,7 +380,8 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
         raise ProviderUnavailable(
             'No bounded noninteractive edit profile is documented for this provider; '
             'see the provider runtime notes.')
-    if status is None and provider_id not in ('codex', 'claude', 'gemini'):
+    legacy = provider_id in ('codex', 'claude', 'gemini')
+    if status is None and not legacy:
         status = probe_provider(provider_id)
     if status is not None and (status.provider_id != spec.id or not status.available):
         # Do not interpolate externally supplied status.reason into exceptions.
@@ -327,12 +389,23 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
     executable = status.executable_path if status else spec.executable
     if not executable:
         raise ProviderUnavailable('Provider executable is unavailable.')
-    if provider_id not in ('codex', 'claude', 'gemini') and status is not None:
+    if not legacy and status is not None:
         # New adapters must carry the probe's help-token evidence. A status
         # object alone is not proof that the documented flags exist.
         if not set(spec.required_help) <= set(status.capabilities):
             raise ProviderUnavailable(
                 'Provider capability evidence is incomplete; run the local provider probe.')
+    profiles: dict[str, str] = {}
+    if spec.aux_files:
+        if aux_dir is None:
+            raise ProviderUnavailable(
+                'Provider agent profile is not prepared; no session was launched.')
+        for name, _ in spec.aux_files:
+            path = os.path.join(os.fspath(aux_dir), name)
+            if not os.path.isfile(path):
+                raise ProviderUnavailable(
+                    'Provider agent profile is not prepared; no session was launched.')
+            profiles[name] = path
     if provider_id == 'codex':
         return [executable, 'exec', '--ephemeral', '--sandbox', 'workspace-write',
                 *(['--json'] if codex_json else []), prompt]
@@ -341,8 +414,17 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
                 'Read', 'Edit', 'Write', 'Glob', 'Grep', '--output-format', 'text']
     if provider_id == 'gemini':
         return [executable, '-p', prompt, '--approval-mode', 'auto_edit', '--output-format', 'text']
+    if provider_id == 'kimi':
+        # Print mode implies --afk; the bound is the agent file's tool list,
+        # which contains only ReadFile and WriteFile (no Shell/web).
+        return [executable, '--print', '--agent-file', profiles['kimi-agent.yaml'],
+                '--output-format', 'text', '-p', prompt]
     if provider_id == 'qwen':
         return [executable, '-p', prompt, '--approval-mode', 'auto-edit', '--output-format', 'text']
+    if provider_id == 'opencode':
+        # Deny-by-default rules arrive via OPENCODE_CONFIG_CONTENT; --auto only
+        # removes interactive "ask" prompts, it never overrides a deny rule.
+        return [executable, 'run', '--auto', '--agent', 'nova3-bounded', prompt]
     if provider_id == 'copilot':
         # Explicit deny overrides saved shell approvals. No --allow-all-tools,
         # --allow-all-paths, --allow-all-urls or unattended login is requested.

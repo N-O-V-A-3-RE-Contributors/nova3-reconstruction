@@ -3,82 +3,114 @@
 This slice provides an immutable typed provider registry, bounded local probes,
 registry-backed worker selection and synthetic/offline tests. Default provider:
 `codex`. Its display name is **ChatGPT (Codex CLI)**. There is no separately
-assumed official ChatGPT coding executable. This does not add concurrent workers,
-change launchers/TUIs, manage vendor accounts or change coordinator claims.
+assumed official ChatGPT coding executable: OpenAI documents the Codex CLI as the
+account-backed coding client, so "ChatGPT" here always means that CLI. This does
+not add concurrent workers, change launchers/TUIs, manage vendor accounts or
+change coordinator claims.
+
+Every one of the seven providers has a typed `ProviderSpec` (ID, display name,
+executable, official docs URL, official install URL, login guidance, help-probe
+argv, required help tokens, permission profile) and a safe argv builder that
+never uses `shell=True` and always passes the prompt as exactly one argv element.
 
 ## Per-provider verification status
 
-Official vendor documentation was retrieved on 2026-10-30. No vendor CLI is
-installed in the development or CI environment, and **no model call, login,
-session or paid request was made**. "VERIFIED" below means the documented
-non-interactive invocation and approval mode were checked against the vendor's
-own documentation and the argv is enforced by tests; it does not mean a live
-session was executed here.
+Official vendor documentation was retrieved on **2026-10-30**. None of `kimi`,
+`qwen`, `opencode` or `copilot` is installed in this development or CI
+environment, and **no model call, login, session or paid request was made**.
+"DOC-VERIFIED" means the documented non-interactive invocation and bounded
+approval/allowlist mechanism were checked against the vendor's own pages and the
+argv is enforced by offline tests. It does **not** mean a live session was run
+here. Local-only facts: `codex 0.163.0`, `claude 2.1.126` and `gemini 0.38.1` are
+installed on the maintainer host; `kimi`, `qwen`, `opencode` and `copilot` are
+not.
 
 | ID | Status | Documented invocation used | Official evidence |
 | --- | --- | --- | --- |
 | `codex` | VERIFIED (pre-existing argv, unchanged) | `codex exec --ephemeral --sandbox workspace-write [--json] PROMPT` | <https://developers.openai.com/codex/cli/reference/> |
-| `claude` | VERIFIED (pre-existing argv, unchanged) | `claude -p PROMPT --max-turns 12 --allowedTools Read Edit Write Glob Grep --output-format text` | <https://code.claude.com/docs/en/cli-reference> |
+| `claude` | argv PRE-EXISTING and unchanged; **local 2.1.126 probe reports INCOMPATIBLE** (its help no longer lists `--max-turns`, which this PR was not allowed to change) | `claude -p PROMPT --max-turns 12 --allowedTools Read Edit Write Glob Grep --output-format text` | <https://code.claude.com/docs/en/cli-reference> |
 | `gemini` | VERIFIED (pre-existing argv, unchanged) | `gemini -p PROMPT --approval-mode auto_edit --output-format text` | <https://geminicli.com/docs/cli/headless/> |
-| `kimi` | **UNSUPPORTED** (documented, no bounded profile) | none built | <https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html> · <https://moonshotai.github.io/kimi-cli/en/reference/kimi-command.html> |
-| `qwen` | **VERIFIED** | `qwen -p PROMPT --approval-mode auto-edit --output-format text` | <https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/> · <https://qwenlm.github.io/qwen-code-docs/en/users/features/approval-mode/> |
-| `opencode` | **UNSUPPORTED** (documented, permission profile is config-only) | none built | <https://opencode.ai/docs/cli/> · <https://opencode.ai/docs/permissions/> |
-| `copilot` | **VERIFIED** | `copilot -p PROMPT --allow-tool write --deny-tool shell` | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference> · <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference> |
+| `kimi` | DOC-VERIFIED (agent-file tool allowlist) | `kimi --print --agent-file <ReadFile+WriteFile> --output-format text -p PROMPT` | <https://www.kimi-cli.com/en/customization/print-mode.html> · <https://www.kimi-cli.com/en/customization/agents.html> · <https://www.kimi-cli.com/en/reference/kimi-command.html> |
+| `qwen` | DOC-VERIFIED | `qwen -p PROMPT --approval-mode auto-edit --output-format text` | <https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/> · <https://qwenlm.github.io/qwen-code-docs/en/users/features/approval-mode/> |
+| `opencode` | DOC-VERIFIED (inline deny-by-default config) | `opencode run --auto --agent nova3-bounded PROMPT` + `OPENCODE_CONFIG_CONTENT` | <https://opencode.ai/docs/cli/#run> · <https://opencode.ai/docs/permissions/> · <https://opencode.ai/docs/agents/> · <https://opencode.ai/docs/config/> |
+| `copilot` | DOC-VERIFIED | `copilot -p PROMPT --allow-tool write --deny-tool shell` | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference> |
 
-Exact flags relied on, from those pages:
+Exact documented flags relied on:
 
-- **Qwen Code**: `--prompt` / `-p` "invokes Qwen Code in a non-interactive
-  mode"; `--approval-mode` values `plan, default, auto-edit, auto, yolo`, where
-  `auto-edit` "automatically approve[s] edit tools (`edit`, `write_file`,
-  `notebook_edit`) while prompting for others"; `--output-format` / `-o`
-  accepts `text, json, stream-json`. `auto-edit` is therefore a bounded edit
-  profile, not blanket approval; `yolo` is never used.
-- **GitHub Copilot CLI**: `-p PROMPT` "execute a prompt in non-interactive
-  mode"; `--allow-tool=TOOL` and `--deny-tool=TOOL` accept the documented tool
-  kinds `shell`, `write`, `read`, `url`, `memory`. `write` is allowed and
-  `shell` denied; `--allow-all`, `--allow-all-tools`, `--allow-all-paths`,
+- **Kimi Code CLI**: `--print` runs non-interactively; the docs state it
+  "implicitly enables `--afk` mode, all tool calls are auto-approved". Because
+  there is no per-tool approval flag, the bound is structural: `--agent-file`
+  loads a YAML agent whose `tools:` list contains **only**
+  `kimi_cli.tools.file:ReadFile` and `kimi_cli.tools.file:WriteFile` (both paths
+  are taken verbatim from the agents page). `Shell`, `SearchWeb` and `FetchURL`
+  are therefore absent, so print-mode auto-approval can only authorise reads and
+  writes. The worker materialises that YAML (mode 0600) in
+  `.nova-private/<task>/provider-aux/` and passes its absolute path. `--yolo`,
+  `--yes`, `-y`, `--auto-approve` and an implicit-afk-only argv are never
+  emitted; `--afk` itself is never passed. Residual risk: if a future `kimi`
+  release renames those tool module paths, the session has no tools and fails,
+  which is fail-closed rather than a permission expansion.
+- **Claude Code**: the adapter's argv and required-token list are unchanged by
+  this task, per the issue's regression constraint. On the maintainer host,
+  `claude --help` (2.1.126) advertises `-p/--print`, `--allowedTools` and
+  `--output-format` but **not** `--max-turns`, so the capability gate correctly
+  reports `INCOMPATIBLE` and refuses to launch rather than sending an argv the
+  installed release may reject. This is a pre-existing adapter/version drift
+  outside this task's allowed argv change; it is recorded here rather than
+  silently relaxing the gate.
+- **Qwen Code**: `--prompt` / `-p` "Run in headless mode"; `--approval-mode`
+  value `auto-edit` auto-approves edit tools while other tools still require
+  approval; `--output-format` / `-o` accepts `text, json, stream-json`. `yolo`
+  is never used.
+- **OpenCode**: `opencode run [message..]` is the documented non-interactive
+  command; `--agent` selects an agent and `--format` selects output.
+  `--auto` "auto-approve[s] permissions that are not explicitly denied" — with
+  a deny-by-default rule set this only prevents an interactive "ask" from
+  hanging. The rules are supplied per run through `OPENCODE_CONFIG_CONTENT`
+  (documented inline runtime config, precedence tier 6) and define both a global
+  `permission` table and a `nova3-bounded` primary agent whose rules are
+  `{"*": "deny", "read": "allow", "edit": "allow", "glob": "allow",
+  "grep": "allow"}`. `bash`, `webfetch`, `websearch`, `question` and
+  `external_directory` therefore resolve to deny. No project or user config file
+  is written. Residual risk: documented *managed* config
+  (`/etc/opencode/`, MDM) has higher precedence than inline config, so an
+  operator-installed managed policy can override these rules; that is an
+  administrator-controlled trust boundary, not something this adapter can
+  defeat.
+- **GitHub Copilot CLI**: `-p PROMPT` "Execute a prompt in non-interactive
+  mode"; `--allow-tool=TOOL` and `--deny-tool=TOOL` accept documented tool kinds
+  `shell`, `write`, `read`, `url`, `memory`. `write` is allowed and `shell`
+  denied. `--allow-all`, `--allow-all-tools`, `--allow-all-paths`,
   `--allow-all-urls` and `--yolo` are never emitted.
-- **Kimi Code CLI**: print mode is entered with `--print`, and the official docs
-  state that `--print` "implicitly enables `--afk`" and that in YOLO/AFK mode
-  "all tool calls are auto-approved", including file modifications and shell
-  commands. `--afk`, `--yolo`, `--yes` and `--auto-approve` are all blanket
-  approvals. `kimi-cli` (the project whose executable is `kimi`) documents no
-  per-tool permission rule for this path, so no bounded headless edit session
-  exists within this worker's rules. The successor project `kimi-code` adds
-  `permission.rules`, but it is a different, separately installed product and
-  is not assumed here.
-- **OpenCode**: `opencode run` is documented as non-interactive, but bounded
-  restrictions are expressed only as `opencode.json` `permission` rules
-  (`allow`/`ask`/`deny`). The only per-run switch, `--auto`, "automatically
-  approve[s] permission requests that are not explicitly denied", i.e. a
-  blanket approval. This adapter does not write vendor configuration files, so
-  it deliberately builds no command rather than guessing one or substituting a
-  read-only session.
 
-`kimi` and `opencode` remain registered so `worker providers` reports the
-executable, version if present, and this cited reason. They can never produce a
-worker command: `build_command` rejects them even with a synthetic `AVAILABLE`
-status. Their `required_help` tuple is empty because no help-token gate can
-authorise a profile that does not exist.
+The registry keeps an `unsupported_reason` field for a future vendor whose
+official docs genuinely show no bounded non-interactive profile. Such a spec is
+reported `INCOMPATIBLE` after the version probe, never builds a command even
+with a synthetic `AVAILABLE` status, and never falls back to read-only, `--yolo`
+or a model readiness prompt. `kimi` and `opencode` no longer use that field.
 
-## Capability gating (replaces the blanket `safety_block`)
+## Capability gating
 
-Each supported provider declares the complete help tokens it depends on.
-`probe_provider` runs `--version`, parses only a numeric version, then runs the
-provider's documented help command and requires every token as a **whole
-token**. `--allow-toolbox` therefore does not satisfy `--allow-tool`, and
-Gemini's `auto_edit` does not authorise Qwen's `auto-edit`. For `qwen` and
-`copilot` (the adapters added by this change) `build_command` additionally
-refuses an `AVAILABLE` status whose `capabilities` do not contain all required
-tokens, so a caller cannot bypass the probe by constructing a status object.
-`codex`, `claude` and `gemini` keep their existing argv byte-for-byte and are
-not subject to the new capability-evidence check.
+Each provider declares the complete help tokens it depends on.
+`probe_provider` resolves the executable with `shutil.which`, rejects
+`.cmd`/`.bat` shims before any process starts, runs a bounded `--version` parse,
+then runs the provider's documented help command and requires every token as a
+**whole token**. `--allow-toolbox` does not satisfy `--allow-tool`, and Gemini's
+`auto_edit` does not authorise Qwen's `auto-edit`. Missing binary → `MISSING`
+with the install URL; absent tokens or an unrecognised version → `INCOMPATIBLE`
+with an actionable reason and the docs URL; timeout/oversized/failed probe →
+`PROBE_FAILED`. No path crashes.
+
+For the four newer adapters, `build_command` also refuses an `AVAILABLE` status
+whose `capabilities` do not contain every required token, so a caller cannot
+bypass the probe by constructing a status object. `codex`, `claude` and `gemini`
+keep their existing argv byte-for-byte and are not subject to the new
+capability-evidence check.
 
 Probing is bounded and safe: resolved absolute path, closed `stdin`, no shell,
 three-second deadline, 64 KiB retained-output cap with process-group kill, and
 fixed diagnostics. No prompt, login, install or network operation is part of a
-probe. Vendor stdout/stderr is never surfaced in reports. A `.cmd`/`.bat` shim
-is rejected before any process is started.
+probe. Vendor stdout/stderr is never surfaced in reports or exception text.
 
 ## Official documentation and operator installation links
 
@@ -90,16 +122,11 @@ reference links, not automatic installers:
 | ChatGPT (Codex CLI) | <https://developers.openai.com/codex/cli/> | <https://developers.openai.com/codex/cli/reference/> |
 | Claude Code | <https://code.claude.com/docs/en/setup> | <https://code.claude.com/docs/en/cli-reference> |
 | Gemini CLI | <https://geminicli.com/docs/get-started/installation/> | <https://geminicli.com/docs/cli/headless/> |
-| Kimi Code CLI | <https://github.com/MoonshotAI/kimi-cli#installation> | <https://moonshotai.github.io/kimi-cli/en/customization/print-mode.html> |
-| Qwen Code | <https://github.com/QwenLM/qwen-code#installation> | <https://qwenlm.github.io/qwen-code-docs/en/users/configuration/settings/> |
+| Kimi Code CLI | <https://github.com/MoonshotAI/kimi-cli#installation> | <https://www.kimi-cli.com/en/customization/print-mode.html> · <https://www.kimi-cli.com/en/customization/agents.html> |
+| Qwen Code | <https://github.com/QwenLM/qwen-code#installation> | <https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/> |
 | OpenCode | <https://opencode.ai/docs/> | <https://opencode.ai/docs/permissions/> |
 | GitHub Copilot CLI | <https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli> | <https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-programmatic-reference> |
 | GitHub CLI (separate required repository identity) | <https://cli.github.com/> | <https://cli.github.com/manual/gh_auth_status> |
-
-`ProviderSpec` carries `docs_url`, `install_url`, `permission_docs_url` (where
-the vendor publishes approvals separately), `permission_profile` and, only for
-documented-unsupported vendors, `unsupported_reason`. `worker providers` prints
-`docs`, `permission_profile` and `state` per provider.
 
 Every AI provider is OPTIONAL per contributor. Each contributor obtains and pays
 for their own applicable subscription or API account and checks vendor pricing,
@@ -116,20 +143,21 @@ subscription equivalence or included API credits are promised here.
 | Windows `.cmd` / `.bat` wrappers | Rejected before probing or sending prompts | No `cmd.exe`, `shell=True` or implicit batch interpolation fallback |
 
 This is the worker's invocation matrix, not a claim that every vendor ships
-native builds for every OS. Check each vendor's installation/platform guidance.
-An npm installation exposing only a Windows batch shim is unavailable to this
-adapter until a vendor-supported non-shell entrypoint is implemented and tested.
+native builds for every OS. An npm installation exposing only a Windows batch
+shim is unavailable to this adapter until a vendor-supported non-shell
+entrypoint is implemented and tested.
 
 ## Operator-local first run
 
 1. Read the selected vendor's official CLI and permission documentation. Install
-   the chosen CLI yourself using its official instructions. Verify its version.
-   For Qwen/Copilot, confirm the documented approval flags against your local
-   version; Kimi/OpenCode are unsupported by this adapter, with reasons above.
-2. Log in through the vendor's own normal interactive flow: `codex login`, launch
-   `claude`, `gemini` or `qwen` and follow official instructions, or use
-   `opencode auth login` / Copilot's interactive `/login`. The worker never runs
-   these operations, prompts for credentials or reads credential files.
+   the chosen CLI yourself using its official instructions and verify its
+   version. The worker's help-token gate will report `INCOMPATIBLE` (it never
+   degrades to read-only or `--yolo`) if your installed release lacks a required
+   flag.
+2. Log in through the vendor's own normal interactive flow: `codex login`,
+   `claude`, `gemini`, `kimi login`, `qwen`, `opencode auth login`, or Copilot's
+   interactive `/login`. The worker never runs these operations, prompts for
+   credentials or reads credential files.
 3. Independently install GitHub CLI and use `gh auth login` for the repository
    identity. This does not authenticate an AI provider, including Copilot.
 4. Inspect local capabilities without a task claim:
@@ -146,9 +174,10 @@ adapter until a vendor-supported non-shell entrypoint is implemented and tested.
    Missing API environment variables do not disprove an existing OAuth login.
    Status success does not prove model entitlement, available credits or quotas.
 5. After local verification, explicitly opt into the solo worker, for example
-   `python -m nova3_team.worker run --provider qwen --once`. Existing providers
-   retain their prior command arguments. Missing/incompatible runtimes fail with
-   a diagnostic before coordinator interaction; no network install is attempted.
+   `python -m nova3_team.worker run --provider opencode --once`. Existing
+   providers retain their prior command arguments. Missing/incompatible runtimes
+   fail with a diagnostic before coordinator interaction; no network install is
+   attempted.
 
 ## Registry API and security constraints
 
@@ -156,13 +185,20 @@ adapter until a vendor-supported non-shell entrypoint is implemented and tested.
 `ProviderSpec` metadata. `probe_provider(id)` returns `ProviderStatus` with a
 state, numeric version, resolved local executable path, capability evidence and
 fixed diagnostic reason. The worker's listing omits executable paths and raw
-probe output. `build_command(id, prompt, status=...)` returns an argv list;
-new runnable providers require successful probe evidence. Unknown providers,
-NUL/empty prompts, dash-prefixed prompts and incompatible status are rejected
-without echoing their contents. Generated worker prompts always start with task
-text, so the dash-prefix guard does not change normal session prompts.
-`worker --provider` argparse choices come from `provider_ids()`, so an unknown ID
-exits with code 2 before any GitHub call.
+probe output and includes the install URL and whether the spec is unsupported.
+
+`build_command(id, prompt, status=..., aux_dir=...)` returns an argv list. New
+runnable providers require successful probe evidence; `kimi` additionally
+requires `aux_dir` containing the materialised agent file
+(`prepare_aux_files`, 0600 inside a 0700 directory). `build_environment(id)`
+returns only vendor-documented, non-secret child environment entries (currently
+OpenCode's inline config); the worker merges them over its own environment for
+the child process only. Unknown providers, NUL/empty prompts, dash-prefixed
+prompts and incompatible status are rejected without echoing their contents.
+Generated worker prompts always start with task text, so the dash-prefix guard
+does not change normal session prompts. `worker --provider` argparse choices
+come from `provider_ids()`, so an unknown ID exits with code 2 before any GitHub
+call.
 
 `check_auth(id)` and `check_github_identity()` return `AuthEvidence`, never keys,
 tokens, environment dumps or credential paths. Unsupported status checks are
@@ -174,11 +210,10 @@ coordinator flow and post-session path/source guards. Provider stdout/stderr
 flows through a bounded line relay before private 0600 logs are written. Known
 environment secret values, recognizable token prefixes and Bearer credentials
 are redacted; oversized lines are omitted, partial final lines are retained.
-This preserves incremental diagnostics but logs are no longer byte-for-byte raw
-provider output. Redaction is defence in depth, not a guarantee of detecting
-arbitrary credentials or copyrighted content: logs and handoffs remain private
-and must never be uploaded. Telemetry still contains only bounded activity
-metadata. No blanket approval bypass or unrestricted shell flag is added.
+Redaction is defence in depth, not a guarantee of detecting arbitrary credentials
+or copyrighted content: logs and handoffs remain private and must never be
+uploaded. Telemetry still contains only bounded activity metadata. No blanket
+approval bypass or unrestricted shell flag is added.
 
 The provider's edit approval policy is not an OS filesystem sandbox or a precise
 issue allowlist. Existing scope checks still reject unapproved edits before
@@ -195,23 +230,24 @@ python -m unittest discover -s nova3_team/tests -v
 git diff --check
 ```
 
-At this commit the focused modules ran **38 tests** and the full collaboration
-suite ran **530 tests with 6 skipped**, both exit 0. Tests use only synthetic
-help/version/status responses and local Python emitters. No original game files
-are needed. Covered: exact argv per provider (including unchanged Codex/Claude/
-Gemini), Kimi/OpenCode refusal with cited docs, missing executables, unsupported
-versions, failed probes, whole-token capability mismatch (`--allow-toolbox` vs
-`--allow-tool`), capability-evidence bypass attempts, prompt injection kept in
-one argv element, `.cmd`/`.bat` refusal, auth uncertainty, redaction, bounded
-stdout/timeout, worker `command_for` regressions and the unknown-provider path.
-No live provider or cross-platform runtime success is claimed.
+Tests use only synthetic help/version/status responses, temporary agent files
+and local Python child processes. No original game files are needed. Covered:
+exact argv for all seven providers, prompt-injection text kept in one argv
+element, Windows native `.exe` path plus `.cmd`/`.bat` refusal, missing
+executables, unrecognised versions, help-token mismatch, capability-evidence
+bypass attempts, probe timeout/output cap, agent-file preparation and 0600/0700
+modes, missing agent profile failing closed, OpenCode inline-config shape and
+non-inheritance of secret environment variables, auth uncertainty, redaction,
+worker `command_for`/`run_provider` regressions, unsupported-spec fail-closed
+behaviour and the unknown-provider path.
 
-Remaining genuinely unverified: no vendor CLI is installed in the development or
-CI environment, so Qwen/Copilot argv have not been exercised against a live
-vendor binary or model; their documented flags could change in future releases,
-which the installed-help token gate is designed to catch. Kimi/OpenCode would
-need a vendor-documented bounded per-run approval profile (or an owned,
-validated config file with deny-by-default rules) before an adapter could be
-added. Add status-only auth commands only when officially documented. Do not
-resolve a capability failure with `--yolo`, global approvals, a read-only
-substitute or a model readiness prompt.
+Remaining genuinely unverified: none of `kimi`, `qwen`, `opencode` or `copilot`
+is installed here, so their argv has not been exercised against a live vendor
+binary or model. The Kimi `--agent-file` YAML and the OpenCode inline config are
+enforced by tests as byte-exact documents and cited to the vendors' own pages,
+but a live run could still reveal a vendor-side schema change. The help-token
+gate is designed to catch flag removal; it cannot validate tool-module path
+renames (Kimi) or managed-config precedence (OpenCode). Add status-only auth
+commands only when officially documented. Do not resolve a capability failure
+with `--yolo`, global approvals, a read-only substitute or a model readiness
+prompt.
