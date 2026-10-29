@@ -278,11 +278,15 @@ def _codex_json_supported():
 
 
 def command_for(provider, prompt, status=None, aux_dir=None):
+    # A legacy status may lack capability tokens (help text drift); fall back to
+    # the direct bounded probe rather than silently dropping --json.
+    codex_json = False
+    if provider == 'codex':
+        codex_json = ('--json' in status.capabilities) if status is not None else False
+        if not codex_json:
+            codex_json = _codex_json_supported()
     return provider_runtime.build_command(
-        provider, prompt, status=status, aux_dir=aux_dir,
-        codex_json=(provider == 'codex' and
-                    ('--json' in status.capabilities if status is not None
-                     else _codex_json_supported())))
+        provider, prompt, status=status, aux_dir=aux_dir, codex_json=codex_json)
 
 
 def allowed_from_issue(body):
@@ -829,7 +833,17 @@ def main():
     ready=None
     if args.command=='run':
         ready=provider_runtime.probe_provider(args.provider)
-        if not ready.available:p.error(ready.reason)
+        if not ready.available:
+            # #127 freezes the argv of providers that predate the registry, so a
+            # help text change must not block an invocation that previously
+            # worked. Warn and launch; refuse only when there is no executable.
+            if provider_runtime.is_legacy(args.provider) and ready.executable_path:
+                note(f'WARN {provider_runtime.get_provider(args.provider).display_name}: '
+                     f'capability probe reported {ready.state.value} '
+                     f'({ready.reason}); launching the unchanged documented invocation. '
+                     'The probe is advisory for pre-registry providers.')
+            else:
+                p.error(ready.reason)
         if not shutil.which('gh'):p.error('GitHub CLI is required separately; install gh and run gh auth login locally.')
     upstream=get_repo(args.repo)
     gh=GitHub(upstream);user=gh.me()

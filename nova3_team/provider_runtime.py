@@ -192,6 +192,16 @@ def provider_ids() -> tuple[str, ...]:
     return tuple(PROVIDERS)
 
 
+# Providers that existed before the capability registry. Their argv is frozen
+# by issue #127, so a probe result is advisory for them: a help text that omits
+# a documented flag must warn, never block a previously working invocation.
+LEGACY_PROVIDERS = ('codex', 'claude', 'gemini')
+
+
+def is_legacy(provider_id: str) -> bool:
+    return provider_id in LEGACY_PROVIDERS
+
+
 def get_provider(provider_id: str) -> ProviderSpec:
     try:
         return PROVIDERS[provider_id]
@@ -380,21 +390,23 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
         raise ProviderUnavailable(
             'No bounded noninteractive edit profile is documented for this provider; '
             'see the provider runtime notes.')
-    legacy = provider_id in ('codex', 'claude', 'gemini')
+    legacy = provider_id in LEGACY_PROVIDERS
     if status is None and not legacy:
         status = probe_provider(provider_id)
-    if status is not None and (status.provider_id != spec.id or not status.available):
-        # Do not interpolate externally supplied status.reason into exceptions.
+    if status is not None and status.provider_id != spec.id:
+        raise ProviderUnavailable('Provider status does not match the requested provider.')
+    if status is not None and not status.available and not legacy:
+        # New adapters need positive capability evidence before a session.
         raise ProviderUnavailable('Provider is unavailable or incompatible; run the local provider probe.')
-    executable = status.executable_path if status else spec.executable
-    if not executable:
-        raise ProviderUnavailable('Provider executable is unavailable.')
     if not legacy and status is not None:
         # New adapters must carry the probe's help-token evidence. A status
         # object alone is not proof that the documented flags exist.
         if not set(spec.required_help) <= set(status.capabilities):
             raise ProviderUnavailable(
                 'Provider capability evidence is incomplete; run the local provider probe.')
+    executable = status.executable_path if status else spec.executable
+    if not executable:
+        raise ProviderUnavailable('Provider executable is unavailable.')
     profiles: dict[str, str] = {}
     if spec.aux_files:
         if aux_dir is None:
