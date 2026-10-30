@@ -5,6 +5,51 @@ worker action and no transcript in this repository. The UI lives in
 `tools/observatory/observer.py`; all behavior is in
 `tools/observatory/planning_chat.py` and is driven directly by tests.
 
+## Native Hermes transport
+
+The production UI now discovers `planner_transport.HermesPlanner`. An installed
+Hermes CLI passing its bounded `chat --help` capability probe displays `UNKNOWN`
+until the first successful inference, then `CONNECTED`; failed inference shows
+`UNAVAILABLE`. Discovery does not submit a prompt or prove authentication.
+Demo mode continues to avoid native providers. The Unix and Windows installers
+ship the transport and its existing Hermes runtime helper.
+
+Press `C`, `T` to create a private thread, then `I` to type and submit. Responses
+use the installed Hermes `--format stream-json` protocol, including live `text`
+deltas and the terminal `result`. Nonstreaming providers still display the
+terminal answer. Credentials are resolved by Hermes through its normal local
+mechanism; Control Center neither parses nor copies them. Errors do not echo
+provider stderr, response errors or environment values.
+
+Planner settings are separate: `NOVA3_HERMES_PLANNER_MODEL` and
+`NOVA3_HERMES_PLANNER_PROVIDER` (default OpenRouter). Provider allowlisting and
+identifier validation use the existing Hermes runtime. The UI shows the actual
+configured model. Old threads saved with `hermes-planner` migrate at invocation.
+The default model remains the runtime's pinned model; availability must be
+checked against the operator's actual provider, never assumed.
+
+Each turn creates an isolated, temporary working directory and private 0600
+prompt containing the current bounded continuation envelope. The subprocess
+uses DEVNULL stdin/stderr and its own process group; cancellation terminates
+only that group. No worker PID, lease, model, session, service or coordinator
+endpoint is inspected or changed. The envelope remains durable in the private
+per-user ledger and is supplied again after UI restarts/provider switches.
+
+Model tools are explicitly disabled with `--toolsets ''`, which the installed
+Hermes gateway parses as an empty list. Omitting this flag would enable defaults.
+No file-write, terminal, GitHub, delegation or worker tool is granted. Enabling
+tools requires separate model capability and permission validation. Native
+inference has a 120-second local deadline and one tool-calling iteration.
+These are **not monetary limits**: the Hermes CLI has no documented output-token
+or dollar-cap argument. Strict paid-test budgets require a verified provider
+cap or separately bounded transport; do not equate wall time with cost.
+
+Offline regression command (uses real fixture subprocesses, no model calls):
+`python3 -m unittest discover -s tools/observatory/tests -p test_planner_transport.py -v`.
+It covers streaming, terminal-only replies, protocol failures, cancellation,
+timeouts, tool denial, private prompt cleanup and restart continuity. Live
+inference readiness must be recorded separately by the installation verifier.
+
 ## Why this shape
 
 The Control Center already carries fifteen pages. Adding a sixteenth tab would

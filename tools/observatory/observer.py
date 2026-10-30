@@ -2351,12 +2351,16 @@ class Observatory:
                 Path(os.getenv('XDG_STATE_HOME', str(Path.home()/'.local/state')))
                 / STATE_FOLDER)
             try:
+                adapters = getattr(self.collector, 'planning_adapters', None)
+                if adapters is None:
+                    adapters = ({} if getattr(self.collector, 'demo', False)
+                                else planning_chat.native_adapters())
                 self.planning = planning_chat.ChatWorkspace(
                     store_root=Path(state_dir) / 'planning_chat',
                     repo=self.collector.repo,
                     user=self._planning_user(),
                     role_provider=self._plan_role_provider,
-                    adapters=getattr(self.collector, 'planning_adapters', None) or {},
+                    adapters=adapters,
                 )
             except Exception as exc:
                 self.plan_error = ('Planning workspace unavailable: '

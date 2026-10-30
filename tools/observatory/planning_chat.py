@@ -218,7 +218,23 @@ def _read_json(path: Path) -> dict | None:
 
 
 def provider_state(pid: str, adapters: Mapping[str, object] | None) -> str:
-    return "READY" if adapters and adapters.get(pid) else "NOT CONNECTED"
+    adapter = adapters.get(pid) if adapters else None
+    return str(getattr(adapter, "state", "READY")) if adapter else "NOT CONNECTED"
+
+
+def native_adapters() -> dict:
+    """Load native transports without inference, login or worker interaction."""
+    name = "nova3_private_control_planner_transport"
+    module = sys.modules.get(name)
+    if module is None:
+        from importlib.util import module_from_spec, spec_from_file_location
+        spec = spec_from_file_location(name, Path(__file__).with_name("planner_transport.py"))
+        if spec is None or spec.loader is None:
+            raise ChatError("transport", "planner transport missing; reinstall")
+        module = module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return module.native_adapters(cancelled_error=Cancelled)
 
 
 class ChatWorkspace:
@@ -403,7 +419,11 @@ class ChatWorkspace:
     # threads
     # ------------------------------------------------------------------
     def _provider_default_model(self, pid: str) -> str:
-        return PROVIDER_BY_ID[pid].models[0]
+        return str(getattr(self.adapters.get(pid), "default_model",
+                           PROVIDER_BY_ID[pid].models[0]))
+
+    def _provider_models(self, pid: str) -> tuple[str, ...]:
+        return tuple(getattr(self.adapters.get(pid), "models", PROVIDER_BY_ID[pid].models))
 
     def current_session(self) -> str | None:
         if self._session_id and self._session_id in self._meta["threads"]:
@@ -545,7 +565,7 @@ class ChatWorkspace:
         session = self._require_session()
         meta = self._thread_meta(session)
         pid = meta.get("provider", DEFAULT_PROVIDER)
-        allowed = PROVIDER_BY_ID[pid].models
+        allowed = self._provider_models(pid)
         if model not in allowed:
             raise ChatError("model", f"{pid} models: {', '.join(allowed)}")
         per_provider = dict(meta.get("model_by_provider") or {})
@@ -557,7 +577,7 @@ class ChatWorkspace:
         session = self._require_session()
         meta = self._thread_meta(session)
         pid = meta.get("provider", DEFAULT_PROVIDER)
-        models = PROVIDER_BY_ID[pid].models
+        models = self._provider_models(pid)
         current = meta.get("model", models[0])
         index = models.index(current) if current in models else 0
         return self.set_model(models[(index + 1) % len(models)])
@@ -567,7 +587,7 @@ class ChatWorkspace:
         meta = self._thread_meta(session) if session else {}
         active = meta.get("provider", DEFAULT_PROVIDER)
         return [{"pid": row.pid, "label": row.label, "kind": row.kind,
-                 "models": row.models, "note": row.note,
+                 "models": self._provider_models(row.pid), "note": row.note,
                  "state": provider_state(row.pid, self.adapters),
                  "active": row.pid == active,
                  "model": meta.get("model") if row.pid == active else row.models[0]}
