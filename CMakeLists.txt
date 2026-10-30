@@ -140,3 +140,14 @@ if(BUILD_TESTING)
     target_compile_options(compute_size_in_bytes_test PRIVATE -UNDEBUG)
     add_test(NAME compute_size_in_bytes_arithmetic COMMAND compute_size_in_bytes_test)
 endif()
+
+# Recovered functions: computeMipmapSizeInBytes (0x0077d450) + slices overload (0x0077d470)
+if(BUILD_TESTING)
+    add_executable(compute_mipmap_size_in_bytes_test
+        reconstruction/tests/compute_mipmap_size_in_bytes_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d450.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d470.cpp)
+    target_include_directories(compute_mipmap_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(compute_mipmap_size_in_bytes_test PRIVATE -UNDEBUG)
+    add_test(NAME compute_mipmap_size_in_bytes_arithmetic COMMAND compute_mipmap_size_in_bytes_test)
+endif()

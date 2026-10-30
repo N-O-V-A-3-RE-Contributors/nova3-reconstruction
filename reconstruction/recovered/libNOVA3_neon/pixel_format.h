@@ -11,6 +11,9 @@
 //   compute_pitch                    ELF VA 0x0077d37c  (block_0077d37c.cpp)
 //   compute_size_in_bytes            ELF VA 0x0077d3cc  (block_0077d3cc.cpp)
 //   compute_size_in_bytes_slices     ELF VA 0x0077d43c  (block_0077d43c.cpp)
+//   compute_mipmap_size_in_bytes     ELF VA 0x0077d450  (block_0077d450.cpp)
+//   compute_mipmap_size_in_bytes
+//     (slices/depth overload)        ELF VA 0x0077d470  (block_0077d470.cpp)
 //
 // Only five descriptor fields are consumed by these functions:
 // bytes_per_block (0x15), bits_per_pixel (0x16), block_width (0x24),
@@ -109,6 +112,67 @@ inline std::uint32_t compute_size_in_bytes_slices(const PixelFormatDescriptor* t
                                                   std::uint32_t height,
                                                   std::uint32_t slices) noexcept {
     return slices * compute_size_in_bytes(table, format_index, width, height);
+}
+
+// ARM `lsrs` shift + `moveq #1` clamp, reproduced exactly.  The original
+// shifts by a register whose low 8 bits are used; for a 32-bit destination a
+// shift amount >= 32 yields 0, which is then clamped to 1.
+inline std::uint32_t mip_shift(std::uint32_t value, std::uint8_t level) noexcept {
+    const std::uint32_t shifted = (level < 32u) ? (value >> level) : 0u;
+    return shifted != 0u ? shifted : 1u;
+}
+
+// computeMipmapSizeInBytes  —  ELF VA 0x0077d450, 32 bytes, A32.
+//   (format, width, height, mipLevel, skipWidthShift)
+//   if (!skipWidthShift) width  = mip_shift(width,  mipLevel)
+//   height = mip_shift(height, mipLevel)
+//   return computeSizeInBytes(format, width, height)
+//
+// Cross-edition check: the Freemium libGloftNAHM.so export of the same
+// mangled symbol (0x005d2b48, 32 bytes) is instruction-identical apart from
+// the tail-call target, confirming the behaviour below.
+//
+// The trailing bool gates only the width shift.  Its original source name is
+// UNKNOWN (INFERRED): callers derive it from a format-descriptor comparison
+// (e.g. `(descriptor word >> 3) & 7 == 1`, or `descriptor.field_0x8 == 1`).
+// We name it by its observed effect.
+inline std::uint32_t compute_mipmap_size_in_bytes(const PixelFormatDescriptor* table,
+                                                  std::uint32_t format_index,
+                                                  std::uint32_t width,
+                                                  std::uint32_t height,
+                                                  std::uint8_t mip_level,
+                                                  bool skip_width_shift) noexcept {
+    if (!skip_width_shift) {
+        width = mip_shift(width, mip_level);
+    }
+    height = mip_shift(height, mip_level);
+    return compute_size_in_bytes(table, format_index, width, height);
+}
+
+// computeMipmapSizeInBytes (slices/depth overload)  —  ELF VA 0x0077d470,
+// 56 bytes, A32.  (format, width, height, depth, mipLevel, skipWidthShift)
+//   if (!skipWidthShift) width = mip_shift(width,  mipLevel)
+//   height = mip_shift(height, mipLevel)
+//   depth  = mip_shift(depth,  mipLevel)
+//   return depth * computeSizeInBytes(format, width, height)
+//
+// Cross-edition check: Freemium libGloftNAHM.so (0x005d2b68, 52 bytes)
+// instead tail-calls the four-argument slices overload after applying the
+// same three shifts — behaviourally equivalent, structurally different.
+inline std::uint32_t compute_mipmap_size_in_bytes_slices(
+    const PixelFormatDescriptor* table,
+    std::uint32_t format_index,
+    std::uint32_t width,
+    std::uint32_t height,
+    std::uint32_t depth,
+    std::uint8_t mip_level,
+    bool skip_width_shift) noexcept {
+    if (!skip_width_shift) {
+        width = mip_shift(width, mip_level);
+    }
+    height = mip_shift(height, mip_level);
+    depth = mip_shift(depth, mip_level);
+    return depth * compute_size_in_bytes(table, format_index, width, height);
 }
 
 } // namespace nova3::recovered::pixel_format
