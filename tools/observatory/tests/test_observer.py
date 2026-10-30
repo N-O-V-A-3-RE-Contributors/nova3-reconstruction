@@ -298,19 +298,19 @@ class ResponsiveTests(unittest.TestCase):
     def test_registry_and_deterministic_navigation(self):
         self.assertEqual(len(o.TABS), len(o.TAB_KEYS))
         self.assertEqual(len(o.TABS), len(o.TAB_SHORT))
-        self.assertEqual(len(set(o.TAB_KEYS)), 14)
-        self.assertEqual(sorted(p for _, pages in o.TAB_GROUPS for p in pages), list(range(14)))
+        self.assertEqual(len(set(o.TAB_KEYS)), 15)
+        self.assertEqual(sorted(p for _, pages in o.TAB_GROUPS for p in pages), list(range(15)))
         ui = self.make_ui(role='ADMIN')
         for i, key in enumerate(o.TAB_KEYS):
             ui.tab = 0
             ui.handle(ord(key))
             self.assertEqual(ui.tab, i)
         ui.tab = 0
-        for i in range(14):
+        for i in range(15):
             self.assertEqual(ui.tab, i)
             ui.handle(9)
         self.assertEqual(ui.tab, 0)
-        for i in range(13, -1, -1):
+        for i in range(14, -1, -1):
             ui.handle(o.curses.KEY_BTAB)
             self.assertEqual(ui.tab, i)
         ui.tab = 0
@@ -362,7 +362,7 @@ class ResponsiveTests(unittest.TestCase):
                 self.assertEqual(ui.confirm, 'discovery-now')
                 self.assertEqual(ui.layout.width, width)
                 self.assertEqual(ui.layout.height, height)
-            self.assertEqual(ui.stdscr.refreshes, 14)
+            self.assertEqual(ui.stdscr.refreshes, 15)
         ui.collector.perform_action.assert_not_called()
 
     def test_narrow_card_pages_and_wrapped_scroll(self):
@@ -376,7 +376,7 @@ class ResponsiveTests(unittest.TestCase):
                 ui.render()
                 self.assertIn(title, ui.stdscr.text())
                 ui.handle(o.curses.KEY_NPAGE)
-        ui.tab = 13
+        ui.tab = 14
         ui.render()
         before = ui.stdscr.text()
         for _ in range(15):
@@ -538,6 +538,149 @@ class ResponsiveTests(unittest.TestCase):
         ui.collector.perform_action.assert_not_called()
         ui.handle(27)
         self.assertIsNone(ui.confirm)
+
+
+class AccountsScreenTests(unittest.TestCase):
+    def build(self, width=80, height=24, role='READ', demo=False):
+        snap = o.Snapshot(repo_role=role)
+        collector = SimpleNamespace(
+            repo='fixture/repo', service='fixture.service', demo=demo,
+            lock=threading.Lock(), snapshot=snap, merge_preview=None,
+            perform_action=mock.Mock(), execute_merge=mock.Mock(),
+            prepare_merges=mock.Mock(), force_refresh=mock.Mock())
+        ui = o.Observatory(collector)
+        ui.snap, ui.stdscr, ui.unicode = snap, StrictSurface(width, height), True
+        return ui
+
+    def controller(self, ui, role='READ', login_opener=None):
+        runtime = o.provider_accounts.provider_runtime
+        probe = mock.Mock(side_effect=lambda pid: runtime.ProviderStatus(
+            pid, runtime.RuntimeState.AVAILABLE, '/fake/' + pid, '1.2.3', 'fixture'))
+        auth = mock.Mock(return_value=runtime.AuthEvidence(
+            runtime.AuthState.UNKNOWN, 'No verified status command.'))
+        ctrl = o.provider_accounts.AccountsController(
+            'fixture/repo', probe=probe, auth=auth,
+            identity_probe=lambda: o.provider_accounts.GitHubIdentity(
+                o.provider_accounts.AccountState.AUTHENTICATED, 'fixture-user',
+                ('repo',), 'status only'),
+            role_resolver=lambda: role,
+            opener=login_opener if login_opener is not None else ui._open_external)
+        ui.accounts = ctrl
+        ctrl.refresh_identity()
+        return ctrl
+
+    def test_accounts_page_renders_at_compact_and_panoramic_sizes(self):
+        for width, height in ((80, 24), (192, 54)):
+            ui = self.build(width, height)
+            self.controller(ui)
+            ui.tab = o.ACCOUNTS_TAB
+            ui.render()
+            text = ui.stdscr.text()
+            self.assertIn('AI PROVIDER ACCOUNTS', text)
+            self.assertIn('GITHUB IDENTITY / MEMBERS', text)
+            self.assertIn('ChatGPT (Codex CLI)', text)
+            self.assertIn('UNKNOWN', text)
+            self.assertIn('LOCKED (ADMIN/MAINTAIN required)', text)
+            self.assertIn('settings/access', text)
+            self.assertIn('[' + o.TAB_KEYS[o.ACCOUNTS_TAB] + ':' + o.TABS[o.ACCOUNTS_TAB] + ']',
+                          ui.stdscr.line(4))
+
+    def test_accounts_page_survives_tiny_and_resize(self):
+        ui = self.build(40, 12)
+        self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        for width, height in ((40, 12), (72, 18), (80, 24), (192, 54), (1, 1)):
+            ui.stdscr = StrictSurface(width, height)
+            ui.handle(o.curses.KEY_RESIZE)
+            ui.render()
+        self.assertIsNotNone(ui.layout)
+
+    def test_provider_selection_toggle_and_test_connection(self):
+        ui = self.build(120, 40)
+        ctrl = self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        first = ctrl.rows()[0].provider_id
+        ui.handle(ord('e'))
+        self.assertFalse(ctrl.rows()[0].enabled)
+        ui.handle(ord('e'))
+        self.assertTrue(ctrl.rows()[0].enabled)
+        ui.handle(ord('t'))
+        self.assertEqual(ctrl.last_test.provider_id, first)
+        ui.handle(o.curses.KEY_DOWN)
+        self.assertEqual(ctrl.rows()[ctrl.selected].provider_id, ctrl.ids[1])
+
+    def test_aborted_login_opens_nothing_and_collects_no_credentials(self):
+        ui = self.build()
+        ctrl = self.controller(ui)
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.handle(ord('l'))
+        self.assertEqual(ui.confirm, 'accounts-login')
+        self.assertEqual(ui.accounts_login, ctrl.ids[0])
+        ui.handle(ord('n'))
+        self.assertIsNone(ui.confirm)
+        self.assertIsNone(ui.accounts_login)
+        opener.assert_not_called()
+        self.assertNotIn('password', ui.notice.lower())
+        self.assertNotIn('token', ui.notice.lower())
+
+    def test_login_activation_suspends_and_restores_curses(self):
+        ui = self.build()
+        ctrl = self.controller(ui, login_opener=ui._open_external)
+        ui.tab = o.ACCOUNTS_TAB
+        with mock.patch.object(o.curses, 'def_prog_mode') as define, \
+                mock.patch.object(o.curses, 'endwin') as end, \
+                mock.patch.object(o.curses, 'reset_prog_mode') as reset, \
+                mock.patch.object(o.webbrowser, 'open', return_value=True) as browser:
+            ui.handle(ord('l'))
+            ui.handle(ord('y'))
+        define.assert_called_once()
+        end.assert_called_once()
+        reset.assert_called_once()
+        browser.assert_called_once()
+        self.assertIn(o.provider_accounts.provider_runtime.PROVIDERS[ctrl.ids[0]].docs_url,
+                      browser.call_args.args[0])
+
+    def test_contributor_cannot_open_owner_member_settings(self):
+        ui = self.build(role='WRITE')
+        ctrl = self.controller(ui, role='WRITE')
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.render()
+        self.assertIn('LOCKED', ui.stdscr.text())
+        ui.handle(ord('o'))
+        opener.assert_not_called()
+        self.assertIn('DENIED', ui.notice)
+        self.assertEqual(ctrl.invitation_url,
+                         'https://github.com/fixture/repo/settings/access')
+
+    def test_owner_role_revoked_between_render_and_action(self):
+        ui = self.build(role='ADMIN')
+        ctrl = self.controller(ui, role='ADMIN')
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.render()
+        self.assertIn('Owner actions: ADMIN', ui.stdscr.text())
+        ctrl._role_resolver = lambda: 'READ'  # server-side revocation
+        ui.handle(ord('o'))
+        opener.assert_not_called()
+        self.assertIn('DENIED', ui.notice)
+        self.assertEqual(ctrl.identity.role, 'READ')
+        ui.render()
+        self.assertIn('LOCKED', ui.stdscr.text())
+
+    def test_account_hotkeys_do_not_trigger_global_service_actions(self):
+        ui = self.build()
+        ctrl = self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        for key in 'sxrfp':
+            ui.handle(ord(key))
+        self.assertIsNone(ui.confirm)
+        ui.collector.perform_action.assert_not_called()
+        self.assertEqual(ctrl.selected, 0)
 
 
 if __name__=='__main__':
