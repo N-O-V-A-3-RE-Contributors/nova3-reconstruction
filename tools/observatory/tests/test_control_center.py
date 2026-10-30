@@ -326,8 +326,8 @@ class OnboardingAndBrandTests(unittest.TestCase):
             self.assertIn('Missing observer.py', result.stderr)
         install = (root / 'install.sh').read_text()
         self.assertIn('OLD_TARGET="$DATA_HOME/nova3-observatory"', install)
-        self.assertIn('STAGING="$DATA_HOME/.nova3-control-center.stage.$$"', install)
-        self.assertNotIn('rm -rf -- "$OLD_TARGET"', install)
+        self.assertIn('mktemp -d "$DATA_HOME/.nova3-control-center.stage.XXXXXXXX"', install)
+        self.assertNotIn('rm -rf', install)
         self.assertLess(install.index('--demo --once'), install.index('install -d -m 700 "$TARGET"'))
 
     def test_rebrand_strings_and_legacy_aliases(self):
