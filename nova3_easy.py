@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shlex
 import shutil
 import subprocess
 import sys
@@ -289,6 +290,77 @@ def select_provider(cfg, selected):
         print('Please enter 1, 2, or 3.')
 
 
+# NOVA3_MULTI_PROVIDER_SLOTS_V2 (issue #126): guided, bounded, preview-first.
+def slot_provider_list(raw):
+    """Parse --providers codex,claude against the verified adapter registry."""
+    from nova3_team import provider_runtime
+    if not raw:
+        return None
+    ids=[item.strip() for item in str(raw).split(',') if item.strip()]
+    if not ids:
+        raise RuntimeError('--providers needs at least one provider id')
+    unknown=[item for item in ids if item not in provider_runtime.PROVIDERS]
+    if unknown:
+        raise RuntimeError('Unknown provider id(s): '+', '.join(unknown)
+                           +'. See: python3 -m nova3_team.worker providers')
+    return ids
+
+
+def select_worker_slots(repo, *, total=1, consent=False, allow_duplicate_provider=False,
+                        providers=None, candidates=None, python=None, out=print):
+    """Installed+authenticated only, explicit consent for N>1, command preview.
+
+    Returns (LaunchPlan, previews). Never installs, logs in or launches here.
+    """
+    from nova3_team import worker
+    try:
+        candidates=candidates if candidates is not None else worker.provider_candidates(providers)
+        out('Local AI provider readiness (installed and authenticated only):')
+        for candidate in candidates:
+            out(f"  {candidate.provider}: installed={'yes' if candidate.installed else 'no'}; "
+                f"authenticated={'yes' if candidate.authenticated else 'no'}")
+        plan=worker.select_slot_providers(
+            candidates, total=total, consent=consent,
+            allow_duplicate_provider=allow_duplicate_provider)
+        previews=worker.preview_launch(plan, python=python, repo=repo)
+    except worker.SlotError as exc:
+        raise RuntimeError(str(exc)) from None
+    for note in plan.notes:
+        out('  note: '+note)
+    return plan, previews
+
+
+def print_slot_preview(previews, out=print):
+    out('Planned AI slots — default total is 1; more requires --allow-multiple:')
+    for item in previews:
+        # Display only. Launch passes an argv list with shell=False.
+        out(f"  {item['slot']} [{item['provider']}]: "+shlex.join(item['argv']))
+    out('  shell=False; no password, token or API key is placed on the command line.')
+
+
+def launch_worker_slots(repo, directory, plan, *, python, consent=False, out=print):
+    """Owner/admin approval gate runs BEFORE any slot process is created."""
+    from nova3_team import worker
+    client=worker.GitHub(repo)
+    gate=worker.build_gate(client)  # pinned preflight: fails closed
+    issues=[issue for issue in client.issues()
+            if 'nova:queued' in worker.label_names(issue)]
+    result=worker.launch_slots(
+        plan, gate=gate, issues=issues, repository_root=worker.state_root(repo),
+        account=client.me(), consent=consent, budget=worker.resource_budget(plan.total),
+        python=python, repo=repo, cwd=str(directory))
+    if not result.started:
+        raise RuntimeError('AI slots were not started: '+result.reason)
+    out(f'Started {len(result.processes)} AI slot(s); each runs with its own state, logs and worktrees.')
+    try:
+        for handle in result.processes:
+            handle.wait()
+    except KeyboardInterrupt:
+        out('Stopped by user; slot checkpoints remain on disk.')
+        return 130
+    return 0
+
+
 def historical_onboarding(cfg, choice=None):
     """Optional first-run guidance. Never download, extract, or execute GCC."""
     if choice is None and cfg.get('historical_onboarding_seen'):
@@ -315,6 +387,14 @@ def main(argv=None):
     ap=argparse.ArgumentParser(description='NOVA3 one-click contributor launcher')
     ap.add_argument('--repo',help='Override shared repository (OWNER/REPO)')
     ap.add_argument('--provider',choices=tuple(PACKAGES))
+    ap.add_argument('--providers',
+                    help='Comma-separated installed/authenticated providers for bounded slots, e.g. codex,claude')
+    ap.add_argument('--slots',type=int,default=1,help='total active AI processes to plan (default 1)')
+    ap.add_argument('--allow-multiple',action='store_true',
+                    help='explicit consent to more than one active AI process')
+    ap.add_argument('--allow-duplicate-provider',action='store_true',
+                    help='explicit consent to reuse one provider in more than one slot')
+    ap.add_argument('--dry-run',action='store_true',help='print the planned slot commands and exit')
     ap.add_argument('--choose-provider',action='store_true')
     ap.add_argument('--once',action='store_true')
     ap.add_argument('--status',action='store_true')
@@ -355,6 +435,17 @@ def main(argv=None):
         py=python_command()
         return command(py+['-m','nova3_team.worker','status','--repo',repo],cwd=directory).returncode
     historical_onboarding(cfg, a.historical_toolchain)
+    py=python_command()
+    if not py:raise RuntimeError('Python 3.10+ unavailable after setup.')
+    if a.providers or a.slots>1 or a.dry_run:
+        plan,previews=select_worker_slots(repo,total=a.slots,consent=a.allow_multiple,
+                                          allow_duplicate_provider=a.allow_duplicate_provider,
+                                          providers=slot_provider_list(a.providers),python=py)
+        print_slot_preview(previews)
+        if a.dry_run:
+            print('Dry run only: no provider was started and no GitHub state changed.')
+            return 0
+        return launch_worker_slots(repo,directory,plan,python=py,consent=a.allow_multiple)
     provider=select_provider({} if a.choose_provider else cfg,a.provider)
     if not exe(provider):
         if not ask(f'Install the {provider} coding CLI using your own Node.js setup? [Y/n] ',True):
