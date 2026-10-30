@@ -129,3 +129,13 @@ if(BUILD_TESTING)
     target_compile_options(compute_pitch_test PRIVATE -UNDEBUG)
     add_test(NAME compute_pitch_arithmetic COMMAND compute_pitch_test)
 endif()
+
+# Recovered function: computeSizeInBytes (0x0077d3cc)
+if(BUILD_TESTING)
+    add_executable(compute_size_in_bytes_test
+        reconstruction/tests/compute_size_in_bytes_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d3cc.cpp)
+    target_include_directories(compute_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(compute_size_in_bytes_test PRIVATE -UNDEBUG)
+    add_test(NAME compute_size_in_bytes_arithmetic COMMAND compute_size_in_bytes_test)
+endif()
