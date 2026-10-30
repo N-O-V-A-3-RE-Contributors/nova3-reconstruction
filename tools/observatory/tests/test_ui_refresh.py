@@ -100,10 +100,10 @@ class VisualContracts(unittest.TestCase):
                 self.assertTrue(a.x+a.w <= b.x or b.x+b.w <= a.x or
                                 a.y+a.h <= b.y or b.y+b.h <= a.y, (a, b))
 
-    def test_all_fourteen_tabs_every_breakpoint_and_ascii(self):
-        self.assertEqual(len(o.TABS), 14)
+    def test_all_tabs_every_breakpoint_and_ascii(self):
+        self.assertEqual(len(o.TABS), 15)
         self.assertEqual(len(o.TAB_KEYS), len(o.TABS))
-        self.assertEqual(len(set(o.TAB_KEYS)), 14)
+        self.assertEqual(len(set(o.TAB_KEYS)), 15)
         for width, height in SIZES:
             for unicode in (True, False):
                 view = dashboard(width, height)
@@ -261,7 +261,7 @@ class VisualContracts(unittest.TestCase):
             view.handle(ord(key.lower()))
             self.assertEqual(o.TABS[view.tab], label)
         view.tab = 0
-        for _ in range(14):
+        for _ in range(15):
             view.handle(9)
         self.assertEqual(view.tab, 0)
 
