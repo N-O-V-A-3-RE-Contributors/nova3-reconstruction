@@ -141,6 +141,16 @@ class QueueAdmissionTests(unittest.TestCase):
             with mock.patch.object(worker, 'note'):
                 self.assertEqual(worker.admit_queue(None, [{'number': 1}], pathlib.Path(temp)), [])
 
+    def test_expired_claim_cannot_revalidate_for_publish(self):
+        gh = FakeGH()
+        expired = datetime.now(timezone.utc) - timedelta(minutes=1)
+        gh.item['body'] = lease_put('', {'approval_id': 900, 'expires_at': iso(expired)})
+        gate = FakeGate({7: co.QueueDecision(True, 'allowed')})
+        decision = worker.revalidate_before_publish(gh, gate, 7)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, 'lease_inactive')
+        self.assertEqual(gate.revalidated, [])
+
 
 class WorkerExitReportingTests(unittest.TestCase):
     def test_deliberate_exit_records_original_cause(self):
