@@ -22,7 +22,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 foreach ($file in @('observer.py','operator_ops.py','presence_view.py','progress.py','forecast_model.py',
                     'project_roadmap.json','ui_components.py','live_status.py','journal_inspector.py',
-                    'onboarding.py','provider_accounts.py','planning_chat.py')) {
+                    'onboarding.py','provider_accounts.py','planning_chat.py','planner_transport.py','openrouter_helper.py')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $stage $file) -Force
 }
 # Provider metadata is owned by nova3_team/provider_runtime.py; without it the

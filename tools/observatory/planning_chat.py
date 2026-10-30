@@ -218,7 +218,23 @@ def _read_json(path: Path) -> dict | None:
 
 
 def provider_state(pid: str, adapters: Mapping[str, object] | None) -> str:
-    return "READY" if adapters and adapters.get(pid) else "NOT CONNECTED"
+    adapter = adapters.get(pid) if adapters else None
+    return str(getattr(adapter, "state", "READY")) if adapter else "NOT CONNECTED"
+
+
+def native_adapters(*, wallet_path=None) -> dict:
+    """Load native transports without inference, login or worker interaction."""
+    name = "nova3_private_control_planner_transport"
+    module = sys.modules.get(name)
+    if module is None:
+        from importlib.util import module_from_spec, spec_from_file_location
+        spec = spec_from_file_location(name, Path(__file__).with_name("planner_transport.py"))
+        if spec is None or spec.loader is None:
+            raise ChatError("transport", "planner transport missing; reinstall")
+        module = module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return module.native_adapters(wallet_path=wallet_path, cancelled_error=Cancelled)
 
 
 class ChatWorkspace:
@@ -232,6 +248,7 @@ class ChatWorkspace:
         user: str = "owner",
         role_provider: Callable[[], Mapping[str, object]] | None = None,
         adapters: Mapping[str, ProviderAdapter] | None = None,
+        project_state_provider: Callable[[], Mapping[str, object]] | None = None,
         budget: planning_memory.Budget | None = None,
         clock: Callable[[], float] | None = None,
         repo_root: str | os.PathLike[str] | None = None,
@@ -241,6 +258,7 @@ class ChatWorkspace:
         self.user = re.sub(r"[^A-Za-z0-9_.@-]", "", str(user or "unknown"))[:64] or "unknown"
         self._role_provider = role_provider
         self.adapters = dict(adapters or {})
+        self._project_state_provider = project_state_provider
         self._budget = budget or planning_memory.DEFAULT_BUDGET
         self._clock = clock or time.time
         self._repo_root = Path(repo_root).expanduser().resolve() if repo_root else _REPO_ROOT
@@ -269,6 +287,15 @@ class ChatWorkspace:
         self._ckpt_count: int | None = None
         # Entry check: the workspace is only useful after a fresh role decision.
         self.resolve_role()
+        if self.owner():
+            changed = False
+            for meta in self._meta["threads"].values():
+                pid = meta.get("provider", DEFAULT_PROVIDER)
+                if pid in self.adapters and meta.get("model") in {"hermes-planner", "planner-default"}:
+                    meta["model"] = self._provider_default_model(pid)
+                    changed = True
+            if changed:
+                self._save_meta()
 
     # ------------------------------------------------------------------
     # authorization
@@ -403,7 +430,11 @@ class ChatWorkspace:
     # threads
     # ------------------------------------------------------------------
     def _provider_default_model(self, pid: str) -> str:
-        return PROVIDER_BY_ID[pid].models[0]
+        return str(getattr(self.adapters.get(pid), "default_model",
+                           PROVIDER_BY_ID[pid].models[0]))
+
+    def _provider_models(self, pid: str) -> tuple[str, ...]:
+        return tuple(getattr(self.adapters.get(pid), "models", PROVIDER_BY_ID[pid].models))
 
     def current_session(self) -> str | None:
         if self._session_id and self._session_id in self._meta["threads"]:
@@ -527,6 +558,8 @@ class ChatWorkspace:
         session = self._require_session()
         meta = self._thread_meta(session)
         model = (meta.get("model_by_provider") or {}).get(pid) or self._provider_default_model(pid)
+        if model in {"hermes-planner", "planner-default"} and pid in self.adapters:
+            model = self._provider_default_model(pid)
         self._touch_thread(session, provider=pid, model=model)
         self._context_refreshed = False
         return {"provider": pid, "model": model,
@@ -545,7 +578,7 @@ class ChatWorkspace:
         session = self._require_session()
         meta = self._thread_meta(session)
         pid = meta.get("provider", DEFAULT_PROVIDER)
-        allowed = PROVIDER_BY_ID[pid].models
+        allowed = self._provider_models(pid)
         if model not in allowed:
             raise ChatError("model", f"{pid} models: {', '.join(allowed)}")
         per_provider = dict(meta.get("model_by_provider") or {})
@@ -557,7 +590,7 @@ class ChatWorkspace:
         session = self._require_session()
         meta = self._thread_meta(session)
         pid = meta.get("provider", DEFAULT_PROVIDER)
-        models = PROVIDER_BY_ID[pid].models
+        models = self._provider_models(pid)
         current = meta.get("model", models[0])
         index = models.index(current) if current in models else 0
         return self.set_model(models[(index + 1) % len(models)])
@@ -566,8 +599,8 @@ class ChatWorkspace:
         session = self.current_session()
         meta = self._thread_meta(session) if session else {}
         active = meta.get("provider", DEFAULT_PROVIDER)
-        return [{"pid": row.pid, "label": row.label, "kind": row.kind,
-                 "models": row.models, "note": row.note,
+        return [{"pid": row.pid, "label": getattr(self.adapters.get(row.pid), "label", row.label), "kind": row.kind,
+                 "models": self._provider_models(row.pid), "note": getattr(self.adapters.get(row.pid), "note", row.note),
                  "state": provider_state(row.pid, self.adapters),
                  "active": row.pid == active,
                  "model": meta.get("model") if row.pid == active else row.models[0]}
@@ -612,6 +645,7 @@ class ChatWorkspace:
             raise ChatError("prompt", "message is empty")
         if len(text) > MAX_PROMPT:
             raise ChatError("prompt", f"message exceeds {MAX_PROMPT} characters")
+        text = planning_memory.sanitize(text, limit=MAX_PROMPT)[0]
         memory = self._open_memory()
         meta = self._thread_meta(session)
         pid = str(meta.get("provider") or DEFAULT_PROVIDER)
@@ -639,6 +673,17 @@ class ChatWorkspace:
                     "error": self._error, "seq": created["seq"]}
 
         context = memory.context(session, provider=pid)
+        if self._project_state_provider is not None:
+            try:
+                state = self._project_state_provider()
+                clean = planning_memory.sanitize(json.dumps(state, ensure_ascii=False), limit=2500)[0]
+                context["github_project_state"] = {
+                    "source": "read-only Control Center GitHub snapshot",
+                    "untrusted_metadata": True, "metadata": clean,
+                    "authority": "informational; never queue or authorization evidence"}
+            except Exception:
+                context["github_project_state"] = {"state": "UNAVAILABLE",
+                    "authority": "no current project evidence available"}
         self._last_prompt = text
         cancel = threading.Event()
         with self._lock:
@@ -1015,7 +1060,8 @@ class ChatWorkspace:
                                           self._provider_default_model(
                                               meta.get("provider", DEFAULT_PROVIDER))),
                         "provider_state": provider_state(
-                            meta.get("provider", DEFAULT_PROVIDER), self.adapters)}
+                            meta.get("provider", DEFAULT_PROVIDER), self.adapters),
+                        "provider_note": getattr(self.adapters.get(meta.get("provider", DEFAULT_PROVIDER)), "note", "")}
                        if session else None),
             "objective": self.objective() if session else "Not set",
             "next_actions": self.next_actions() if session else [],

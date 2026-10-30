@@ -58,6 +58,8 @@ done
 install -m 600 "$SOURCE_DIR/provider_accounts.py" "$STAGING/provider_accounts.py"
 install -m 600 "$PROVIDER_RUNTIME" "$STAGING/provider_runtime.py"
 install -m 600 "$SOURCE_DIR/planning_chat.py" "$STAGING/planning_chat.py"
+install -m 600 "$SOURCE_DIR/planner_transport.py" "$STAGING/planner_transport.py"
+install -m 600 "$SOURCE_DIR/openrouter_helper.py" "$STAGING/openrouter_helper.py"
 install -d -m 700 "$STAGING/planning_backend"
 for backend_file in access_policy.py planning_bridge.py planning_memory.py; do
   install -m 600 "$SOURCE_DIR/../../nova3_team/$backend_file" "$STAGING/planning_backend/$backend_file"
@@ -82,6 +84,8 @@ for file in observer.py operator_ops.py presence_view.py progress.py forecast_mo
 done
 [[ -f "$STAGING/hermes_runtime.py" ]] && install -m 600 "$STAGING/hermes_runtime.py" "$TARGET/hermes_runtime.py"
 install -m 600 "$STAGING/planning_chat.py" "$TARGET/planning_chat.py"
+install -m 600 "$STAGING/planner_transport.py" "$TARGET/planner_transport.py"
+install -m 600 "$STAGING/openrouter_helper.py" "$TARGET/openrouter_helper.py"
 install -d -m 700 "$TARGET/planning_backend"
 for backend_file in access_policy.py planning_bridge.py planning_memory.py; do
   install -m 600 "$STAGING/planning_backend/$backend_file" "$TARGET/planning_backend/$backend_file"

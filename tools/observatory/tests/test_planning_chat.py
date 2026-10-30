@@ -526,6 +526,29 @@ class PlanScreenTests(unittest.TestCase):
         self.assertTrue(ui.plan_mode)
         ui.render()
 
+    def test_verified_github_numeric_identity_owns_memory_and_switch_locks_old_user(self):
+        ui = self.build()
+        identity = {'id': 12345, 'login': 'first-owner'}
+        ui.collector.planning_identity_provider = lambda: dict(identity)
+        self.open_plan(ui)
+        self.assertEqual(ui.planning.user, 'github-12345')
+        ui.planning.create_thread('First private plan')
+        ui.planning.pin_decision('Private to first authenticated account')
+        original_directory = ui.planning.user_dir
+        identity.update(id=67890, login='second-owner')
+        ui.ensure_planning(refresh=True)
+        self.assertEqual(ui.planning.user, 'github-67890')
+        self.assertNotEqual(ui.planning.user_dir, original_directory)
+        self.assertFalse(ui.planning.decisions())
+        self.assertNotIn('Private to first', json.dumps(ui.planning.state()))
+        ui.planning.close()
+
+    def test_unavailable_verified_identity_fails_closed_without_user_fallback(self):
+        ui = self.build()
+        ui.collector.planning_identity_provider = lambda: {}
+        self.assertIsNone(ui.ensure_planning())
+        self.assertFalse(self.root.exists())
+
     def type_text(self, ui, text):
         for character in text:
             ui.handle(ord(character))
