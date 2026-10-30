@@ -18,7 +18,7 @@ class BundleSmoke(unittest.TestCase):
         self.assertEqual(len(manifests), 3)
         self.assertEqual(manifests[0], manifests[1])
         self.assertIn('ui_components.py', manifests[0].split())
-        self.assertIn('python3 -I "$STAGING/observer.py" --demo --once', installer)
+        self.assertIn('python3 -B -I "$STAGING/observer.py" --demo --once', installer)
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
             for name in manifests[0].split():
