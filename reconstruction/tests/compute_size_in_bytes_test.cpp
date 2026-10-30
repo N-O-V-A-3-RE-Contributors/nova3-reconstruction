@@ -1,4 +1,5 @@
-// Tests for nova3::recovered::block_0077d3cc::compute_size_in_bytes.
+// Tests for nova3::recovered::pixel_format::compute_size_in_bytes and
+// compute_size_in_bytes_slices.
 //
 // Expected values are derived from the actual 40-entry pixel-format
 // descriptor table extracted from the Premium retail ELF (.rodata VA
@@ -12,36 +13,20 @@
 //   pitch = (bw<=1) ? (bpp*w)>>3 : bpb * ceil(w/bw)
 //   size  = (bh<=1) ? pitch*h      : pitch * ceil(h/bh)
 //   size  = max(size, min_size)     [unsigned byte min]
+//   slices overload: return slices * size
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
 
-namespace nova3::recovered::block_0077d3cc {
-struct alignas(4) PixelFormatDescriptor {
-    std::uint8_t _reserved_00_14[0x15];
-    std::uint8_t bytes_per_block;
-    std::uint8_t bits_per_pixel;
-    std::uint8_t _reserved_17_23[0x24 - 0x17];
-    std::uint8_t block_width;
-    std::uint8_t block_height;
-    std::uint8_t _reserved_26;
-    std::uint8_t min_size;
-};
-static_assert(sizeof(PixelFormatDescriptor) == 0x28, "size check");
-std::uint32_t compute_size_in_bytes(
-    const PixelFormatDescriptor* table,
-    std::uint32_t format_index,
-    std::uint32_t width,
-    std::uint32_t height) noexcept;
-}
+#include "pixel_format.h"
 
-using namespace nova3::recovered::block_0077d3cc;
+using nova3::recovered::pixel_format::PixelFormatDescriptor;
+using nova3::recovered::pixel_format::compute_size_in_bytes;
+using nova3::recovered::pixel_format::compute_size_in_bytes_slices;
 
 struct Entry { std::uint8_t bpb, bpp, bw, bh, min; };
 
 // The 40 entries extracted directly from Premium .rodata VA 0xc7ff50.
-// (bpb=bytes_per_block, bpp=bits_per_pixel, bw=block_width, bh=block_height,
-//  min=min_size)
 static const Entry G_TABLE[40] = {
     {1,8,1,1,0}, {2,16,1,1,0}, {1,8,1,1,0}, {2,16,1,1,0}, {2,16,1,1,0},
     {2,16,1,1,0}, {2,16,1,1,0}, {2,16,1,1,0}, {2,16,1,1,0}, {2,16,1,1,0},
@@ -135,9 +120,20 @@ int main() {
     _last = compute_size_in_bytes(table, 0, 16, 0);    CHECK(_last == 0,          "fmt0 h0");
     _last = compute_size_in_bytes(table, 0, 0, 0);     CHECK(_last == 0,          "fmt0 0x0");
 
+    // ---- Slices overload (0x0077d43c): slices * computeSizeInBytes ----
+    _last = compute_size_in_bytes_slices(table, 0, 16, 16, 1);
+    CHECK(_last == 256, "slices fmt0 16x16 x1");
+    _last = compute_size_in_bytes_slices(table, 0, 16, 16, 6);
+    CHECK(_last == 1536, "slices fmt0 16x16 x6");
+    _last = compute_size_in_bytes_slices(table, 17, 16, 16, 2);
+    CHECK(_last == 256, "slices fmt17 16x16 x2");
+    _last = compute_size_in_bytes_slices(table, 0, 16, 16, 0);
+    CHECK(_last == 0, "slices fmt0 16x16 x0");
+    // slices x clamped size
+    _last = compute_size_in_bytes_slices(table, 21, 1, 1, 3);
+    CHECK(_last == 96, "slices fmt21 1x1 x3 (32 clamped *3)");
+
     // ---- Table-driven cross-check against the independent reference ----
-    // Covers all 40 formats over a width/height grid, including the opaque
-    // cases not enumerated above.
     const std::uint32_t dims[] = {0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 32, 64, 127, 256};
     for (int fmt = 0; fmt < 40; ++fmt) {
         for (std::uint32_t w : dims) {
@@ -147,6 +143,14 @@ int main() {
                 if (got != exp) {
                     std::fprintf(stderr,
                         "FAIL: fmt%d w=%u h=%u got=%u exp=%u\n", fmt, w, h, got, exp);
+                    ++failures;
+                }
+                // slices consistency: slices * size
+                std::uint32_t got_s = compute_size_in_bytes_slices(table, fmt, w, h, 5);
+                if (got_s != 5 * exp) {
+                    std::fprintf(stderr,
+                        "FAIL(slices): fmt%d w=%u h=%u got=%u exp=%u\n",
+                        fmt, w, h, got_s, 5 * exp);
                     ++failures;
                 }
             }

@@ -1,30 +1,16 @@
-// Tests for nova3::recovered::block_0077d37c::compute_pitch.
+// Tests for nova3::recovered::pixel_format::compute_pitch.
 // Validates arithmetic against known format table entries from the
 // original ELF (Premium retail,
 // 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf).
-// Only the three used fields are set; the 37 reserved bytes are zero.
+// Only the three used fields are set; the opaque bytes are zero.
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
-namespace nova3::recovered::block_0077d37c {
-struct alignas(4) PixelFormatDescriptor {
-    std::uint8_t _reserved_00_14[0x15];
-    std::uint8_t bytes_per_block;
-    std::uint8_t bits_per_pixel;
-    std::uint8_t _reserved_17_23[0x24 - 0x17];
-    std::uint8_t block_width;
-    std::uint8_t _reserved_25_27[3];
-};
-static_assert(sizeof(PixelFormatDescriptor) == 0x28, "size check");
-std::uint32_t compute_pitch(
-    const PixelFormatDescriptor* table,
-    std::uint32_t format_index,
-    std::uint32_t width) noexcept;
-}
+#include "pixel_format.h"
 
-using namespace nova3::recovered::block_0077d37c;
+using nova3::recovered::pixel_format::PixelFormatDescriptor;
+using nova3::recovered::pixel_format::compute_pitch;
 
 static int failures = 0;
 
