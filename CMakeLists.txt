@@ -254,3 +254,27 @@ if(BUILD_TESTING)
     target_link_options(primitive_count_test PRIVATE -no-pie)
     add_test(NAME primitive_count COMMAND primitive_count_test)
 endif()
+
+# Recovered CFPSCounter constructor: C2 (0x0077bb7c) + C1 (0x0077bbb4, identical).
+if(BUILD_TESTING)
+    add_executable(fps_counter_ctor_test
+        reconstruction/tests/fps_counter_ctor_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp)
+    target_include_directories(fps_counter_ctor_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(fps_counter_ctor_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(fps_counter_ctor_test PRIVATE -no-pie)
+    add_test(NAME fps_counter_ctor COMMAND fps_counter_ctor_test)
+endif()
+
+# Recovered CVertexStreams accessors: getActiveAttributeMask (0x0077bd28)
+# and addOffset (0x0077be04).
+if(BUILD_TESTING)
+    add_executable(vertex_streams_test
+        reconstruction/tests/vertex_streams_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bd28.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp)
+    target_include_directories(vertex_streams_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(vertex_streams_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(vertex_streams_test PRIVATE -no-pie)
+    add_test(NAME vertex_streams COMMAND vertex_streams_test)
+endif()

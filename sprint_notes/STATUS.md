@@ -112,15 +112,12 @@ table really was wrong.
 
 ## Next functions (priority order)
 
-1. `CFPSCounter::CFPSCounter` (0x0077bb7c, 56 B): field-zeroing constructor,
-   small and unambiguous.
-2. `CVertexStreams::getActiveAttributeMask` (0x0077bd28, 84 B) and
-   `addOffset(int)` (0x0077be04, 64 B): symbol-bearing, clear semantics.
-3. The `E_INDEX_TYPE` / `E_BUFFER_USAGE` / `E_BUFFER_TYPE` string tables
-   (adjacent in `.data.rel.ro` at 0xd36624 / 0xd36634 / 0xd365f8): recover
-   the neighbouring enums the same way, using getStringsInternal as the
-   accessor.
-4. Continue `computeMipmapSizeInBytes(6-arg)` / `getSizeInBytes(unsigned char)`
+1. E_INDEX_TYPE / E_BUFFER_USAGE / E_BUFFER_TYPE string tables (adjacent in
+   .data.rel.ro at 0xd36624 / 0xd36634 / 0xd365f8) — recover neighbouring
+   enums the same way as the primitive type string table.
+2. `CVertexStreams::getStream` (0x0077bdc0, 68 B) and getStream(const)
+   (0x0077bd7c, 68 B) — downstream consumers of the vertex stream array.
+3. Continue `computeMipmapSizeInBytes(6-arg)` / `getSizeInBytes(unsigned char)`
    ARM comparison once sub-call relocations are handled.
 
 ## Current blockers (unchanged)
@@ -131,3 +128,58 @@ table really was wrong.
 3. Switch/jump-table functions show the largest codegen gap under clang; the
    relative-branch (GCC) vs PIC-LUT (clang) split implies the original was
    built without strict PIC jump tables for local switches.
+
+---
+
+## Pass 11 completed (2026-10-30)
+
+Three new source-owned recovered functions, all host-tested (26/26 CTest),
+ARM-compiled and compared:
+
+### CFPSCounter::CFPSCounter (0x0077bb7c / 0x0077bbb4, 56 B, ARM)
+
+Field-zeroing constructor with target_fps=60 at offset 8. C2 and C1 are
+byte-identical (no virtual inheritance).  Struct is 32 bytes: an 8-byte
+accumulator (zeroed via strd), target_fps=60 at offset 8, and five zero
+uint32 fields at offsets 12/16/20/24/28.
+
+ARM comparison: FUNCTION_SIZE_MISMATCH (36 vs 56 B). clang-21 uses NEON
+vector zeroing and stmib, whereas GCC 4.4.3 uses sequential str with push/pop
+of callee-saved registers.  Behaviour is verified byte-for-byte in the test.
+
+### CVertexStreams::getActiveAttributeMask (0x0077bd28, 84 B, ARM)
+
+Iterates the 16-byte embedded stream array from this+0x10, OR-ing
+(1 << attrib_bit) for each active entry.  Test covers empty, single,
+multi-entry, and overlapping-bit cases.
+
+ARM comparison: FUNCTION_SIZE_MISMATCH (80 vs 84 B).  clang uses post-
+increment addressing vs the original's pre-computed end-pointer arithmetic.
+
+### CVertexStreams::addOffset (0x0077be04, 64 B, ARM)
+
+Adds a signed delta to every entry's data_offset (entry+8).  Test covers
+empty, single, multi-entry, negative delta, and uint32 wraparound.
+
+ARM comparison: FUNCTION_SIZE_MISMATCH (56 vs 64 B).  Same codegen gap as
+getActiveAttributeMask.
+
+### Files changed
+
+1. `reconstruction/recovered/libNOVA3_neon/fps_counter.h` — NEW header
+2. `reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp` — NEW
+3. `reconstruction/recovered/libNOVA3_neon/vertex_streams.h` — NEW header
+4. `reconstruction/recovered/libNOVA3_neon/block_0077bd28.cpp` — NEW
+5. `reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp` — NEW
+6. `reconstruction/tests/fps_counter_ctor_test.cpp` — NEW
+7. `reconstruction/tests/vertex_streams_test.cpp` — NEW
+8. `CMakeLists.txt` — +2 test targets
+
+### Cumulative statistics
+
+| Measure | Before pass 11 | After pass 11 |
+|---------|---------------|---------------|
+| Host CTest | 25/25 | 26/26 |
+| MATCHED_ARM functions | 7 | 7 (unchanged) |
+| COMPILED+BEHAVIOURAL | 2 | 5 (+CFPSCounter ctor, getActiveAttributeMask, addOffset) |
+| Total source-owned recovered functions | 18 | 21 |
