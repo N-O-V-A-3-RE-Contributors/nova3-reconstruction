@@ -119,6 +119,11 @@ class HermesPlanner:
             # An explicitly empty --toolsets value maps to [] in Hermes'
             # gateway_chat._requested_policy; omitting the flag enables defaults.
             argv = list(invocation.argv)
+            # The installed gateway-backed CLI advertises --run-budget in
+            # help but rejects it in stream-json mode. Our local deadline
+            # bounds this viewer; it is not a provider-side inference cap.
+            budget_index = argv.index("--run-budget")
+            del argv[budget_index:budget_index + 2]
             environment = dict(self.env)
             environment.update(invocation.env)
             try:

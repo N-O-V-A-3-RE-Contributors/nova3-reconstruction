@@ -39,7 +39,13 @@ Model tools are explicitly disabled with `--toolsets ''`, which the installed
 Hermes gateway parses as an empty list. Omitting this flag would enable defaults.
 No file-write, terminal, GitHub, delegation or worker tool is granted. Enabling
 tools requires separate model capability and permission validation. Native
-inference has a 120-second local deadline and one tool-calling iteration.
+inference has a 120-second local viewer deadline and one tool-calling iteration.
+The installed gateway-backed Hermes CLI rejects `--run-budget` in streaming
+mode despite advertising it in help, so the transport omits that flag. Stopping
+the CLI viewer does **not** prove its already accepted gateway inference was
+cancelled; the gateway may finish the isolated planner session after detachment.
+No global gateway or worker process is terminated. Hard cancellation of the
+accepted turn needs a session-scoped native interrupt adapter.
 These are **not monetary limits**: the Hermes CLI has no documented output-token
 or dollar-cap argument. Strict paid-test budgets require a verified provider
 cap or separately bounded transport; do not equate wall time with cost.

@@ -72,6 +72,7 @@ class NativePlannerTests(unittest.TestCase):
         argv = call["argv"]
         self.assertEqual(argv[argv.index("--toolsets") + 1], "")
         self.assertEqual(argv[argv.index("--max-turns") + 1], "1")
+        self.assertNotIn("--run-budget", argv)
         self.assertIn("--safe-mode", argv)
         self.assertNotIn("--resume", argv)
         self.assertNotIn("--yolo", argv)
