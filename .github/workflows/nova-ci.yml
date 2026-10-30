@@ -24,6 +24,14 @@ jobs:
         run: python -m unittest nova3_team.tests.test_verification_gate -v
       - name: Unit tests for collaboration runtime
         run: python -m unittest discover -s nova3_team/tests -v
+      # This token is repository-scoped and read-only in this job. Test the
+      # real installation authentication path without handling tasks or leases.
+      - name: GitHub installation-token authentication preflight
+        run: python -m nova3_team.coordinator --preflight-only
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          NOVA3_REPOSITORY_ID: ${{ vars.NOVA3_REPOSITORY_ID }}
+          NOVA3_OWNER_ID: ${{ vars.NOVA3_OWNER_ID }}
       - name: Audit all historical recovered source under compiler-aware policy
         run: |
           python -m nova3_team.legacy_validation --repo . \

@@ -10,10 +10,12 @@ input without a QueueApprovalGate decision.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
 import re
+import secrets
 import sys
 import time
 import urllib.error
@@ -65,7 +67,7 @@ class EvidenceCollector(Protocol):
     the gate fails closed.
     """
 
-    def identity(self) -> int: ...
+    def identity(self) -> policy.EvidenceReader: ...
     def repository(self) -> Mapping[str, object]: ...
     def issue(self, number: int) -> Mapping[str, object]: ...
     def comment(self, comment_id: int) -> Mapping[str, object]: ...
@@ -84,7 +86,7 @@ class GitHubEvidenceCollector:
 
     Uses the coordinator/worker credential supplied by the trusted process.
     Tokens are never logged or copied into policy objects. Global endpoints
-    (`/user`, `/app`, `/users/...`, `/orgs/...`) cannot be reached through
+    (`/user`, `/installation/repositories`, `/users/...`, `/orgs/...`) cannot be reached through
     `common.GitHub` (which prefixes `/repos/{repo}`), so this uses a fixed-origin
     urllib request with redirects refused and a bounded timeout.
     """
@@ -96,6 +98,8 @@ class GitHubEvidenceCollector:
         self.target = repository
         self._timeout = timeout
         self._opener = urllib.request.build_opener(_NoRedirect())
+        self._installation_reader = policy.InstallationReader(
+            repository.id, repository.owner_id, secrets.token_hex(32))
 
     def _get(self, path: str, *, statuses: tuple[int, ...] = (200,)) -> Mapping[str, object]:
         if not path.startswith('/') or '..' in path:
@@ -111,20 +115,52 @@ class GitHubEvidenceCollector:
             with self._opener.open(req, timeout=self._timeout) as response:
                 if response.status not in statuses:
                     raise EvidenceUnavailable('unexpected status')
-                payload = json.loads(response.read() or b'{}')
-        except (urllib.error.URLError, urllib.error.HTTPError, ValueError, OSError, TimeoutError):
-            raise EvidenceUnavailable('GitHub read unavailable') from None
+                raw = response.read(4 * 1024 * 1024 + 1)
+                if len(raw) > 4 * 1024 * 1024:
+                    raise EvidenceUnavailable('GitHub response exceeded evidence limit')
+                payload = json.loads(raw or b'{}')
+        except urllib.error.HTTPError as exc:
+            # Endpoint/status only: never include the response body, headers,
+            # token or server-provided exception text in workflow diagnostics.
+            raise EvidenceUnavailable(f'GitHub GET {path}: HTTP {exc.code}') from None
+        except (urllib.error.URLError, ValueError, OSError, TimeoutError):
+            raise EvidenceUnavailable(f'GitHub GET {path}: read unavailable') from None
         if not isinstance(payload, Mapping):
             raise EvidenceUnavailable('GitHub payload is not an object')
         return payload
 
-    def identity(self) -> int:
+    def identity(self) -> policy.EvidenceReader:
         try:
             payload = self._get('/user')
-        except EvidenceUnavailable:
-            payload = self._get('/app')  # GitHub App installation tokens cannot read /user
+        except EvidenceUnavailable as human_error:
+            # An installation token is not a human and cannot call /app (JWT
+            # only). Prove its access using the authenticated installation API.
+            # Bound pagination; absence or incomplete evidence denies access.
+            for page in range(1, 11):
+                path = f'/installation/repositories?per_page=100&page={page}'
+                listing = self._get(path)
+                count, repositories = listing.get('total_count'), listing.get('repositories')
+                if type(count) is not int or count < 0 or not isinstance(repositories, list) \
+                        or len(repositories) > 100:
+                    raise EvidenceUnavailable('invalid installation repository listing')
+                for repository in repositories:
+                    if not isinstance(repository, Mapping):
+                        raise EvidenceUnavailable('invalid installation repository entry')
+                    if repository.get('id') == self.target.id:
+                        try:
+                            policy.verify_repository(repository, self.target)
+                        except ValueError:
+                            raise EvidenceUnavailable('installation repository identity mismatch') from None
+                        print(f'NOVA3 reader: installation; pinned repository {self.target.id}; '
+                              f'/user unavailable ({human_error})', file=sys.stderr)
+                        return self._installation_reader
+                if page * 100 >= count or len(repositories) < 100:
+                    break
+            raise EvidenceUnavailable('pinned repository absent from authenticated installation scope')
         value = payload.get('id')
-        if type(value) is not int or value <= 0:
+        if type(value) is not int or value <= 0 or payload.get('type') != 'User' \
+                or not isinstance(payload.get('login'), str) \
+                or not re.fullmatch(r'[A-Za-z0-9-]{1,39}', payload['login']):
             raise EvidenceUnavailable('no authenticated identity')
         return value
 
@@ -334,7 +370,7 @@ class QueueApprovalGate:
             # Fixed reason only: never echo a payload, task text or credential.
             return QueueDecision(False, policy.Reason.INVALID_EVIDENCE.value)
 
-    def preflight(self) -> int:
+    def preflight(self) -> policy.EvidenceReader:
         """Validate pinned deployment identity before activating the queue.
 
         Confirms the credential has an identity and that the live repository
@@ -343,8 +379,10 @@ class QueueApprovalGate:
         claims or providers.
         """
         reader = self.collector.identity()
-        if type(reader) is not int or reader <= 0:
-            raise EvidenceUnavailable('no authenticated reader identity')
+        try:
+            policy.verify_reader(reader, self.repository)
+        except ValueError:
+            raise EvidenceUnavailable('no authenticated reader identity') from None
         try:
             policy.verify_repository(self.collector.repository(), self.repository)
         except ValueError:
@@ -601,7 +639,11 @@ def process_merged_pr(gh, event):
         })
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--preflight-only', action='store_true',
+                        help='authenticated read-only deployment check; no task mutations')
+    args = parser.parse_args(argv)
     gh = GitHub(os.environ['GITHUB_REPOSITORY'])
     name = os.environ.get('GITHUB_EVENT_NAME', '')
     try:
@@ -610,6 +652,9 @@ def main():
         # Deliberate, reported failure: never fall back to an ungated queue.
         sys.stderr.write(f'NOVA3 queue admission gate unavailable: {exc}\n')
         raise SystemExit(6)
+    if args.preflight_only:
+        print('NOVA3 coordinator preflight passed; no queue mutations performed')
+        return
     if name in ('issue_comment', 'pull_request'):
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text(encoding='utf-8'))
         if name == 'issue_comment' and event.get('action') == 'created':
