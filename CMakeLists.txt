@@ -119,3 +119,13 @@ if(BUILD_TESTING)
     target_compile_options(scrambled_zip_test PRIVATE -UNDEBUG)
     add_test(NAME scrambled_zip_headers COMMAND scrambled_zip_test)
 endif()
+
+# Recovered function: computePitch (0x0077d37c)
+if(BUILD_TESTING)
+    add_executable(compute_pitch_test
+        reconstruction/tests/compute_pitch_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d37c.cpp)
+    target_include_directories(compute_pitch_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(compute_pitch_test PRIVATE -UNDEBUG)
+    add_test(NAME compute_pitch_arithmetic COMMAND compute_pitch_test)
+endif()
