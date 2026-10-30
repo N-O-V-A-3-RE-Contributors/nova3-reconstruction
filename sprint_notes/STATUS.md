@@ -1,4 +1,4 @@
-# Sprint STATUS — Pass 10 of 12
+# Sprint STATUS — Pass 12 of 12
 
 Sprint: 20261030-163856
 Pass completed: 2026-10-30 (AEDT)
@@ -6,180 +6,147 @@ Branch: automation/gated-20261030-163856 (isolated worktree)
 
 ## What this pass did
 
-Two things, both verified against the linked ELF before any change:
+Two things, both data-verified against the linked ELF:
 
-1. **Corrected a pass-9 reconstruction error in `getPrimitiveCount`.**
-   Pass 9 recorded enum value 3 as `indexCount / 3` and named it
-   "legacy Triangles". The linked ARM jump table says otherwise: case 3
-   (0x77bf9c) branches to 0x77bfcc = `lsr r1,r1,#1`, i.e. `N / 2`, while
-   case 6 ("Triangles") is the only case that uses the `umull` divide-by-3
-   chain. Value 3 is genuinely **"Lines"** (GL_LINES): N/2 primitives.
+1. **Recovered three additional glitch::video enum string tables** adjacent
+   to the already-recovered E_PRIMITIVE_TYPE cluster in .data.rel.ro
+   (0xd365fc..0xd36668).  Each getStringsInternal trampoline was
+   disassembled, its PC-relative literal addend was extracted, and the
+   resulting table base was read directly from the ELF file with xxd.
+   Every string pointer was independently resolved to its .rodata target
+   and read with dd.
 
-2. **Verified all nine `E_PRIMITIVE_TYPE` names from the original string
-   table.** `getStringsInternal(E_PRIMITIVE_TYPE*)` (0x0077bf74, 16 B) loads
-   literal `0x005ba67c` and returns `0x77bf80 + 0x005ba67c = 0x00d365fc`,
-   the base of a 9-entry `const char* const[]` in `.data.rel.ro`. The nine
-   relocated pointers name the enum 0..8 as: Points, Line Strip, Line Loop,
-   Lines, Triangle Strip, Triangle Fan, Triangles, Quad Strip, Quads. This
-   *confirms* the previously INFERRED values 2 and 3 and corrects the pass-9
-   labels for 6 ("Triangle List" -> "Triangles") and 8 ("Quad List" ->
-   "Quads"). The pass-9 note that "Points" sits at rodata 0xcaf4c0 was
-   accidentally right in address; the relocation/pointer link was missing and
-   is now established (R_ARM_RELATIVE at 0xd365fc, addend 0xcaf4c0).
+2. **Recovered CVertexStreams::getStream** — both const (0x0077bd7c) and
+   non-const (0x0077bdc0) overloads, which are byte-identical except for
+   the const qualifier in the mangled name.  The function searches a
+   sorted array of 16-byte SVertexStream entries by the 16-bit attribute
+   at offset +8.  On no-match it falls back to the container's first
+   embedded entry (this+0x10).
 
-## Recovered / corrected functions
+   A known discrepancy is NOTED: addOffset (0x0077be04) accesses the
+   same offset +8 as a full 32-bit word (ldr/str), while getStream
+   reads it as a 16-bit halfword (ldrh) and uses signed comparison
+   (blt).  This implies a union or overlay at that field.  The
+   reconstruction preserves the low half as the attribute discriminator
+   and the high half as opaque data, so both access patterns coexist.
+
+## New recovered / data-verified items
+
+### Enum string tables (DATA-VERIFIED from .data.rel.ro)
+
+| Enum | Helper VA | Table VA | Entries |
+|------|-----------|----------|---------|
+| E_BUFFER_TYPE | 0x0077bf44 | 0xd3664c | 6 (+ null) |
+| E_BUFFER_USAGE | 0x0077bf54 | 0xd36634 | 4 (+ 2 nulls) |
+| E_INDEX_TYPE | 0x0077bf64 | 0xd36624 | 3 (+ null) |
+| E_PRIMITIVE_TYPE | 0x0077bf74 | 0xd365fc | 9 (+ null) — pass 10 |
+
+### getStream functions (BEHAVIOURAL, host-tested)
 
 | Function | ELF VA | Size | Result |
 |----------|--------|------|--------|
-| getPrimitiveCount | 0x0077bf84 | 152 B | BEHAVIOURAL; now cand 152 B == ref 152 B (was 144 vs 152) — FUNCTION_BYTES_DIFFERENT |
-| getStringsInternal(E_PRIMITIVE_TYPE*) | 0x0077bf74 | 16 B | DATA-VERIFIED string table (9 names) |
-| getTriangleCount | 0x0077c1e0 | 112 B | unchanged (enum names corrected) |
-| getIndexCount | 0x0077c250 | 124 B | unchanged ("Lines" -> 0 quirk re-confirmed) |
+| getStream (const) | 0x0077bd7c | 68 B | BEHAVIOURAL — 12 test scenarios |
+| getStream (non-const) | 0x0077bdc0 | 68 B | (identical body to const) |
 
-## Corrected behaviour table (verified against disassembly)
-
-| value | getPrimitiveCount | getIndexCount | getTriangleCount | name (verified) |
-|-------|-------------------|---------------|------------------|-----------------|
-| 0 | N | P | 0 | Points |
-| 1 | max(N-1,0) | P+1 | 0 | Line Strip |
-| 2 | N | P | 0 | Line Loop |
-| 3 | **N/2** | 0 (quirk) | 0 | **Lines** |
-| 4 | max(N-2,0) | P+2 | max(N-2,0) | Triangle Strip |
-| 5 | max(N-2,0) | P+2 | max(N-2,0) | Triangle Fan |
-| 6 | N/3 | 3P | N/3 | Triangles |
-| 7 | max((N-2)/2,0) | 2P+2 | 2*max((N-2)/2,0) | Quad Strip |
-| 8 | N/4 | 4P | 2*floor(N/4) | Quads |
-| else | 0 | 0 | 0 | (default) |
-
-The "Lines" asymmetry (N/2 primitives, but 0 index/triangle counts) is an
-observed original quirk reproduced verbatim, now with its true name attached.
+No ARM byte comparison performed (clang vs GCC codegen gap unchanged).
 
 ## Evidence
 
 - ELF SHA-256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
-- Disassembly: `arm-none-eabi-objdump -d` at the four VAs; see
-  `sprint_notes/evidence_pass10.json` for the jump-table trace and the full
-  string-table entry list.
-- Compiler: NDK r29 clang-21 (`--target=armv7a-linux-androideabi21 -marm -O2
-  -fomit-frame-pointer -fPIC -std=c++17`). New comparison report at
-  `.cache/om-getPrimitiveCount-v2/matrix.json`.
+- Enum string tables: each pointer at the table VAs was read with xxd,
+  each string at its .rodata target was read with dd.  See the
+  documentation in `vertex_types.h` for exact addresses.
+- getStream: disassembly compared via diff confirms const/non-const are
+  byte-identical (differing only in target addresses within the function
+  body).
 
 ## Host test results
 
-CTest **24/24 passed**. `primitive_count` now carries 243 literal truth-table
-checks + out-of-range + floor/saturate edges **plus 9 string-name checks**
-(transcribed from the ELF string table).
+CTest **28/28 passed** (was 26/26).
 
-Negative control executed: flipping value 3 back to N/3 makes
-`primitive_count` fail with 6 precise mismatches (type=3, N in {2,4,5,6,7,8}),
-exit 1 — proving the test guards the reconstruction, and proving the pass-9
-table really was wrong.
+- `vertex_types`: 33 string-table checks (9 name-match + 9 out-of-range
+  null + 15 trampoline-table checks including 3 null sentinels).
+- `vertex_stream_getstream`: 24 pointer-match + value-match checks
+  covering empty array, exact match, key-too-low (gap) fallback, key
+  larger than all, signed negative-value sorting, const/non-const
+  variants, and high-half preservation.
+
+Negative control: modifying set_attrib to swap the halfword order causes
+the sorted-search tests to fail at the "single match" check — proving
+the test guards the reconstruction.
 
 ## Files changed (this pass)
 
-1. `reconstruction/recovered/libNOVA3_neon/primitive_types.h` — corrected
-   value 3 (N/2, "Lines"), renamed 6/8 to "Triangles"/"Quads", added
-   string-table evidence header and `getPrimitiveTypeName()`.
-2. `reconstruction/recovered/libNOVA3_neon/block_0077bf74.cpp` — NEW
-   (getStringsInternal string-table reconstruction).
-3. `reconstruction/tests/primitive_count_test.cpp` — fixed t3 column to N/2,
-   added 9-name check.
-4. `CMakeLists.txt` — +block_0077bf74.cpp to primitive_count target.
-5. `sprint_notes/evidence_pass10.json` — NEW manifest.
+New files:
+1. `reconstruction/recovered/libNOVA3_neon/vertex_types.h` — NEW
+   (E_INDEX_TYPE, E_BUFFER_USAGE, E_BUFFER_TYPE enums + name helpers)
+2. `reconstruction/recovered/libNOVA3_neon/block_0077bf64.cpp` — NEW
+   (getStringsInternal for E_INDEX_TYPE)
+3. `reconstruction/recovered/libNOVA3_neon/block_0077bf54.cpp` — NEW
+   (getStringsInternal for E_BUFFER_USAGE)
+4. `reconstruction/recovered/libNOVA3_neon/block_0077bf44.cpp` — NEW
+   (getStringsInternal for E_BUFFER_TYPE)
+5. `reconstruction/recovered/libNOVA3_neon/vertex_stream_getstream.h` — NEW
+   (both getStream overloads + SVertexStream layout update)
+6. `reconstruction/recovered/libNOVA3_neon/block_0077bd7c.cpp` — NEW
+   (const getStream trampoline)
+7. `reconstruction/recovered/libNOVA3_neon/block_0077bdc0.cpp` — NEW
+   (non-const getStream trampoline)
+8. `reconstruction/tests/vertex_types_test.cpp` — NEW
+9. `reconstruction/tests/vertex_stream_getstream_test.cpp` — NEW
+
+Modified:
+10. `CMakeLists.txt` — +2 test targets, vertex_streams block preserved
 
 ## Honest scope and limitations
 
-- **0 new MATCHED_ARM.** getPrimitiveCount improved from size-mismatch to
-  same-size-bytes-differ; the residual diff is clang-21 PIC LUT
-  (`ldr [r2,r0,lsl#2] ; add pc`) vs GCC 4.4.3 relative branch table
-  (`addls pc,pc,rN,lsl#2`) and `subs/movcc` vs `sub/bic` saturation.
-- The compiler_matrix `source_sha256` hashes only the `.cpp` wrapper, not the
-  included header, so it did not change despite the header correction; the
-  candidate object/code hashes DID change (recorded in the v2 matrix).
-- The string table is data, not a switch-function; block_0077bf74.cpp returns
-  the literals and is DATA-VERIFIED at the 9-entry scope, not ARM byte-compared.
-- Historical GCC 4.4.3 toolchain still unestablished (unchanged blocker).
+- **0 new MATCHED_ARM.**  All new functions are BEHAVIOURAL or DATA-VERIFIED.
+- The getStream SVertexStream layout has a known discrepancy with
+  addOffset sharing offset +8 for different data types (32-bit vs 16-bit
+  access).  This is documented but not resolved.
+- The original struct field names (mData, mActive, mAttribIndex, etc.)
+  are not recovered — our names are descriptive placeholders.
+- No ARM object comparison attempted for getStream (same clang/GCC gap).
+- The string tables are data, not code — no ARM instructions were
+  compared.
+
+## Known discrepancy: SVertexStream offset +8 dual access
+
+addOffset at 0x77be04 uses `ldr r3, [r0, #24]` / `str r3, [r0, #24]`
+(32-bit access at entry+8), while getStream uses `ldrh ip, [r2, #8]`
+(16-bit access at entry+8).  The original likely uses a union where
+the low 16 bits are the E_VERTEX_ATTRIBUTE (for search/sort) and the
+full 32 bits form a data offset.  Our reconstruction preserves the high
+16 bits when setting the attribute discriminator.
 
 ## Cumulative statistics
 
-| Measure | Before pass 10 | After pass 10 |
+| Measure | Before pass 12 | After pass 12 |
 |---------|---------------|---------------|
-| Host CTest | 24/24 | 24/24 |
+| Host CTest | 26/26 | 28/28 |
 | MATCHED_ARM functions | 7 | 7 (unchanged) |
-| COMPILED+BEHAVIOURAL (same-size, bytes differ) | 1 | 2 (+getPrimitiveCount) |
-| Total source-owned funcs in primitive cluster | 3 | 4 (+getStringsInternal) |
-| Enum names VERIFIED (was 1 confirmed / 8 inferred) | 1 | 9 |
+| COMPILED+BEHAVIOURAL | 5 | 7 (+getStream const, getStream non-const) |
+| DATA-VERIFIED enum tables | 1 (E_PRIMITIVE_TYPE) | 4 (+E_INDEX_TYPE, E_BUFFER_USAGE, E_BUFFER_TYPE) |
+| Total source-owned recovered functions | 21 | 23 |
+| DATA-VERIFIED string tables (enums) | 1 | 4 |
 
 ## Next functions (priority order)
 
-1. E_INDEX_TYPE / E_BUFFER_USAGE / E_BUFFER_TYPE string tables (adjacent in
-   .data.rel.ro at 0xd36624 / 0xd36634 / 0xd365f8) — recover neighbouring
-   enums the same way as the primitive type string table.
-2. `CVertexStreams::getStream` (0x0077bdc0, 68 B) and getStream(const)
-   (0x0077bd7c, 68 B) — downstream consumers of the vertex stream array.
-3. Continue `computeMipmapSizeInBytes(6-arg)` / `getSizeInBytes(unsigned char)`
-   ARM comparison once sub-call relocations are handled.
+1. E_VERTEX_ATTRIBUTE / E_VERTEX_ATTRIBUTE_VALUE_TYPE string tables —
+   these are also in the .data.rel.ro cluster (getStringsInternal at
+   0x0070fe28, table at 0xd89020 in .data; and helper at 0x0070fe38,
+   table at 0xd35664).  16+ entries each.
+2. CVertexStreams::updateStates (0x0077bf40, wraps updateStatesInternal
+   at 0x0077bea8 which was already exported) — thin wrapper.
+3. SCompareType functor at 0x0077cb30 — the pointer stored at 0xd365f8
+   (before E_PRIMITIVE_TYPE table) is a comparison predicate for
+   E_BUFFER_TYPE entries.
+4. ARM byte comparison for a small non-switch function once a viable
+   GCC 4.4.3 toolchain is established (blocker unchanged).
 
 ## Current blockers (unchanged)
 
-1. Historical GCC 4.4.3 ARM toolchain still not established; clang-21 emits
-   different jump-table/conditional idioms for switch code.
+1. Historical GCC 4.4.3 ARM toolchain still not established.
 2. Whole-`.so` SHA equality not established (not attempted).
-3. Switch/jump-table functions show the largest codegen gap under clang; the
-   relative-branch (GCC) vs PIC-LUT (clang) split implies the original was
-   built without strict PIC jump tables for local switches.
-
----
-
-## Pass 11 completed (2026-10-30)
-
-Three new source-owned recovered functions, all host-tested (26/26 CTest),
-ARM-compiled and compared:
-
-### CFPSCounter::CFPSCounter (0x0077bb7c / 0x0077bbb4, 56 B, ARM)
-
-Field-zeroing constructor with target_fps=60 at offset 8. C2 and C1 are
-byte-identical (no virtual inheritance).  Struct is 32 bytes: an 8-byte
-accumulator (zeroed via strd), target_fps=60 at offset 8, and five zero
-uint32 fields at offsets 12/16/20/24/28.
-
-ARM comparison: FUNCTION_SIZE_MISMATCH (36 vs 56 B). clang-21 uses NEON
-vector zeroing and stmib, whereas GCC 4.4.3 uses sequential str with push/pop
-of callee-saved registers.  Behaviour is verified byte-for-byte in the test.
-
-### CVertexStreams::getActiveAttributeMask (0x0077bd28, 84 B, ARM)
-
-Iterates the 16-byte embedded stream array from this+0x10, OR-ing
-(1 << attrib_bit) for each active entry.  Test covers empty, single,
-multi-entry, and overlapping-bit cases.
-
-ARM comparison: FUNCTION_SIZE_MISMATCH (80 vs 84 B).  clang uses post-
-increment addressing vs the original's pre-computed end-pointer arithmetic.
-
-### CVertexStreams::addOffset (0x0077be04, 64 B, ARM)
-
-Adds a signed delta to every entry's data_offset (entry+8).  Test covers
-empty, single, multi-entry, negative delta, and uint32 wraparound.
-
-ARM comparison: FUNCTION_SIZE_MISMATCH (56 vs 64 B).  Same codegen gap as
-getActiveAttributeMask.
-
-### Files changed
-
-1. `reconstruction/recovered/libNOVA3_neon/fps_counter.h` — NEW header
-2. `reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp` — NEW
-3. `reconstruction/recovered/libNOVA3_neon/vertex_streams.h` — NEW header
-4. `reconstruction/recovered/libNOVA3_neon/block_0077bd28.cpp` — NEW
-5. `reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp` — NEW
-6. `reconstruction/tests/fps_counter_ctor_test.cpp` — NEW
-7. `reconstruction/tests/vertex_streams_test.cpp` — NEW
-8. `CMakeLists.txt` — +2 test targets
-
-### Cumulative statistics
-
-| Measure | Before pass 11 | After pass 11 |
-|---------|---------------|---------------|
-| Host CTest | 25/25 | 26/26 |
-| MATCHED_ARM functions | 7 | 7 (unchanged) |
-| COMPILED+BEHAVIOURAL | 2 | 5 (+CFPSCounter ctor, getActiveAttributeMask, addOffset) |
-| Total source-owned recovered functions | 18 | 21 |
+3. Switch/jump-table functions show the largest codegen gap under clang.
+4. ADB has no attached device; Android APK build not tested.

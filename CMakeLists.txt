@@ -278,3 +278,29 @@ if(BUILD_TESTING)
     target_link_options(vertex_streams_test PRIVATE -no-pie)
     add_test(NAME vertex_streams COMMAND vertex_streams_test)
 endif()
+
+# Recovered enum string tables: E_INDEX_TYPE, E_BUFFER_USAGE, E_BUFFER_TYPE
+# and their getStringsInternal helpers (data-verified from .data.rel.ro).
+if(BUILD_TESTING)
+    add_executable(vertex_types_test
+        reconstruction/tests/vertex_types_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bf64.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bf54.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bf44.cpp)
+    target_include_directories(vertex_types_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(vertex_types_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(vertex_types_test PRIVATE -no-pie)
+    add_test(NAME vertex_types COMMAND vertex_types_test)
+endif()
+
+# Recovered CVertexStreams::getStream — const (0x0077bd7c) and non-const (0x0077bdc0).
+if(BUILD_TESTING)
+    add_executable(vertex_stream_getstream_test
+        reconstruction/tests/vertex_stream_getstream_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bd7c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bdc0.cpp)
+    target_include_directories(vertex_stream_getstream_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(vertex_stream_getstream_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(vertex_stream_getstream_test PRIVATE -no-pie)
+    add_test(NAME vertex_stream_getstream COMMAND vertex_stream_getstream_test)
+endif()
