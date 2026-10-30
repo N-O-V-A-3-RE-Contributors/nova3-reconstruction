@@ -12,6 +12,14 @@ HERE = Path(__file__).resolve().parents[1]
 
 
 class BundleSmoke(unittest.TestCase):
+    def test_documented_module_command_starts_control_center(self):
+        result = subprocess.run(
+            [sys.executable, '-B', '-m', 'tools.observatory', '--demo', '--once'],
+            cwd=HERE.parents[1], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('NOVA3 CONTROL CENTER', result.stdout)
+        self.assertIn('Whole-game ETA: UNKNOWN', result.stdout)
+
     def test_installer_manifest_and_isolated_dashboard(self):
         installer = (HERE / 'install.sh').read_text()
         manifests = re.findall(r'^for file in (.+); do$', installer, re.M)
