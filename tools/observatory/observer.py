@@ -98,6 +98,16 @@ MAX_PRS = 500
 MAX_RUNS = 80
 TAB_KEYS = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'W', 'H', 'A', '?')
 TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "ACTIVITY", "HELP"]
+# Keep the established page order/shortcuts independent of the group navigator.
+TAB_GROUPS = (
+    ('Overview', (0, 5, 8)),
+    ('Pipeline', (1, 2, 3, 4)),
+    ('Research', (6, 7, 11)),
+    ('Team', (10, 12)),
+    ('Administration', (9, 13)),
+)
+TAB_SHORT = ('Pulse', 'Tasks', 'PRs', 'Actions', 'Logs', 'Forecast', 'Source',
+             'APK', 'Roadmap', 'Owner', 'Workers', 'Tools', 'Activity', 'Help')
 
 # One selected repository, two listing levels, never recursive/home-wide scans.
 ACTIVITY_MAX_ENTRIES = 1024
@@ -1149,6 +1159,9 @@ class Observatory:
         self.tab = 0
         self.indices = collections.defaultdict(int)
         self.scroll = collections.defaultdict(int)
+        self.search = collections.defaultdict(str)
+        self.search_edit = False
+        self.search_before = ''
         self.log_mode = 0
         self.confirm = None
         self.notice = ""
@@ -1244,12 +1257,24 @@ class Observatory:
         screen = self.stdscr
         screen.erase()
         h, w = screen.getmaxyx()
-        if h < 18 or w < 72:
-            self.put(1, 2, "NOVA3 // OBSERVATORY", "cyan")
-            self.put(3, 2, "Terminal too small. Resize to >= 72 x 18.", "yellow")
-            self.put(5, 2, activity_line(self.snap), "cyan", max(0, w-4))
-            self.put(7, 2, "Whole-game ETA: UNKNOWN", "yellow")
-            self.put(9, 2, "q to exit. No project files are changed.", "muted")
+        self.layout = ui_components.Layout(w, h)
+        if self.layout.density == 'tiny':
+            rows = [("NOVA3 // OBSERVATORY", 'cyan'),
+                    (TAB_GROUPS[self.current_group()][0]+' / '+TABS[self.tab], 'muted'),
+                    ("Resize to >= 72 x 18. Q quits.", 'yellow'),
+                    (activity_line(self.snap), 'cyan'),
+                    ("Whole-game ETA: UNKNOWN", 'yellow'),
+                    ("? help after resizing; worker stays running.", 'muted')]
+            # A pending confirmation still accepts Y here, so it must never be
+            # hidden by the resize notice: show the exact action being confirmed.
+            if self.confirm:
+                rows.insert(0, ("CONFIRM " + self.confirm + " Y/N", 'red'))
+            if self.merge_phrase is not None:
+                rows.insert(0, ("TYPE " + self.merge_phrase + " to merge", 'red'))
+            if h < 4:
+                rows = [rows[2], rows[1], rows[0]]
+            for y, (text, style) in enumerate(rows[:h]):
+                self.put(y, 0 if w < 40 else 2, text, style)
             screen.refresh()
             return
         now = datetime.now(timezone.utc)
@@ -1259,66 +1284,53 @@ class Observatory:
         if w >= 100:
             self.put(0, w-len(stamp)-3, stamp, "muted")
         gh_ok = bool(self.snap.github_updated) and not self.snap.github_errors
-        self.put(1, 2, f"{self.collector.repo} • {'DEMO' if self.collector.demo else 'LIVE READ-ONLY'} • GitHub role {self.snap.repo_role}", "muted", w-4)
+        self.put(1, 2, f"Role {self.snap.repo_role} • {'DEMO' if self.collector.demo else 'LIVE READ-ONLY'} • {self.collector.repo}", "muted", w-4)
         self.put(2, 0, "─" * (w-1), "muted")
-        # Two aligned navigation rows. On smaller terminals, page the actual
-        # labels around the selected tab; every tab uses the same key registry.
-        entries = [f'{key}:{title}' for key, title in zip(TAB_KEYS, TABS)]
-        rows, row, used = [], [], 0
-        for i, text in enumerate(entries):
-            if row and used + len(text) + 3 > w - 4:
-                rows.append(row)
-                row, used = [], 0
-            row.append((i, text))
-            used += len(text) + 3
-        if row:
-            rows.append(row)
-        active_row = next(i for i, row in enumerate(rows) if any(n == self.tab for n, _ in row))
-        start_row = min(max(0, active_row - 1), max(0, len(rows) - 2))
-        for row_y, row in enumerate(rows[start_row:start_row+2], 3):
-            pos = 2
-            for i, text in row:
-                label = '[' + text + ']' if i == self.tab else ' ' + text + ' '
-                self.put(row_y, pos, label, accent if i == self.tab else 'muted', len(label))
-                pos += len(label) + 1
+        group = self.current_group()
+        ui_components.navigation(self, 3, [(i, name) for i, (name, _) in enumerate(TAB_GROUPS)],
+                                 group, w, accent)
+        entries = [(i, f'{TAB_KEYS[i]}:' + (TABS[i] if i == self.tab or not self.layout.compact
+                                            else TAB_SHORT[i])) for i in TAB_GROUPS[group][1]]
+        ui_components.navigation(self, 4, entries, self.tab, w, accent)
         self.put(5, 0, "─" * (w-1), "muted")
         counts = task_counts(self.snap.issues, self.snap.prs)
         events = parse_log_events(self.snap.logs)
         estimate = build_estimates(self.snap.issues, self.snap.prs, self.snap.inventory, events, self.workers, now, snapshot=self.snap)
         health, description = classify_health(self.snap.service,
                                                "; ".join(self.snap.github_errors), counts, events, now)
-        bottom = h - 3
+        content = self.layout.content
+        top, bottom = content.y, content.y + content.h
         if self.tab == 0:
-            self.draw_pulse(6, bottom, w, counts, events, estimate, health, description)
+            self.draw_pulse(top, bottom, w, counts, events, estimate, health, description)
         elif self.tab == 1:
-            self.draw_tasks(6, bottom, w, counts)
+            self.draw_tasks(top, bottom, w, counts)
         elif self.tab == 2:
-            self.draw_prs(6, bottom, w)
+            self.draw_prs(top, bottom, w)
         elif self.tab == 3:
-            self.draw_actions(6, bottom, w)
+            self.draw_actions(top, bottom, w)
         elif self.tab == 4:
-            self.draw_logs(6, bottom, w)
+            self.draw_logs(top, bottom, w)
         elif self.tab == 5:
-            self.draw_forecast(6, bottom, w, counts, events, estimate)
+            self.draw_forecast(top, bottom, w, counts, events, estimate)
         elif self.tab == 6:
-            self.draw_source_map(6, bottom, w)
+            self.draw_source_map(top, bottom, w)
         elif self.tab == 7:
-            self.draw_apk_atlas(6, bottom, w)
+            self.draw_apk_atlas(top, bottom, w)
         elif self.tab == 8:
-            self.draw_roadmap(6, bottom, w)
+            self.draw_roadmap(top, bottom, w)
         elif self.tab == 9:
             if self.snap.repo_role in operator_ops.OWNER_ROLES and not self.collector.demo:
-                self.draw_operator(6, bottom, w)
+                self.draw_operator(top, bottom, w)
             else:
-                self.draw_operator_locked(6, bottom, w)
+                self.draw_operator_locked(top, bottom, w)
         elif self.tab == 10:
-            self.draw_workers(6, bottom, w)
+            self.draw_workers(top, bottom, w)
         elif self.tab == 11:
-            self.draw_toolchain(6, bottom, w)
+            self.draw_toolchain(top, bottom, w)
         elif self.tab == 12:
-            self.draw_activity(6, bottom, w)
+            self.draw_activity(top, bottom, w)
         else:
-            self.draw_help(6, bottom, w)
+            self.draw_help(top, bottom, w)
         self.put(h-3, 0, "─"*(w-1), "muted")
         refreshed = fmt_age(dt(self.snap.github_updated), now)
         gh_txt = "LIVE" if gh_ok else ("CACHED" if self.snap.github_updated else "OFFLINE")
@@ -1327,15 +1339,24 @@ class Observatory:
         if w < 100:
             bottom_left = f" systemd {service_state} [{health}] | Whole-game ETA: UNKNOWN"
         self.put(h-2, 1, bottom_left, "yellow" if not gh_ok else "muted", w-3)
-        foot = (" TAB / 1-9 pages  W workers  H toolchain  A activity  0 owner ops  G sync  ? help  Q quit "
-                if self.snap.repo_role in operator_ops.OWNER_ROLES else
-                " TAB / 1-9 pages  W workers  H toolchain  A activity  0 owner ops LOCKED  G sync  ? help  Q quit ")
-        if w < 110:
-            foot = " TAB pages  A activity  6 forecast  ? help  Q quit | " + (
-                "ADMIN" if self.snap.repo_role in operator_ops.OWNER_ROLES else "LOCKED")
+        context = ('/ search D details' if self.tab in (1, 2, 3) else
+                   'PgUp/Dn cards' if self.tab in (0, 9) else 'Up/Down scroll')
+        foot = f"Tab pages  {{ }} groups  {context}  ? help  Q quit"
+        if not self.layout.compact:
+            foot += ' | 1-9,0 W H A shortcuts | G sync | ' + (
+                'OWNER' if self.snap.repo_role in operator_ops.OWNER_ROLES and not self.collector.demo else 'OWNER LOCKED')
         self.put(h-1, 1, foot, "muted", w-3)
         if self.notice and time.monotonic() < self.notice_until:
-            self.put(h-4, 2, self.notice, "yellow", w-4)
+            self.put(h-2, 1, ' ' * (w-3), 'normal', w-3)
+            self.put(h-2, 1, self.notice, "yellow", w-3)
+        if self.search_edit:
+            self.put(h-1, 1, ' ' * (w-3), 'normal', w-3)
+            hint = '  Enter apply / Esc cancel'
+            # Keep the insertion point and cancellation keys visible for long queries.
+            value = self.search[self.tab]
+            budget = max(1, w-3-len('Search: _')-len(hint))
+            value = value[-budget:]
+            self.put(h-1, 1, 'Search: '+value+'_'+hint, 'cyan', w-3)
         if self.merge_phrase is not None:
             self.modal('TYPE '+self.merge_phrase+' TO MERGE: '+self.merge_input+'_   (ESC cancels)', 'red')
         if self.confirm:
@@ -1345,15 +1366,20 @@ class Observatory:
             self.modal(warning, "red")
         screen.refresh()
 
+    def current_group(self):
+        return next(i for i, (_, pages) in enumerate(TAB_GROUPS) if self.tab in pages)
+
     def modal(self, msg: str, color="yellow"):
         h, w = self.stdscr.getmaxyx()
-        size = min(w-8, max(len(msg)+6, 35))
-        x = max(2, (w-size)//2)
-        y = max(5, h//2)
-        self.put(y-1, x, "╭"+"─"*(size-2)+"╮", color, size)
-        self.put(y, x, "│"+" "*(size-2)+"│", color, size)
-        self.put(y, x+2, msg, color, size-4)
-        self.put(y+1, x, "╰"+"─"*(size-2)+"╯", color, size)
+        size = max(0, min(w-4, max(ui_components.cell_width(msg)+6, 35)))
+        lines = textwrap.wrap(msg, max(1, size-4))
+        height = min(len(lines)+2, h-2)
+        x, top = max(0, (w-size)//2), max(0, (h-height)//2)
+        for y in range(top, top+height):
+            self.put(y, x, ' '*size, color, size)
+        self.frame(top, x, height, size, color=color)
+        for i, line in enumerate(lines[:max(0, height-2)]):
+            self.put(top+1+i, x+2, line, color, max(0, size-4))
 
     def card(self, area, title, badge='', severity='cyan'):
         return ui_components.Card(self, area, title, badge, severity)
@@ -1407,62 +1433,77 @@ class Observatory:
 
     def draw_pulse(self, y, end, w, counts, events, est, health, description):
         R = ui_components.Rect
-        area = R(y, 1, end-y, w-2)
-        strip = area.h >= 23
-        tiles = ui_components.grid(R(y, 1, area.h - (4 if strip else 0), area.w))
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
         records = activity_records(self.snap)
         feed_state = self.feed_badge(records)
-        worker, pipeline, evidence, live = [
-            self.card(rect, title, badge, style) for rect, title, badge, style in zip(
-                tiles, ('WORKER TELEMETRY', 'TASK PIPELINE', 'EVIDENCE / FORECAST', 'LIVE ACTIVITY'),
-                (health, 'TASKS', 'UNVERIFIED', feed_state),
-                (self.severity(health), 'cyan', 'yellow', self.severity(feed_state)))]
-        compact = worker.inner.h <= 3
-        if compact:
-            worker.lines([
-                (f"[{health}] PID {self.snap.service.get('pid', 'UNKNOWN')}", self.severity(health)),
-                (activity_line(self.snap), 'muted'),
-                self.worker_rows(health)[2],
-            ])
-        else:
-            worker.lines(self.worker_rows(health))
-            worker.line(8, description, 'muted')
-        total = counts['TOTAL']
-        stages = ('QUEUED', 'CLAIMED', 'REVIEW', 'BLOCKED', 'INTEGRATED')
-        if pipeline.inner.h < 6:
-            pipeline.lines([f"Task sample: {total} tasks",
-                            f"Q {counts['QUEUED']} / active {counts['CLAIMED']} / review {counts['REVIEW']}",
-                            f"Blocked {counts['BLOCKED']} / integrated {counts['INTEGRATED']}",
-                            ('Task counts only; not source progress', 'muted')])
-        else:
-            pipeline.line(0, f"Denominator: {total} sampled tasks", 'muted')
-            for index, stage in enumerate(stages, 1):
-                pipeline.meter(index, stage.title(), counts[stage], total,
-                               'red' if stage == 'BLOCKED' and counts[stage] else 'cyan')
-            other = total - sum(counts[stage] for stage in stages)
-            pipeline.line(6, f"Other / verified / unclassified: {other}", 'yellow' if other else 'muted')
-            pipeline.line(7, 'Shares of task sample; never game completion.', 'muted')
-            pipeline.line(9, f"PR workflow: {est['stats']['open']} open / {est['stats']['merged']} merged", 'muted')
         report = est['forecast']
         shared = forecast_lines(report)
-        # Put the honesty gate first at every breakpoint. Labels come from the
-        # shared model adapter, never PR arithmetic or configured worker slots.
-        evidence.lines([(shared[0], 'yellow'), (shared[3], 'cyan'), shared[1],
-                        shared[2], ('Original matches: ' + self.match_label(report), 'yellow'),
-                        ('Setup reasons: ' + (', '.join(report['setup']['reasons']) or 'evidenced milestones only'), 'muted'),
-                        ('6: forecast details | A: worker console', 'muted')])
-        if records:
-            live.lines(self.activity_rows(records[0]))
-            offset = 7
-            for r in records[1:]:
-                live.line(offset, f"[{r['display_status']}] #{r['issue']} r{r['round']} {r['event_category']} | {fmt_age(dt(r['timestamp_utc']))}", self.severity(r['display_status']))
-                offset += 1
-        else:
-            live.lines([('[MISSING] AI UNKNOWN', 'yellow'),
-                        ('No structured worker observations.', 'muted'),
-                        'Commands UNKNOWN | tests UNKNOWN',
-                        ('Waiting for a compatible worker feed.', 'muted'),
-                        ('No raw AI logs or internal thoughts.', 'muted')])
+        evidence_rows = [(shared[0], 'yellow'), (shared[3], 'cyan'), shared[1],
+                         shared[2], ('Original matches: ' + self.match_label(report), 'yellow'),
+                         ('Setup reasons: ' + (', '.join(report['setup']['reasons']) or 'evidenced milestones only'), 'muted'),
+                         ('6: forecast details | A: worker console', 'muted')]
+        live_rows = self.activity_rows(records[0]) if records else [
+            ('[MISSING] AI UNKNOWN', 'yellow'),
+            ('No structured worker observations.', 'muted'),
+            'Commands UNKNOWN | tests UNKNOWN',
+            ('Waiting for a compatible worker feed.', 'muted'),
+            ('No raw AI logs or internal thoughts.', 'muted')]
+        for r in records[1:]:
+            live_rows.append((f"[{r['display_status']}] #{r['issue']} r{r['round']} {r['event_category']} | {fmt_age(dt(r['timestamp_utc']))}", self.severity(r['display_status'])))
+        specs = [('WORKER TELEMETRY', health, self.severity(health)),
+                 ('TASK PIPELINE', 'TASKS', 'cyan'),
+                 ('EVIDENCE / FORECAST', 'UNVERIFIED', 'yellow'),
+                 ('LIVE ACTIVITY', feed_state, self.severity(feed_state))]
+        # Summary remains four framed cards. PgDn expands each card in turn so
+        # narrow/short terminals can read the same details without clipping.
+        page = self.scroll['pulse'] % 5
+        selected = [page-1] if page else list(range(4))
+        strip = end-y >= 23 and not page
+        area = R(y, 1, end-y-(4 if strip else 0), w-2)
+        tiles = layout.cards(area, len(selected))
+        for rect, index in zip(tiles, selected):
+            title, badge, style = specs[index]
+            card = self.card(rect, title, badge, style)
+            if index == 0:
+                rows = self.worker_rows(health) + [('', 'normal'), (description, 'muted')]
+                if not page and card.inner.h <= 3:
+                    rows = [(f"[{health}] PID {self.snap.service.get('pid', 'UNKNOWN')}", self.severity(health)),
+                            (activity_line(self.snap), 'muted'), self.worker_rows(health)[2]]
+                if page:
+                    self.scroll['pulse_lines'] = card.scrolled(rows, self.scroll['pulse_lines'])
+                else:
+                    card.lines(rows)
+            elif index == 1:
+                total = counts['TOTAL']
+                stages = ('QUEUED', 'CLAIMED', 'REVIEW', 'BLOCKED', 'INTEGRATED')
+                other = total - sum(counts[stage] for stage in stages)
+                if page:
+                    rows = [(f'Denominator: {total} sampled tasks', 'muted')]
+                    rows += [(card.meter_text(stage.title(), counts[stage], total),
+                              'red' if stage == 'BLOCKED' and counts[stage] else 'cyan') for stage in stages]
+                    rows += [f'Other / verified / unclassified: {other}',
+                             ('Shares of task sample; never game completion.', 'muted'),
+                             f"PR workflow: {est['stats']['open']} open / {est['stats']['merged']} merged"]
+                    self.scroll['pulse_lines'] = card.scrolled(rows, self.scroll['pulse_lines'])
+                elif card.inner.h < 6:
+                    card.lines([f"Task sample: {total} tasks",
+                                f"Q {counts['QUEUED']} / active {counts['CLAIMED']} / review {counts['REVIEW']}",
+                                f"Blocked {counts['BLOCKED']} / integrated {counts['INTEGRATED']}",
+                                ('Task counts only; not source progress', 'muted')])
+                else:
+                    card.line(0, f"Denominator: {total} sampled tasks", 'muted')
+                    for n, stage in enumerate(stages, 1):
+                        card.meter(n, stage.title(), counts[stage], total,
+                                   'red' if stage == 'BLOCKED' and counts[stage] else 'cyan')
+                    card.line(6, f"Other / verified / unclassified: {other}", 'yellow' if other else 'muted')
+                    card.line(7, 'Shares of task sample; never game completion.', 'muted')
+                    card.line(9, f"PR workflow: {est['stats']['open']} open / {est['stats']['merged']} merged", 'muted')
+            else:
+                rows = evidence_rows if index == 2 else live_rows
+                if page:
+                    self.scroll['pulse_lines'] = card.scrolled(rows, self.scroll['pulse_lines'])
+                else:
+                    card.lines(rows)
         if strip:
             status = self.card(R(end-3, 1, 3, w-2), 'READINESS / SOURCE EVIDENCE', 'READ ONLY')
             status.line(0, f"Original source matches: {self.match_label(report)}  |  Setup: {report['setup']['state'].upper()}  |  Whole-game ETA: {report['whole_game']['label']}  |  Task merges are workflow evidence", 'yellow')
@@ -1474,6 +1515,7 @@ class Observatory:
 
     def draw_activity(self, y, end, w):
         R = ui_components.Rect
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
         records = activity_records(self.snap)
         fresh = sum(r['fresh'] for r in records)
         feed_state = self.feed_badge(records)
@@ -1483,7 +1525,7 @@ class Observatory:
                       f"{len(records)} rounds | {fresh} fresh | feed {self.snap.activity.get('state', 'MISSING')} | Up/Down scroll rounds",
                       ('Observed counters only; completed tests do not imply passing tests.', 'muted')])
         area = R(y+header_h+1, 1, end-y-header_h-1, w-2)
-        if w >= 100:
+        if layout.activity_columns == 2:
             console, side = ui_components.grid(area, columns=2, rows=1)
             if side.h >= 17:
                 feed_rect, privacy_rect = ui_components.grid(side, columns=1, rows=2)
@@ -1532,22 +1574,52 @@ class Observatory:
             card = self.card(rect, f"#{record['issue']} / ROUND {record['round']}", record['display_status'], self.severity(record['display_status']))
             card.lines(self.activity_rows(record))
 
-    def _table(self, y, end, w, title, records, formatter, selector_key):
-        self.frame(y, 1, end-y-1, w-3, title)
-        height = max(1, end-y-6)
-        i = min(self.indices[selector_key], max(0, len(records)-1))
+    def _table(self, y, end, w, title, records, formatter, selector_key, hint=''):
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
+        query = self.search[self.tab].casefold()
+        total = len(records)
+        records = [r for r in records if query in formatter(r, w)[0].casefold()]
+        self.active_records = records
+        self.active_records_tab = self.tab
+        i = max(0, min(self.indices[selector_key], max(0, len(records)-1)))
         self.indices[selector_key] = i
-        start = max(0, min(i-max(1, height//2), max(0, len(records)-height)))
-        self.put(y+2, 4, f"{len(records)} records  ·  ↑/↓ select  ·  O open selected in browser", "muted", w-9)
-        for index, record in enumerate(records[start:start+height], start):
-            line, style = formatter(record, w)
-            if index == i:
-                self.put(y+4+index-start, 3, "▶", "cyan")
-                self.put(y+4+index-start, 6, line, "cyan", w-12)
+        area = ui_components.Rect(y, 1, end-y, w-2)
+        focused = self.scroll[selector_key+'_detail'] % 2
+        list_rect, detail_rect = area, None
+        if focused:
+            list_rect, detail_rect = None, area
+        elif not layout.compact:
+            list_rect, detail_rect = ui_components.grid(area, rows=1)
+        if list_rect:
+            card = self.card(list_rect, title.strip(), f'{i+1 if records else 0}/{len(records)}')
+            height = max(1, card.inner.h-3)
+            start = max(0, min(i-height//2, max(0, len(records)-height)))
+            card.line(0, f'{len(records)}/{total} records | Up/Down select | O open', 'muted')
+            card.line(1, 'Search: '+self.search[self.tab] if query else hint or '/ search | D details | PgUp/Dn page', 'yellow')
+            for index, record in enumerate(records[start:start+height], start):
+                line, style = formatter(record, list_rect.w)
+                card.line(3+index-start, ('▶ ' if index == i else '  ')+line,
+                          'cyan' if index == i else style)
+            if not records:
+                card.line(3, 'No matching records. / edits search; G refreshes.', 'yellow')
+        if detail_rect:
+            detail = self.card(detail_rect, 'SELECTED RECORD', 'D list / PgUp/Dn scroll')
+            rows = [('Up/Down selects | O opens GitHub | / search', 'muted')]
+            if records:
+                record = records[i]
+                state = (record.get('conclusion') or record.get('status') or record.get('state') or 'UNKNOWN').upper()
+                rows += [(f"#{record.get('number', record.get('databaseId', '?'))} [{state}]", self.severity(state)),
+                         record.get('title') or record.get('displayTitle') or 'Untitled record']
+                if record.get('workflowName'):
+                    rows.append('Workflow: '+str(record['workflowName']))
+                rows += [('Created: '+str(record.get('createdAt') or 'UNKNOWN'), 'muted')]
+                if record.get('url'):
+                    rows.append(str(record['url']))
+                if hint:
+                    rows.append((hint, 'yellow'))
             else:
-                self.put(y+4+index-start, 6, line, style, w-12)
-        if not records:
-            self.put(y+5, 5, "No records returned. Check GitHub refresh status.", "yellow")
+                rows.append(('No matching records. Clear search or refresh.', 'yellow'))
+            self.scroll[selector_key+'_lines'] = detail.scrolled(rows, self.scroll[selector_key+'_lines'])
 
     def draw_tasks(self, y, end, w, counts):
         issues = [x for x in self.snap.issues if is_task(x)]
@@ -1567,7 +1639,8 @@ class Observatory:
         def fmt(pr, width):
             state = "MERGED" if pr.get("mergedAt") else "DRAFT" if pr.get("isDraft") and pr.get("state") == "OPEN" else pr.get("state", "?")
             return f"{'*' if pr.get('number') in self.pr_marked else ' '}#{pr.get('number',0):<5} [{state:<8}] [+{pr.get('additions',0)}/-{pr.get('deletions',0)}] {pr.get('title','')}", "green" if state=="MERGED" else "yellow" if state=="DRAFT" else "normal"
-        self._table(y,end,w,f" PULL REQUEST RADAR  •  {len(self.pr_marked)} MARKED  •  B mark / A all / C scan ",prs,fmt,"prs")
+        self._table(y,end,w,f" PULL REQUEST RADAR  •  {len(self.pr_marked)} MARKED ",prs,fmt,"prs",
+                    'B mark | A all | Z clear | C scan (owner)')
 
     def draw_actions(self, y, end, w):
         runs = sorted(self.snap.runs, key=lambda x: x.get("createdAt", ""), reverse=True)
@@ -1575,9 +1648,8 @@ class Observatory:
         def fmt(run, width):
             status = (run.get("conclusion") or run.get("status") or "unknown").upper()
             return f"{str(run.get('workflowName') or 'unnamed')[:24]:<24} [{status:<12}]  {run.get('displayTitle','')}", "green" if status=="SUCCESS" else "red" if status=="FAILURE" else "yellow" if status=="IN_PROGRESS" else "normal"
-        self._table(y,end,w," GITHUB ACTIONS  •  AUTOMATIC TASK FEEDER & CI ",runs,fmt,"actions")
-        if self.snap.last_action:
-            self.put(y+3, 4, "Last control: "+self.snap.last_action, "yellow", w-8)
+        self._table(y,end,w," GITHUB ACTIONS  •  AUTOMATIC TASK FEEDER & CI ",runs,fmt,"actions",
+                    'Last control: '+self.snap.last_action if self.snap.last_action else '')
 
     def filtered_logs(self) -> list[str]:
         if self.log_mode == 1:
@@ -1749,53 +1821,58 @@ class Observatory:
         self.put(end-3,4,"No new AI accounts. For actual features: nova3-feature 'Describe feature'",'muted',w-9)
 
     def draw_operator_locked(self, y, end, w):
-        self.frame(y, 1, end-y-1, w-3, ' OWNER OPS  •  LOCKED ')
-        self.put(y+2, 4, 'Owner actions require ADMIN or MAINTAIN permission for this repository.', 'yellow', w-10)
-        self.put(y+4, 4, 'Your authenticated GitHub role: '+self.snap.repo_role, 'muted', w-10)
-        self.put(y+6, 4, 'Use your own GitHub login. Access is checked again before every privileged action.', 'muted', w-10)
-        self.put(y+8, 4, 'All telemetry, task, PR, coverage, worker and roadmap pages remain available.', 'cyan', w-10)
+        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'OWNER OPS', 'LOCKED', 'yellow')
+        rows = [('Owner actions require ADMIN or MAINTAIN permission for this repository.', 'yellow'),
+                'Your authenticated GitHub role: '+self.snap.repo_role,
+                'Access is checked again before every privileged action.',
+                'All telemetry, task, PR, coverage, worker and roadmap pages remain available.']
         if self.snap.repo_role == 'UNKNOWN':
-            self.put(y+10, 4, 'GitHub role could not be verified; owner operations fail closed.', 'red', w-10)
+            rows.append(('GitHub role could not be verified; owner operations fail closed.', 'red'))
+        self.scroll['owner_lines'] = card.scrolled(rows, self.scroll['owner_lines'])
 
     def draw_operator(self, y, end, w):
-        self.frame(y, 1, end-y-1, w-3, ' PRIVATE OWNER CONTROL DECK  •  SAME WORKER / SAME REPOSITORY ')
-        d=self.snap.discovery
-        timer=d.get('timer',{})
-        scan=d.get('service',{})
-        git=self.snap.git_alignment
-        counts=task_counts(self.snap.issues,self.snap.prs)
-        idle=not(counts['QUEUED'] or counts['CLAIMED'] or counts['REVIEW'])
-        if idle:
-            self.put(y+1,4, 'QUEUE EXHAUSTED: discovery must publish more function metadata', 'red',w-10)
-        self.put(y+2,4,'DISCOVERY TIMER', 'cyan')
-        timer_on=timer.get('ActiveState')=='active'
-        self.put(y+3,4,'Timer: '+('ACTIVE' if timer_on else 'OFFLINE / NOT INSTALLED')+
-                  f"  •  file={'yes' if d.get('timer_file') else 'no'}  •  engine={'yes' if d.get('module') else 'no'}",
-                  'green' if timer_on else 'red',w-10)
-        self.put(y+4,4,f"Scan engine: {scan.get('ActiveState','unknown')}  |  Result: {scan.get('Result','unknown')}",
-                  'muted',w-10)
-        self.put(y+5,4,'D repair/install timer   N scan now   U enable/disable timer', 'yellow',w-10)
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
+        d = self.snap.discovery
+        timer, scan, git = d.get('timer', {}), d.get('service', {}), self.snap.git_alignment
+        counts = task_counts(self.snap.issues, self.snap.prs)
+        timer_on = timer.get('ActiveState') == 'active'
+        timer_rows = [
+            ('Timer: '+('ACTIVE' if timer_on else 'OFFLINE / NOT INSTALLED'), 'green' if timer_on else 'red'),
+            f"Timer file: {'yes' if d.get('timer_file') else 'no'} | engine: {'yes' if d.get('module') else 'no'}",
+            f"Scan: {scan.get('ActiveState', 'UNKNOWN')} | Result: {scan.get('Result', 'UNKNOWN')}",
+            ('D repair/install | N scan now | U toggle timer', 'yellow')]
+        if not any(counts[k] for k in ('QUEUED', 'CLAIMED', 'REVIEW')):
+            timer_rows.insert(0, ('QUEUE EXHAUSTED: discovery needs more function metadata', 'red'))
         if self.snap.discovery_logs:
-            self.put(y+6,4,'Last scan: '+self.snap.discovery_logs[-1][-max(10,w-22):], 'muted',w-12)
-        self.put(y+7,4,'GIT BRANCH ALIGNMENT', 'cyan')
-        self.put(y+8,4,f"Local {git.get('branch','?')}  ahead {git.get('ahead','?')}  behind {git.get('behind','?')}  dirty {git.get('dirty','?')}",
-                  'muted',w-10)
-        self.put(y+9,4,git.get('note','GitHub merges update REMOTE main, not your local checkout.')[:w-12],
-                  'yellow' if git.get('behind') not in ('0','?') else 'muted',w-10)
-        self.put(y+11,4,'BULK PR MERGE  •  SQUASH, CURRENT USER ONLY BY DEFAULT', 'cyan')
-        self.put(y+12,4,f"Marked PRs: {len(self.pr_marked)}  |  Others: {'INCLUDED' if self.include_others else 'EXCLUDED'}"
-                  f"  |  No-CI: {'ALLOW' if self.allow_no_checks else 'DENY'}",'muted',w-10)
-        self.put(y+13,4,f"Preview: {self.snap.merge_status}  {self.snap.merge_summary}",
-                  'green' if self.snap.merge_status=='READY' else 'muted',w-10)
-        self.put(y+14,4,'3 PR page: B mark, A all, Z clear. C scan/confirm. I other authors. J no-CI.',
-                  'yellow',w-10)
-        team=presence_view.summary(self.snap.worker_presence)
-        self.put(y+15,4,f"W contributor health: {team['TOTAL']} reporting  |  {team['WORKING']} busy  |  {team['IDLE']} idle  |  {team['ERROR']} errors  |  {team['STALE']} stale",
-                  'yellow' if team['ERROR'] or team['STALE'] else 'muted',w-10)
-        self.put(y+16,4,'P export all diagnostics privately  |  F trigger GitHub task feeder', 'cyan',w-10)
-        visible=max(0,end-(y+19))
-        for i,msg in enumerate(self.snap.operator_events[-visible:]):
-            self.put(y+18+i,4,msg,'red' if any(x in msg for x in ('failed','SKIPPED','ERROR')) else 'muted',w-10)
+            timer_rows.append(('Last scan: '+self.snap.discovery_logs[-1], 'muted'))
+        git_rows = [f"Local {git.get('branch', '?')} | ahead {git.get('ahead', '?')} | behind {git.get('behind', '?')} | dirty {git.get('dirty', '?')}",
+                    (git.get('note', 'GitHub merges update REMOTE main, not your local checkout.'), 'yellow'),
+                    ('P export diagnostics privately | F trigger task feeder', 'cyan')]
+        merge_rows = [f"Marked PRs: {len(self.pr_marked)} | Others: {'INCLUDED' if self.include_others else 'EXCLUDED'}",
+                      f"No-CI: {'ALLOW' if self.allow_no_checks else 'DENY'}",
+                      'Preview: '+self.snap.merge_status+' '+self.snap.merge_summary,
+                      ('3 PR page: B mark | A all | Z clear', 'yellow'),
+                      ('C scan/confirm | I other authors | J no-CI', 'yellow'),
+                      ('Typed MERGE N required; CI/commit rechecked.', 'muted')]
+        team = presence_view.summary(self.snap.worker_presence)
+        event_rows = [f"W health: {team['TOTAL']} reporting | {team['WORKING']} busy | {team['IDLE']} idle",
+                      (f"Errors {team['ERROR']} | Stale {team['STALE']} (not proof of logout)", 'yellow')]
+        event_rows += [(msg, 'red' if any(x in msg for x in ('failed', 'SKIPPED', 'ERROR')) else 'muted')
+                       for msg in self.snap.operator_events[-20:]]
+        specs = [('DISCOVERY TIMER', timer_rows), ('GIT BRANCH ALIGNMENT', git_rows),
+                 ('BULK PR MERGE', merge_rows), ('OPERATOR EVENTS', event_rows)]
+        capacity = layout.owner_capacity
+        pages = (len(specs)+capacity-1)//capacity
+        page = self.scroll['owner_page'] % pages
+        visible = specs[page*capacity:(page+1)*capacity]
+        area = ui_components.Rect(y, 1, end-y, w-2)
+        tiles = (ui_components.grid(area, columns=1, rows=len(visible)) if layout.compact
+                 else layout.cards(area, len(visible)))
+        offsets = []
+        for rect, (title, rows) in zip(tiles, visible):
+            card = self.card(rect, title, f'{page+1}/{pages} PgUp/Dn')
+            offsets.append(card.scrolled(rows, self.scroll['owner_lines']))
+        self.scroll['owner_lines'] = max(offsets, default=0)
 
     def draw_toolchain(self, y, end, w):
         self.put(y, 3, 'OPTIONAL GCC 4.4.3 CANDIDATE / read-only guidance', 'cyan', w-6)
@@ -1812,46 +1889,50 @@ class Observatory:
         self.put(end, 3, 'Up/Down scroll | V rescan | --toolchain-setup prints copyable commands', 'muted', w-6)
 
     def draw_workers(self, y, end, w):
-        self.frame(y, 1, end-y-1, w-3, ' CONTRIBUTOR HEALTH  •  GITHUB SIGNALS / NO CREDENTIAL ACCESS ')
-        records=self.snap.worker_presence
-        totals=presence_view.summary(records)
-        error=self.snap.presence_error
-        claim_count=sum(issue_stage(i)=='CLAIMED' for i in self.snap.issues if is_task(i))
-        self.put(y+1,4, f"Reporting: {totals['TOTAL']}  |  WORKING: {totals['WORKING']}"
-                 f"  IDLE: {totals['IDLE']}  ERROR: {totals['ERROR']}"
-                 f"  STALE: {totals['STALE']}  other: {totals['OTHER']}",
-                 'yellow' if totals['ERROR'] or totals['STALE'] else 'green',w-10)
-        when=fmt_age(dt(self.snap.presence_updated))
-        if error:
-            self.put(y+2,4,'DATA UNAVAILABLE: '+error,'yellow',w-10)
-        else:
-            self.put(y+2,4,f"Presence refreshed {when}  |  GitHub claimed issues: {claim_count}",'muted',w-10)
+        R = ui_components.Rect
+        layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
+        records = self.snap.worker_presence
+        totals = presence_view.summary(records)
+        header_h = 5 if end-y >= 14 else 3
+        summary = self.card(R(y, 1, header_h, w-2), 'CONTRIBUTOR HEALTH', 'READ ONLY')
+        summary.lines([
+            (f"Reporting {totals['TOTAL']} | WORKING {totals['WORKING']} | IDLE {totals['IDLE']} | ERROR {totals['ERROR']}", 'cyan'),
+            (f"STALE {totals['STALE']} | Other {totals['OTHER']} | Up/Down scroll workers", 'yellow'),
+            ('DATA UNAVAILABLE: '+self.snap.presence_error if self.snap.presence_error else
+             'Stale / missing heartbeat is not proof of logout or idling.', 'muted')])
+        area = R(y+header_h+1, 1, end-y-header_h-1, w-2)
         if not records:
-            self.put(y+4,4,'No upgraded worker heartbeats available yet. This does NOT prove workers are offline.',
-                     'yellow',w-10)
-            self.put(y+6,4,'Publish the shared presence PR, merge it, and have contributors update/restart.',
-                     'muted',w-10)
-            self.put(y+8,4,'Old clients: only GitHub claims/PR activity are observable.', 'muted',w-10)
-        else:
-            self.put(y+4,4,f"{'GITHUB ACCOUNT':<22} {'STATE':<11} {'AI':<9} {'ISSUE':<9} {'LAST SIGNAL':<15} DEVICE", 'cyan',w-10)
-            priority={'ERROR':0,'STALE':1,'STOPPED':2,'IDLE':3,'WORKING':4}
-            items=sorted(records,key=lambda r:(priority.get(presence_view.classify(r)[0],5),r['owner']))
-            for n,item in enumerate(items[:max(0,end-y-9)]):
-                state,secs=presence_view.classify(item)
-                color='red' if state in ('ERROR','STALE','STOPPED') else ('green' if state=='WORKING' else 'muted')
-                age=(f'{secs//60}m ago' if secs>=60 else f'{secs}s ago') if secs>=0 else '?'
-                line=f"{item['owner'][:22]:<22} {state:<11} {item['provider'][:9]:<9} {('#'+str(item['issue'])) if item.get('issue') else '—':<9} {age:<15} {item['worker'][:8]}"
-                self.put(y+5+n,4,line,color,w-10)
-        self.put(end-4,4,'Stale = no GitHub status update for >10 min; NOT proof of logout or idling.',
-                 'yellow',w-10)
-        self.put(end-3,4,'Old clients and machines without telemetry remain UNMONITORED.',
-                 'muted',w-10)
-        self.put(end-2,4,'W opens this page  |  G refreshes  |  TAB navigates  |  ? help',
-                 'muted',w-10)
+            self.card(area, 'AWAITING HEARTBEATS', 'UNKNOWN', 'yellow').lines([
+                'No upgraded worker heartbeats available yet.',
+                ('This does NOT prove workers are offline.', 'yellow'),
+                'Old clients supply only GitHub claims / PR activity.',
+                'G refreshes telemetry; worker restart is a separate action.'])
+            return
+        priority = {'ERROR': 0, 'STALE': 1, 'STOPPED': 2, 'IDLE': 3, 'WORKING': 4}
+        items = sorted(records, key=lambda r: (priority.get(presence_view.classify(r)[0], 5), r['owner']))
+        columns = layout.worker_columns
+        rows = max(1, (area.h+1)//7)
+        capacity = columns*rows
+        start, stop = ui_components.scroll_window(self.scroll['workers'], len(items), capacity)
+        self.scroll['workers'] = start
+        visible = items[start:stop]
+        tiles = ui_components.grid(area, columns=min(columns, len(visible)),
+                                   rows=(len(visible)+columns-1)//columns)
+        for rect, item in zip(tiles, visible):
+            state, secs = presence_view.classify(item)
+            age = (f'{secs//60}m ago' if secs >= 60 else f'{secs}s ago') if secs >= 0 else 'UNKNOWN'
+            card = self.card(rect, item['owner'], state, self.severity(state))
+            card.lines([(f"[{state}] {item['provider']} | issue {('#'+str(item['issue'])) if item.get('issue') else 'UNKNOWN'}", self.severity(state)),
+                        f"Last signal: {age} | device {item['worker'][:8]}",
+                        ('Observed heartbeat only; no credential access.', 'muted')])
 
     def draw_help(self, y, end, w):
-        self.frame(y, 1, end-y-1, w-3, " OPERATOR GUIDE  •  NO WORKER MODIFICATIONS ")
+        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'OPERATOR GUIDE', 'UP/DOWN')
         lines = [
+            ('GROUPS', '{ / } previous / next group. Tab / Shift-Tab cycles every page.'),
+            ('CARDS', 'PULSE and OWNER OPS: PgUp/PgDn cycles card views. Up/Down scrolls expanded prose.'),
+            ('SEARCH', 'Tasks / PRs / Actions: / edits search. Enter applies, Esc restores. / then clear removes filter.'),
+            ('DETAILS', 'Tasks / PRs / Actions: D toggles full details. PgUp/PgDn scrolls details or pages a compact list.'),
             ("WORKERS", "W monitors opt-in contributor heartbeats, idle/error/stale signals."),
             ("SOURCE MAP", "7 shows per-library identified/recovered/merged/verified map; [ ] cycle libraries."),
             ("APK ATLAS", "8 shows discovered original APK zip entries and reference .so filenames."),
@@ -1881,9 +1962,9 @@ class Observatory:
             ("LIFECYCLE", "Project roadmap tasks use existing nova:queued AI worker pool."),
             ("EXPANSION", "Gameplay features require a concrete spec; roadmap handles scaffolding."),
         ]
-        for i, (left, right) in enumerate(lines[:max(0,end-y-5)]):
-            self.put(y+2+i, 4, f"{left:<14}", "cyan")
-            self.put(y+2+i, 20, right, "normal", w-26)
+        rows = [('PAGE SHORTCUTS: ' + ' | '.join(f'{key} {name}' for key, name in zip(TAB_KEYS, TABS)), 'cyan')]
+        rows += [(left+': '+right, 'normal') for left, right in lines]
+        self.scroll['help'] = card.scrolled(rows, self.scroll['help'])
 
     def show_notice(self, msg):
         self.notice = msg
@@ -1900,6 +1981,20 @@ class Observatory:
         return None
 
     def handle(self, key) -> bool:
+        # Resize is never text input or consent, even while a modal is active.
+        if key == curses.KEY_RESIZE:
+            return True
+        if self.search_edit:
+            if key in (10, 13, curses.KEY_ENTER):
+                self.search_edit = False
+            elif key == 27:
+                self.search[self.tab] = self.search_before
+                self.search_edit = False
+            elif key in (curses.KEY_BACKSPACE, 127, 8):
+                self.search[self.tab] = self.search[self.tab][:-1]
+            elif 32 <= key < 127 and len(self.search[self.tab]) < 80:
+                self.search[self.tab] += chr(key)
+            return True
         if self.merge_phrase is not None:
             if key in (27,):
                 self.merge_phrase = None
@@ -1931,6 +2026,46 @@ class Observatory:
             return True
         if key in (ord('q'), ord('Q')):
             return False
+        if key == ord('/') and self.tab in (1, 2, 3):
+            self.search_edit = True
+            self.search_before = self.search[self.tab]
+            return True
+        if self.tab in (1, 2, 3) and key in (ord('d'), ord('D'), curses.KEY_PPAGE, curses.KEY_NPAGE):
+            field = {1: 'tasks', 2: 'prs', 3: 'actions'}[self.tab]
+            if key in (ord('d'), ord('D')):
+                self.scroll[field+'_detail'] = 1-self.scroll[field+'_detail'] % 2
+                self.scroll[field+'_lines'] = 0
+            else:
+                height, width = self.stdscr.getmaxyx()
+                layout = ui_components.Layout(width, height)
+                direction = 1 if key == curses.KEY_NPAGE else -1
+                if self.scroll[field+'_detail'] % 2 or not layout.compact:
+                    self.scroll[field+'_lines'] = max(0, self.scroll[field+'_lines'] + direction*max(1, layout.content.h-4))
+                else:
+                    self.indices[field] = max(0, self.indices[field] + direction*max(1, layout.content.h-5))
+            return True
+        if key in (ord('{'), ord('}')):
+            direction = 1 if key == ord('}') else -1
+            group = (self.current_group()+direction) % len(TAB_GROUPS)
+            self.tab = TAB_GROUPS[group][1][0]
+            return True
+        if key in (curses.KEY_PPAGE, curses.KEY_NPAGE) and self.tab in (0, 9):
+            field = 'pulse' if self.tab == 0 else 'owner_page'
+            self.scroll[field] += 1 if key == curses.KEY_NPAGE else -1
+            self.scroll['owner_lines'] = 0
+            self.scroll['pulse_lines'] = 0
+            return True
+        if ((self.tab in (0, 9, 10, 13) and key in (curses.KEY_UP, curses.KEY_DOWN)) or
+                (self.tab in (10, 13) and key in (ord('k'), ord('K'), ord('j'), ord('J')))):
+            field = {0: 'pulse_lines', 9: 'owner_lines', 10: 'workers', 13: 'help'}[self.tab]
+            self.scroll[field] = max(0, self.scroll[field] + (
+                -1 if key in (curses.KEY_UP, ord('k'), ord('K')) else 1))
+            return True
+        owner_command = ((self.tab == 9 and key in map(ord, 'cCiIjJdDnNuUpP')) or
+                         key in (ord('f'), ord('F')))
+        if owner_command and (self.snap.repo_role not in operator_ops.OWNER_ROLES or self.collector.demo):
+            self.show_notice('OWNER OPS LOCKED: ADMIN/MAINTAIN role required')
+            return True
         if key == ord('?'):
             self.tab = len(TABS)-1
             return True
@@ -1960,7 +2095,8 @@ class Observatory:
             self.collector.force_refresh()
             self.show_notice("GitHub refresh requested")
         elif key in (ord('b'),ord('B')) and self.tab==2:
-            records=sorted(self.snap.prs,key=lambda x:(x.get('state')!='OPEN',-(x.get('number') or 0)))
+            records=(self.active_records if getattr(self, 'active_records_tab', None) == 2 else
+                     sorted(self.snap.prs,key=lambda x:(x.get('state')!='OPEN',-(x.get('number') or 0))))
             idx=self.indices['prs']
             if 0<=idx<len(records) and records[idx].get('state')=='OPEN':
                 n=records[idx]['number']
