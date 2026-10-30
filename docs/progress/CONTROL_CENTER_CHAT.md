@@ -138,6 +138,12 @@ gate; this page reports that explicitly. Offline transports surface
 
 ## Limitations / follow-ups
 
+The standalone installers include the source-owned planning ledger, bridge
+and authorization modules. An isolated installed-bundle regression checks
+decision persistence, role revocation and the unavailable-provider result
+without a checkout, network access or model invocation. The install directory
+is distinct from the private state directory.
+
 * Providers are injected adapters. This PR does not implement vendor CLI
   transports; without an adapter the page says `NOT CONNECTED` rather than
   shelling out. Wiring the real adapters (and #136 Hermes planner) is follow-up.

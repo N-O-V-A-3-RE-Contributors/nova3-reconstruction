@@ -36,6 +36,10 @@ import types
 from typing import Callable, Iterable, Mapping, Protocol, Sequence, cast
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+if not (_REPO_ROOT / "nova3_team").is_dir():
+    # A standalone install must not mistake ~/.local for the source checkout
+    # and consequently reject the user's private ~/.local/state ledger.
+    _REPO_ROOT = Path(__file__).resolve().parent
 
 
 def _load_planning_modules():
@@ -51,7 +55,9 @@ def _load_planning_modules():
     package = sys.modules.get(package_name)
     if package is None:
         package = types.ModuleType(package_name)
-        package.__path__ = [str(_REPO_ROOT / "nova3_team")]
+        installed = Path(__file__).resolve().parent / "planning_backend"
+        package.__path__ = [str(installed if installed.is_dir()
+                                else _REPO_ROOT / "nova3_team")]
         sys.modules[package_name] = package
     memory = importlib.import_module(package_name + ".planning_memory")
     bridge = importlib.import_module(package_name + ".planning_bridge")

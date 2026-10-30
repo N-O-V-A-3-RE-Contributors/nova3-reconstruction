@@ -1,7 +1,8 @@
 """Offline tests for the owner/admin Plan & Chat workspace (#140).
 
 Every test uses temporary per-user stores, scripted providers and fake
-authorization.  No network, no subprocess, no paid model call and no real
+authorization. Only an isolated Python interpreter is spawned; no network,
+paid model call or real
 GitHub transport is reachable from this file.
 """
 import importlib.util
@@ -686,6 +687,50 @@ class PlanScreenTests(unittest.TestCase):
             ui.handle(ord(key))
         ui.collector.perform_action.assert_not_called()
         self.assertIsNone(ui.confirm)
+
+
+class InstalledWorkspaceTests(unittest.TestCase):
+    def test_isolated_install_keeps_ledger_and_denies_unconnected_provider(self):
+        import shutil
+        import subprocess
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bundle = root / 'share' / 'control-center'
+            backend = bundle / 'planning_backend'
+            backend.mkdir(parents=True)
+            shutil.copyfile(TOOLS / 'planning_chat.py', bundle / 'planning_chat.py')
+            for name in ('access_policy.py', 'planning_bridge.py', 'planning_memory.py'):
+                shutil.copyfile(TOOLS.parents[1] / 'nova3_team' / name, backend / name)
+            script = '''
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import planning_chat as pc
+state = Path(sys.argv[2])
+role = {'allowed': True, 'role': 'ADMIN', 'organization_owner': False}
+workspace = pc.ChatWorkspace(store_root=state, user='fixture', role_provider=lambda: role)
+workspace.create_thread('Installed ledger')
+workspace.pin_decision('Preserve the installed decision', 'isolated fixture')
+assert workspace.run_turn('No provider may be launched')['status'] == 'provider-unavailable'
+assert workspace.state()['thread']['provider_state'] == 'NOT CONNECTED'
+workspace.close()
+workspace = pc.ChatWorkspace(store_root=state, user='fixture', role_provider=lambda: role)
+assert workspace.decisions()[0]['text'] == 'Preserve the installed decision'
+role.update(allowed=False, role='READ')
+try:
+    workspace.pin_decision('Denied decision')
+except pc.ChatError:
+    pass
+else:
+    raise AssertionError('revoked role wrote to ledger')
+workspace.close()
+print('installed ledger and authorization passed')
+'''
+            result = subprocess.run(
+                [sys.executable, '-B', '-I', '-c', script, str(bundle), str(root / 'state')],
+                cwd=root, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('installed ledger and authorization passed', result.stdout)
 
 
 if __name__ == '__main__':

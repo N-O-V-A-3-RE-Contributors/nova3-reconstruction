@@ -22,7 +22,7 @@ if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
 New-Item -ItemType Directory -Force -Path $stage | Out-Null
 foreach ($file in @('observer.py','operator_ops.py','presence_view.py','progress.py','forecast_model.py',
                     'project_roadmap.json','ui_components.py','live_status.py','journal_inspector.py',
-                    'onboarding.py','provider_accounts.py')) {
+                    'onboarding.py','provider_accounts.py','planning_chat.py')) {
   Copy-Item -LiteralPath (Join-Path $source $file) -Destination (Join-Path $stage $file) -Force
 }
 # Provider metadata is owned by nova3_team/provider_runtime.py; without it the
@@ -35,14 +35,21 @@ $hermes = Join-Path $source '../../nova3_team/hermes_runtime.py'
 if (Test-Path -LiteralPath $hermes) {
   Copy-Item -LiteralPath $hermes -Destination (Join-Path $stage 'hermes_runtime.py') -Force
 }
+$planningBackend = Join-Path $stage 'planning_backend'
+New-Item -ItemType Directory -Path $planningBackend | Out-Null
+foreach ($file in @('access_policy.py','planning_bridge.py','planning_memory.py')) {
+  Copy-Item -LiteralPath (Join-Path $source "../../nova3_team/$file") -Destination (Join-Path $planningBackend $file)
+}
 # Offline synthetic health check before replacing the installed directory.
 & $python -I (Join-Path $stage 'observer.py') --demo --once | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Staged NOVA3 Control Center health check failed; previous install preserved' }
 # Fail closed if the provider registry/Accounts page could not load.
 & $python -I -c "import sys; sys.path.insert(0, r'$stage'); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Staged Accounts/provider runtime check failed; previous install preserved' }
+& $python -B -I -c "import sys; sys.path.insert(0, sys.argv[1]); import planning_chat; assert planning_chat.planning_memory" $stage | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Staged planning backend check failed; previous install preserved' }
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Force
+Copy-Item -Path (Join-Path $stage '*') -Destination $dest -Recurse -Force
 Remove-Item -Recurse -Force $stage
 $launcher = Join-Path $dest 'nova3-control.cmd'
 Set-Content -Encoding Ascii -Path $launcher -Value ('@echo off' + [Environment]::NewLine +
