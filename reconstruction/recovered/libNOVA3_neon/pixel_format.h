@@ -28,6 +28,7 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm>
 
 namespace nova3::recovered::pixel_format {
 
@@ -173,6 +174,33 @@ inline std::uint32_t compute_mipmap_size_in_bytes_slices(
     height = mip_shift(height, mip_level);
     depth = mip_shift(depth, mip_level);
     return depth * compute_size_in_bytes(table, format_index, width, height);
+}
+
+// getMipmapCount  —  ELF VA 0x007b84e0, 108 bytes, A32.
+// Symbol: _ZN6glitch5video12pixel_format14getMipmapCountEjjj
+//   Returns 0 if mipCount == 0.
+//   Otherwise: max(floor(log2(max(width, height))), floor(log2(mipCount))) + 1
+//
+// The original uses repeated right-shift loops (lsrs + add + bne) to
+// compute floor(log2) for each argument; the behaviour is identical to
+// the explicit bit-scan below.
+//
+// Caller CVirtualTexture::getSizeInBytes(unsigned char) at 0x0077d4a8
+// uses the result as the mip level (clamped to its targetLevel arg).
+inline std::uint32_t get_mipmap_count(std::uint32_t width,
+                                       std::uint32_t height,
+                                       std::uint32_t mip_count) noexcept {
+    if (mip_count == 0) return 0;
+
+    // floor(log2(x)) = position of highest set bit (31 - __builtin_clz)
+    auto log2 = [](std::uint32_t v) -> std::uint32_t {
+        if (v == 0) return 0xFFFFFFFFu; // original: mvn rN, #0 (all-ones)
+        return 31u - static_cast<std::uint32_t>(__builtin_clz(v));
+    };
+
+    const std::uint32_t max_dim = (std::max)(log2(width), log2(height));
+    const std::uint32_t max_count = (std::max)(max_dim, log2(mip_count));
+    return max_count + 1u;
 }
 
 } // namespace nova3::recovered::pixel_format
