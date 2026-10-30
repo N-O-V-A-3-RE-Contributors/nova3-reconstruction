@@ -98,9 +98,9 @@ class DesktopSecurityError(DesktopError):
 # --------------------------------------------------------------------------
 
 _SECRET_PATTERNS = (
-    re.compile(r'(gh[pousr]_[A-Za-z0-9]{10,})'),
-    re.compile(r'(github_pat_[A-Za-z0-9_]{10,})'),
-    re.compile(r'(sk-[A-Za-z0-9_-]{10,})'),
+    re.compile(r'gh[pousr]_[A-Za-z0-9]{10,}'),
+    re.compile(r'github_pat_[A-Za-z0-9_]{10,}'),
+    re.compile(r'sk-[A-Za-z0-9_-]{10,}'),
     re.compile(r'(?i)(bearer\s+)[A-Za-z0-9._~+/=-]{8,}'),
     re.compile(r'(?i)((?:token|secret|password|api[_-]?key)\s*[=:]\s*)\S+'),
 )
@@ -413,10 +413,9 @@ class WorkerController:
     """Thin adapter over the existing bounded-slot worker API.
 
     Every start goes through ``nova3_team.worker.launch_slots`` with a gate, so
-    the owner/admin approval check happens before any provider process. Pause
-    and resume use ``worker.SlotScheduler``. They change scheduling state only;
-    they deliberately never send OS signals to a provider process (see the
-    documented limitation in ``docs/progress/CONTRIBUTOR_ONBOARDING.md``).
+    the owner/admin approval check happens before any provider process. The
+    in-memory scheduler cannot control a separate worker's claim loop; active
+    process controls therefore report unavailability instead of false success.
     """
 
     def __init__(self, repo: str, *, cwd=None, python=None, popen=None,
@@ -438,11 +437,11 @@ class WorkerController:
         self.processes = ()
 
     # -- helpers ---------------------------------------------------------
-    def _scheduler(self):
+    def _scheduler(self, total=1):
         if self.scheduler is None:
             from nova3_team import worker
             factory = self.scheduler_factory or worker.SlotScheduler
-            self.scheduler = factory(total_processes=1)
+            self.scheduler = factory(total_processes=total)
         return self.scheduler
 
     def _launch(self, **kwargs):
@@ -492,18 +491,23 @@ class WorkerController:
         if not getattr(result, 'started', False):
             self.detail = redact_text(getattr(result, 'reason', 'launch_refused'), 200)
             return {'ok': False, 'reason': self.detail}
-        slot = plan.slots[0].slot
         self.provider = plan.slots[0].provider
-        scheduler = self._scheduler()
-        if slot not in scheduler.slots:
-            scheduler.add(slot, self.provider)
-        scheduler.start(slot, process=(getattr(result, 'processes', ()) or (None,))[0])
         self.processes = tuple(getattr(result, 'processes', ()) or ())
+        scheduler = self._scheduler(plan.total)
+        for index, item in enumerate(plan.slots):
+            if item.slot not in scheduler.slots:
+                scheduler.add(item.slot, item.provider)
+            scheduler.start(item.slot, process=(self.processes[index]
+                            if index < len(self.processes) else None))
         self.state = 'running'
-        self.detail = f'Started one {self.provider} worker after the owner/admin gate.'
+        self.detail = f'Started {plan.total} worker(s) after the owner/admin gate.'
         return {'ok': True, 'reason': self.detail}
 
     def pause(self) -> dict:
+        if self.processes:
+            return {'ok': False, 'reason': (
+                'This GUI has no worker scheduling-control channel. The worker '
+                'continues running; use the confirmed local worker controls.')}
         if self.state != 'running':
             return {'ok': False, 'reason': 'Only a running worker can be paused.'}
         self._scheduler().pause(DEFAULT_SLOT)
@@ -513,6 +517,10 @@ class WorkerController:
         return {'ok': True, 'reason': self.detail}
 
     def resume(self) -> dict:
+        if self.processes:
+            return {'ok': False, 'reason': (
+                'This GUI has no worker scheduling-control channel; no resume '
+                'command was sent to the worker.')}
         if self.state != 'paused':
             return {'ok': False, 'reason': 'Only a paused worker can be resumed.'}
         self._scheduler().resume(DEFAULT_SLOT)
@@ -521,6 +529,10 @@ class WorkerController:
         return {'ok': True, 'reason': self.detail}
 
     def stop(self) -> dict:
+        if self.processes:
+            return {'ok': False, 'reason': (
+                'This GUI cannot safely stop an active worker and its provider. '
+                'The worker continues running; use the confirmed local worker controls.')}
         if self.scheduler is not None and DEFAULT_SLOT in self.scheduler.slots:
             self.scheduler.stop(DEFAULT_SLOT)
         self.state = 'stopped'

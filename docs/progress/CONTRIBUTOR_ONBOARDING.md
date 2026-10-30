@@ -72,11 +72,12 @@ native `<label for>`/`<input>`/`<button>` elements and status regions use
 
 ## Known limitations
 
-* **Pause does not signal a provider process.** Cross-platform process
-  suspension has no safe standard-library primitive, so Pause changes the
-  scheduler state (`SlotScheduler.pause`) and stops new work from being handed
-  out. A provider process that is already running keeps running; use Stop or
-  Ctrl+C to end it. This is stated in the UI.
+* **Active worker controls are unavailable in this GUI.** The in-memory
+  scheduler has no command channel to the separate worker's claim loop.
+  Pause/Resume/Stop therefore return an explicit failure while a launched
+  worker exists, leaving its state and process untouched. Use the confirmed
+  local worker controls instead. No successful pause or shutdown is claimed.
+  All explicitly selected slots are retained in the controller's scheduler.
 * **No login inside the GUI.** `gh auth login` and vendor CLI logins are
   interactive terminal flows; the wizard only re-checks their status. This is
   deliberate — the server must never receive a token or drive a browser login.

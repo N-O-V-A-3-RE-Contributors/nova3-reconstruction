@@ -390,6 +390,50 @@ class WizardTests(GuiCase):
         self.assertNotIn(secret, blob)
         self.assertIn('[redacted]', json.dumps(result))
 
+    def test_unlabelled_tokens_are_removed_from_errors_and_state(self):
+        for secret in ('ghp_' + 'A' * 36, 'github_pat_' + 'B' * 40,
+                       'sk-' + 'C' * 32):
+            with self.subTest(kind=secret.split('_')[0]):
+                def failing(provider):
+                    raise RuntimeError('installer failed with ' + secret)
+                session = self.make_session(installer=failing)
+                session.refresh_providers()
+                result = session.dispatch({'action': 'install_provider',
+                                           'provider': 'codex', 'consent': True})
+                blob = json.dumps(result) + json.dumps(session.snapshot())
+                self.assertNotIn(secret, blob)
+                self.assertIn('[redacted]', blob)
+
+    def test_real_controller_never_claims_unsent_process_control_succeeded(self):
+        controller = desktop.WorkerController('Org/repo')
+        process = mock.Mock()
+        controller.processes = (process,)
+        controller.state = 'running'
+        for operation in (controller.pause, controller.resume, controller.stop):
+            with self.subTest(operation=operation.__name__):
+                result = operation()
+                self.assertFalse(result['ok'])
+                self.assertEqual(controller.state, 'running')
+        process.assert_not_called()
+        process.terminate.assert_not_called()
+        process.kill.assert_not_called()
+
+    def test_multiple_consented_slots_keep_all_process_handles(self):
+        from nova3_team import worker
+        processes = (mock.Mock(), mock.Mock())
+        controller = desktop.WorkerController(
+            'Org/repo', gate_factory=lambda repo: object(),
+            issues_fetcher=lambda repo: [],
+            launcher=lambda **kw: worker.LaunchResult(True, 'launched', (), processes))
+        candidates = [worker.ProviderCandidate('codex', True, True),
+                      worker.ProviderCandidate('claude', True, True)]
+        with mock.patch.object(worker, 'provider_candidates', return_value=candidates):
+            result = controller.start(slots=2, consent=True)
+        self.assertTrue(result['ok'])
+        self.assertEqual(len(controller.scheduler.slots), 2)
+        self.assertEqual(controller.processes, processes)
+        self.assertEqual(tuple(s.process for s in controller.scheduler.slots.values()), processes)
+
     def test_open_control_center_returns_terminal_command(self):
         result = self.post('open_control_center')
         self.assertEqual(result[0], 200)
