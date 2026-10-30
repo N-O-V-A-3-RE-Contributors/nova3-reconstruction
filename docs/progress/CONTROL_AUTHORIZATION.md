@@ -292,13 +292,13 @@ Run offline, without installing dependencies or invoking existing workers:
 PYTHONDONTWRITEBYTECODE=1 python -m unittest nova3_team.tests.test_access_policy -v
 ```
 
-Policy suite: **46 policy tests passed**, exit 0. Full offline discovery suite:
+Policy suite: **47 policy tests passed**, exit 0. Full offline discovery suite:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python -B -m unittest discover -s nova3_team/tests -q
 ```
 
-**546 tests run, 6 skipped**, exit 0.
+**547 tests run, 6 skipped**, exit 0.
 
 Tests use only
 synthetic API payloads, fixed time and fake numeric IDs. Coverage includes all

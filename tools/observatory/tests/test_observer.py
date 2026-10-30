@@ -3,6 +3,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import random
+import threading
+from types import SimpleNamespace
 from datetime import datetime, timezone, timedelta
 from unittest import mock
 
@@ -222,6 +225,462 @@ class Tests(unittest.TestCase):
 
     def test_sparkline_zero(self):
         self.assertEqual(o.simple_sparkline([0,0,0]),'▁▁▁')
+
+
+class StrictSurface:
+    """Composite terminal cells; reject unsafe writes instead of swallowing them."""
+    def __init__(self, width, height):
+        self.width, self.height = width, height
+        self.refreshes = 0
+
+    def getmaxyx(self):
+        return self.height, self.width
+
+    def erase(self):
+        self.cells = [[' '] * self.width for _ in range(self.height)]
+
+    def refresh(self):
+        self.refreshes += 1
+
+    def addnstr(self, y, x, text, count, style):
+        assert 0 <= y < self.height and 0 <= x < self.width, (y, x)
+        assert 0 <= count <= len(text), count
+        assert x + o.ui_components.cell_width(text[:count]) < self.width, (y, x, text)
+        assert all(ord(c) >= 32 and c != '\x7f' for c in text)
+        for c in text[:count]:
+            width = o.ui_components.cell_width(c)
+            if width:
+                self.cells[y][x] = c
+                x += width
+
+    def line(self, y):
+        return ''.join(self.cells[y]).rstrip()
+
+    def text(self):
+        return '\n'.join(self.line(y) for y in range(self.height))
+
+
+class ResponsiveTests(unittest.TestCase):
+    SIZES = ((80, 24), (100, 30), (120, 40), (160, 45), (192, 54))
+
+    def setUp(self):
+        guidance = mock.patch.object(o, 'historical_setup_text', return_value='Synthetic optional toolchain guidance')
+        guidance.start()
+        self.addCleanup(guidance.stop)
+
+    def make_ui(self, width=80, height=24, role='READ', demo=False):
+        snap = o.Snapshot(
+            issues=[dict(issue(n, title=f'Synthetic task {n}'), url=f'https://github.com/fixture/repo/issues/{n}')
+                    for n in range(1, 32)],
+            prs=[dict(pr(n, n+100), isDraft=False, url=f'https://github.com/fixture/repo/pull/{n+100}')
+                 for n in range(1, 8)],
+            runs=[{'databaseId': 1, 'workflowName': 'Synthetic CI', 'status': 'COMPLETED',
+                   'conclusion': 'SUCCESS', 'displayTitle': 'Fixture check',
+                   'createdAt': '2026-10-29T00:00:00Z'}],
+            repo_role=role, inventory={'available': True, 'verified': 0},
+            service={'active': 'active', 'pid': '123'})
+        collector = SimpleNamespace(repo='fixture/repo', service='fixture.service', demo=demo,
+                                    lock=threading.Lock(), snapshot=snap, merge_preview=None,
+                                    perform_action=mock.Mock(), execute_merge=mock.Mock(),
+                                    prepare_merges=mock.Mock(), force_refresh=mock.Mock())
+        ui = o.Observatory(collector)
+        ui.snap, ui.stdscr, ui.unicode = snap, StrictSurface(width, height), True
+        return ui
+
+    def test_density_uses_both_live_dimensions(self):
+        policy = o.ui_components.Layout
+        for size, expected in (((80, 24), 'compact'), ((100, 30), 'compact'),
+                               ((120, 40), 'medium'), ((160, 45), 'spacious'),
+                               ((192, 54), 'panoramic'), ((192, 24), 'compact'),
+                               ((80, 54), 'compact'), ((71, 40), 'tiny'), ((192, 17), 'tiny')):
+            self.assertEqual(policy(*size).density, expected)
+
+    def test_registry_and_deterministic_navigation(self):
+        self.assertEqual(len(o.TABS), len(o.TAB_KEYS))
+        self.assertEqual(len(o.TABS), len(o.TAB_SHORT))
+        self.assertEqual(len(set(o.TAB_KEYS)), 15)
+        self.assertEqual(sorted(p for _, pages in o.TAB_GROUPS for p in pages), list(range(15)))
+        ui = self.make_ui(role='ADMIN')
+        for i, key in enumerate(o.TAB_KEYS):
+            ui.tab = 0
+            ui.handle(ord(key))
+            self.assertEqual(ui.tab, i)
+        ui.tab = 0
+        for i in range(15):
+            self.assertEqual(ui.tab, i)
+            ui.handle(9)
+        self.assertEqual(ui.tab, 0)
+        for i in range(14, -1, -1):
+            ui.handle(o.curses.KEY_BTAB)
+            self.assertEqual(ui.tab, i)
+        ui.tab = 0
+        for group in range(1, len(o.TAB_GROUPS)+1):
+            ui.handle(ord('}'))
+            self.assertEqual(ui.current_group(), group % len(o.TAB_GROUPS))
+        ui.handle(ord('{'))
+        self.assertEqual(ui.current_group(), len(o.TAB_GROUPS)-1)
+
+    def test_every_page_size_role_ascii_and_no_side_effects(self):
+        for width, height in self.SIZES:
+            for role, demo in (('ADMIN', False), ('MAINTAIN', False), ('WRITE', False),
+                               ('READ', False), ('UNKNOWN', False), ('ADMIN', True)):
+                ui = self.make_ui(width, height, role, demo)
+                for unicode in (True, False):
+                    ui.unicode = unicode
+                    for tab in range(len(o.TABS)):
+                        with self.subTest(size=(width, height), role=role, demo=demo, tab=tab, unicode=unicode):
+                            ui.tab = tab
+                            ui.render()
+                            text = ui.stdscr.text()
+                            self.assertIn('['+o.TAB_KEYS[tab]+':'+o.TABS[tab]+']', ui.stdscr.line(4))
+                            self.assertIn('['+o.TAB_GROUPS[ui.current_group()][0]+']', ui.stdscr.line(3))
+                            self.assertIn('? help', ui.stdscr.line(height-1))
+                            self.assertIn('Q quit', ui.stdscr.line(height-1))
+                            if tab == 9 and (role not in o.operator_ops.OWNER_ROLES or demo):
+                                self.assertIn('LOCKED', text)
+                            if not unicode:
+                                self.assertTrue(text.isascii())
+                ui.collector.perform_action.assert_not_called()
+                ui.collector.execute_merge.assert_not_called()
+                ui.collector.prepare_merges.assert_not_called()
+
+    def test_randomized_resize_preserves_state_and_bounds(self):
+        rng = random.Random(124)
+        ui = self.make_ui(role='ADMIN')
+        ui.confirm = 'discovery-now'
+        for _ in range(70):
+            width, height = rng.randint(1, 230), rng.randint(1, 65)
+            ui.stdscr = StrictSurface(width, height)
+            for tab in range(len(o.TABS)):
+                ui.tab = tab
+                ui.scroll['pulse'] = rng.randrange(5)
+                ui.scroll['owner_page'] = rng.randrange(4)
+                ui.indices['tasks'] = rng.randrange(10000)
+                ui.scroll['workers'] = rng.randrange(10000)
+                self.assertTrue(ui.handle(o.curses.KEY_RESIZE))
+                ui.render()
+                self.assertEqual(ui.confirm, 'discovery-now')
+                self.assertEqual(ui.layout.width, width)
+                self.assertEqual(ui.layout.height, height)
+            self.assertEqual(ui.stdscr.refreshes, 15)
+        ui.collector.perform_action.assert_not_called()
+
+    def test_narrow_card_pages_and_wrapped_scroll(self):
+        ui = self.make_ui(role='ADMIN')
+        for tab, titles in ((0, ('WORKER TELEMETRY', 'TASK PIPELINE', 'EVIDENCE / FORECAST', 'LIVE ACTIVITY')),
+                            (9, ('DISCOVERY TIMER', 'GIT BRANCH ALIGNMENT', 'BULK PR MERGE', 'OPERATOR EVENTS'))):
+            ui.tab = tab
+            if tab == 0:
+                ui.handle(o.curses.KEY_NPAGE)  # leave the four-card summary
+            for title in titles:
+                ui.render()
+                self.assertIn(title, ui.stdscr.text())
+                ui.handle(o.curses.KEY_NPAGE)
+        ui.tab = 14
+        ui.render()
+        before = ui.stdscr.text()
+        for _ in range(15):
+            ui.handle(o.curses.KEY_DOWN)
+        ui.render()
+        self.assertNotEqual(before, ui.stdscr.text())
+        ui.scroll['help'] = 10000
+        ui.render()
+        self.assertLess(ui.scroll['help'], 10000)
+        ui.stdscr = StrictSurface(192, 54)
+        ui.render()
+        self.assertGreaterEqual(ui.scroll['help'], 0)
+
+    def test_search_cursor_selection_details_and_status_overlay(self):
+        ui = self.make_ui()
+        ui.tab = 1
+        ui.indices['tasks'] = 10000
+        ui.handle(ord('/'))
+        for c in 'Synthetic task 12':
+            ui.handle(ord(c))
+        ui.handle(o.curses.KEY_RESIZE)
+        ui.render()
+        self.assertEqual([r['number'] for r in ui.active_records], [12])
+        self.assertEqual(ui.indices['tasks'], 0)
+        self.assertIn('_  Enter apply / Esc cancel', ui.stdscr.line(23))
+        ui.handle(10)
+        self.assertFalse(ui.search_edit)
+        self.assertEqual(ui.selected_url(), 'https://github.com/fixture/repo/issues/12')
+        ui.handle(ord('d'))
+        ui.render()
+        self.assertIn('SELECTED RECORD', ui.stdscr.text())
+        self.assertIn('Synthetic task 12', ui.stdscr.text())
+        ui.handle(ord('/'))
+        ui.search[1] = 'x'*80
+        ui.render()
+        self.assertIn('_  Enter apply / Esc cancel', ui.stdscr.line(23))
+        ui.handle(27)
+        self.assertEqual(ui.search[1], 'Synthetic task 12')
+        ui.show_notice('STATUS OVERLAY FIXTURE')
+        ui.render()
+        self.assertIn('STATUS OVERLAY FIXTURE', ui.stdscr.line(22))
+        self.assertIn('Q quit', ui.stdscr.line(23))
+        ui.stdscr = StrictSurface(120, 40)
+        ui.handle(ord('d'))  # restore list plus detail
+        ui.render()
+        self.assertIn('GITHUB TASK LEDGER', ui.stdscr.text())
+        self.assertIn('SELECTED RECORD', ui.stdscr.text())
+
+    def test_filtered_pr_mark_targets_visible_selection(self):
+        ui = self.make_ui(role='ADMIN')
+        ui.tab = 2
+        ui.search[2] = '#3:'
+        ui.render()
+        self.assertEqual(len(ui.active_records), 1)
+        ui.handle(ord('b'))
+        self.assertEqual(ui.pr_marked, {103})
+        ui.search[2] = 'no match'
+        ui.render()
+        ui.handle(ord('b'))
+        self.assertEqual(ui.pr_marked, {103})
+
+    def test_worker_cards_scroll_and_resize_without_losing_records(self):
+        ui = self.make_ui()
+        now = datetime.now(timezone.utc).isoformat()
+        ui.snap.worker_presence = [dict(owner=f'contributor-{i:02}', state='WORKING', updated=now,
+                                        provider='synthetic', issue=i, worker=f'{i:016x}')
+                                   for i in range(1, 20)]
+        ui.tab = 10
+        for width, height in self.SIZES:
+            ui.stdscr = StrictSurface(width, height)
+            seen = set()
+            ui.scroll['workers'] = 0
+            for _ in range(20):
+                ui.render()
+                text = ui.stdscr.text()
+                seen.update(r['owner'] for r in ui.snap.worker_presence if r['owner'] in text)
+                self.assertIn('CONTRIBUTOR HEALTH', text)
+                self.assertIn('[WORKING]', text)
+                ui.handle(o.curses.KEY_DOWN)
+            self.assertEqual(seen, {r['owner'] for r in ui.snap.worker_presence})
+            ui.scroll['workers'] = 10000
+            ui.render()
+            self.assertLess(ui.scroll['workers'], 20)
+
+    def test_cards_are_disjoint_and_activity_stays_sanitized(self):
+        ui = self.make_ui(role='ADMIN')
+        ui.snap.activity = {'state': 'AVAILABLE', 'records': [dict(
+            issue=1, round=1, timestamp_utc=datetime.now(timezone.utc).isoformat(),
+            status='TESTING', event_category='test', structured_events=True,
+            commands_started=7, commands_completed=6, tests_started=3, tests_completed=2,
+            file_changed_count=1, last_activity_age_seconds=1, counts_complete=False,
+            raw_log='PRIVATE_SENTINEL prompt=secret /private/path')]}
+        for width, height in self.SIZES:
+            ui.stdscr = StrictSurface(width, height)
+            for tab in (0, 1, 2, 9, 10, 12):
+                ui.tab = tab
+                with mock.patch.object(ui, 'frame', wraps=ui.frame) as frames:
+                    ui.render()
+                rectangles = [o.ui_components.Rect(*c.args[:4]) for c in frames.call_args_list]
+                for a in rectangles:
+                    self.assertGreaterEqual(a.h, 3)
+                    self.assertGreaterEqual(a.w, 6)
+                    self.assertGreaterEqual(a.y, 6)
+                    self.assertLessEqual(a.y+a.h, height-3)
+                    self.assertLessEqual(a.x+a.w, width-1)
+                for i, a in enumerate(rectangles):
+                    for b in rectangles[i+1:]:
+                        self.assertTrue(a.x+a.w <= b.x or b.x+b.w <= a.x or
+                                        a.y+a.h <= b.y or b.y+b.h <= a.y, (a, b))
+                text = ui.stdscr.text()
+                self.assertNotIn('PRIVATE_SENTINEL', text)
+                if tab == 0:
+                    self.assertGreaterEqual(len(rectangles), 4)
+                    self.assertIn('Whole-game ETA: UNKNOWN', text)
+                if tab == 12:
+                    self.assertIn('Commands 7 started / 6 completed', text)
+                    self.assertIn('Tests 3 started / 2 completed', text)
+
+    def test_tiny_resize_keeps_pending_confirmation_visible(self):
+        # A pending confirmation still accepts Y, so a resize message must not
+        # hide which privileged action is about to run.
+        ui = self.make_ui(role='ADMIN')
+        ui.tab = 9
+        ui.handle(ord('d'))
+        self.assertIsNotNone(ui.confirm)
+        action = ui.confirm
+        for width, height in ((71, 40), (192, 17), (30, 6)):
+            ui.stdscr = StrictSurface(width, height)
+            ui.handle(o.curses.KEY_RESIZE)
+            ui.render()
+            text = ui.stdscr.text()
+            self.assertIn(action, text)
+            self.assertIn('Y/N', text)
+            self.assertIsNotNone(ui.confirm)
+        ui.handle(ord('n'))
+        self.assertIsNone(ui.confirm)
+        ui.collector.perform_action.assert_not_called()
+
+    def test_owner_keys_preserved_and_guest_actions_locked(self):
+        for role, demo in (('WRITE', False), ('READ', False), ('UNKNOWN', False), ('ADMIN', True)):
+            ui = self.make_ui(role=role, demo=demo)
+            ui.tab = 9
+            for key in 'dDnNuUpPcCiIjJfF':
+                ui.handle(ord(key))
+                self.assertIsNone(ui.confirm)
+                self.assertIn('LOCKED', ui.notice)
+            ui.collector.prepare_merges.assert_not_called()
+            ui.collector.perform_action.assert_not_called()
+        ui = self.make_ui(role='ADMIN')
+        ui.tab = 9
+        ui.handle(ord('j'))
+        self.assertTrue(ui.allow_no_checks)  # original owner key, never prose scroll
+        ui.handle(ord('J'))
+        self.assertFalse(ui.allow_no_checks)
+        ui.handle(ord('d'))
+        ui.render()
+        self.assertIn('Y yes / N cancel', ui.stdscr.text())
+        ui.handle(o.curses.KEY_RESIZE)
+        ui.collector.perform_action.assert_not_called()
+        ui.handle(27)
+        self.assertIsNone(ui.confirm)
+
+
+class AccountsScreenTests(unittest.TestCase):
+    def build(self, width=80, height=24, role='READ', demo=False):
+        snap = o.Snapshot(repo_role=role)
+        collector = SimpleNamespace(
+            repo='fixture/repo', service='fixture.service', demo=demo,
+            lock=threading.Lock(), snapshot=snap, merge_preview=None,
+            perform_action=mock.Mock(), execute_merge=mock.Mock(),
+            prepare_merges=mock.Mock(), force_refresh=mock.Mock())
+        ui = o.Observatory(collector)
+        ui.snap, ui.stdscr, ui.unicode = snap, StrictSurface(width, height), True
+        return ui
+
+    def controller(self, ui, role='READ', login_opener=None):
+        runtime = o.provider_accounts.provider_runtime
+        probe = mock.Mock(side_effect=lambda pid: runtime.ProviderStatus(
+            pid, runtime.RuntimeState.AVAILABLE, '/fake/' + pid, '1.2.3', 'fixture'))
+        auth = mock.Mock(return_value=runtime.AuthEvidence(
+            runtime.AuthState.UNKNOWN, 'No verified status command.'))
+        ctrl = o.provider_accounts.AccountsController(
+            'fixture/repo', probe=probe, auth=auth,
+            identity_probe=lambda: o.provider_accounts.GitHubIdentity(
+                o.provider_accounts.AccountState.AUTHENTICATED, 'fixture-user',
+                ('repo',), 'status only'),
+            role_resolver=lambda: role,
+            opener=login_opener if login_opener is not None else ui._open_external)
+        ui.accounts = ctrl
+        ctrl.refresh_identity()
+        return ctrl
+
+    def test_accounts_page_renders_at_compact_and_panoramic_sizes(self):
+        for width, height in ((80, 24), (192, 54)):
+            ui = self.build(width, height)
+            self.controller(ui)
+            ui.tab = o.ACCOUNTS_TAB
+            ui.render()
+            text = ui.stdscr.text()
+            self.assertIn('AI PROVIDER ACCOUNTS', text)
+            self.assertIn('GITHUB IDENTITY / MEMBERS', text)
+            self.assertIn('ChatGPT (Codex CLI)', text)
+            self.assertIn('UNKNOWN', text)
+            self.assertIn('LOCKED (ADMIN/MAINTAIN required)', text)
+            self.assertIn('settings/access', text)
+            self.assertIn('[' + o.TAB_KEYS[o.ACCOUNTS_TAB] + ':' + o.TABS[o.ACCOUNTS_TAB] + ']',
+                          ui.stdscr.line(4))
+
+    def test_accounts_page_survives_tiny_and_resize(self):
+        ui = self.build(40, 12)
+        self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        for width, height in ((40, 12), (72, 18), (80, 24), (192, 54), (1, 1)):
+            ui.stdscr = StrictSurface(width, height)
+            ui.handle(o.curses.KEY_RESIZE)
+            ui.render()
+        self.assertIsNotNone(ui.layout)
+
+    def test_provider_selection_toggle_and_test_connection(self):
+        ui = self.build(120, 40)
+        ctrl = self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        first = ctrl.rows()[0].provider_id
+        ui.handle(ord('e'))
+        self.assertFalse(ctrl.rows()[0].enabled)
+        ui.handle(ord('e'))
+        self.assertTrue(ctrl.rows()[0].enabled)
+        ui.handle(ord('t'))
+        self.assertEqual(ctrl.last_test.provider_id, first)
+        ui.handle(o.curses.KEY_DOWN)
+        self.assertEqual(ctrl.rows()[ctrl.selected].provider_id, ctrl.ids[1])
+
+    def test_aborted_login_opens_nothing_and_collects_no_credentials(self):
+        ui = self.build()
+        ctrl = self.controller(ui)
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.handle(ord('l'))
+        self.assertEqual(ui.confirm, 'accounts-login')
+        self.assertEqual(ui.accounts_login, ctrl.ids[0])
+        ui.handle(ord('n'))
+        self.assertIsNone(ui.confirm)
+        self.assertIsNone(ui.accounts_login)
+        opener.assert_not_called()
+        self.assertNotIn('password', ui.notice.lower())
+        self.assertNotIn('token', ui.notice.lower())
+
+    def test_login_activation_suspends_and_restores_curses(self):
+        ui = self.build()
+        ctrl = self.controller(ui, login_opener=ui._open_external)
+        ui.tab = o.ACCOUNTS_TAB
+        with mock.patch.object(o.curses, 'def_prog_mode') as define, \
+                mock.patch.object(o.curses, 'endwin') as end, \
+                mock.patch.object(o.curses, 'reset_prog_mode') as reset, \
+                mock.patch.object(o.webbrowser, 'open', return_value=True) as browser:
+            ui.handle(ord('l'))
+            ui.handle(ord('y'))
+        define.assert_called_once()
+        end.assert_called_once()
+        reset.assert_called_once()
+        browser.assert_called_once()
+        self.assertIn(o.provider_accounts.provider_runtime.PROVIDERS[ctrl.ids[0]].docs_url,
+                      browser.call_args.args[0])
+
+    def test_contributor_cannot_open_owner_member_settings(self):
+        ui = self.build(role='WRITE')
+        ctrl = self.controller(ui, role='WRITE')
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.render()
+        self.assertIn('LOCKED', ui.stdscr.text())
+        ui.handle(ord('o'))
+        opener.assert_not_called()
+        self.assertIn('DENIED', ui.notice)
+        self.assertEqual(ctrl.invitation_url,
+                         'https://github.com/fixture/repo/settings/access')
+
+    def test_owner_role_revoked_between_render_and_action(self):
+        ui = self.build(role='ADMIN')
+        ctrl = self.controller(ui, role='ADMIN')
+        opener = mock.Mock(return_value=True)
+        ctrl._opener = opener
+        ui.tab = o.ACCOUNTS_TAB
+        ui.render()
+        self.assertIn('Owner actions: ADMIN', ui.stdscr.text())
+        ctrl._role_resolver = lambda: 'READ'  # server-side revocation
+        ui.handle(ord('o'))
+        opener.assert_not_called()
+        self.assertIn('DENIED', ui.notice)
+        self.assertEqual(ctrl.identity.role, 'READ')
+        ui.render()
+        self.assertIn('LOCKED', ui.stdscr.text())
+
+    def test_account_hotkeys_do_not_trigger_global_service_actions(self):
+        ui = self.build()
+        ctrl = self.controller(ui)
+        ui.tab = o.ACCOUNTS_TAB
+        for key in 'sxrfp':
+            ui.handle(ord(key))
+        self.assertIsNone(ui.confirm)
+        ui.collector.perform_action.assert_not_called()
+        self.assertEqual(ctrl.selected, 0)
 
 
 if __name__=='__main__':
