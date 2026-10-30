@@ -216,6 +216,22 @@ class WorkerGateOrderTests(unittest.TestCase):
 
 
 class RegistrySelectionTests(unittest.TestCase):
+    def test_slot_collision_denies_hermes_before_claim_or_provider_setup(self):
+        guard = mock.Mock()
+        guard.claim.side_effect = worker.WorkIdConflict('already active')
+        with tempfile.TemporaryDirectory() as temp, \
+                mock.patch.object(worker, 'claim') as claim, \
+                mock.patch.object(worker, 'hermes_command') as configure, \
+                mock.patch.object(worker, 'run_provider') as launch:
+            result = worker.work_one(FakeGh(), 'o/r', 'user',
+                                     {'number': 1}, 'hermes', Path(temp),
+                                     1, None, guard=guard)
+        self.assertIsNone(result)
+        guard.claim.assert_called_once_with('1')
+        claim.assert_not_called()
+        configure.assert_not_called()
+        launch.assert_not_called()
+
     def test_hermes_is_selectable_through_the_cli_choices(self):
         from nova3_team import provider_runtime
         self.assertIn("hermes", provider_runtime.provider_ids())
