@@ -103,3 +103,43 @@ Final verification exit0: tools/check_all.sh(host13/13,Python13/13,source-only a
   `NOVA3_RESEARCH_ORACLES=1` the run stops in `tools/compare/zip_headers.py` because
   this worker worktree's private `research/assets/` is empty (2 OBB index files exist
   only in the main tree) — pre-existing local-environment gap, not a regression.
+
+## 2026-10-31 — cpu-features: end-to-end initializer tests + char-signedness evidence
+
+- Compared the `android_cpuInit` window instruction by instruction (reference
+  `arm-none-eabi-objdump --start-address=0xd2f98 --stop-address=0xd3050` over the
+  Premium ELF vs the r8e GCC 4.4.3 ET_REL candidate) with a small normalizer that
+  strips addresses, `@` annotations, literal-pool words and relocations. First
+  structural divergence: the reference sign-extends every cpuinfo byte
+  comparison (`sxtb` in the inlined `has_list_item`, `ldrsb` for the `:` and ` `
+  delimiters) and the candidate emitted none.
+- Counted the effect: reference window = 11 `sxtb` + 18 `ldrsb`; default
+  (`unsigned char`) candidate = 0/0, `-fsigned-char` candidate = 11/18. Sizes at
+  `-O3 -fstack-protector`: 2600 → 2648 B against the reference 2632 B. Getters
+  stay word-equal in every signed-char row.
+- Bound the residual: all six orders of the three `has_list_item` feature checks
+  compile to 2648 B; flag probes measured and rejected — `-fno-crossjumping`
+  2720, `-fno-reorder-blocks` 2612, `-fno-guess-branch-probability` 2612,
+  `-fno-tree-dominator-opts` 2800, `-fno-if-conversion2` 2652,
+  `-fno-omit-frame-pointer` 2672, `-fno-schedule-insns2`/`-fno-ipa-cp` 2648,
+  `-fno-tree-tail-merge`/`-fno-inline-functions` not usable (740 B). No
+  configuration reproduces 2632 B, so the remaining difference is recorded as
+  toolchain-patchlevel inlining/scheduling, never forced.
+- Added `-fsigned-char` rows to `tools/compare/cpufeatures_pilot.py` so the
+  effect stays in every report (18 rows now; getters EQ everywhere, cpuInit SIZE).
+- New `reconstruction/tests/recovered/libNOVA3_neon/cpu_features_init_test.c`:
+  the recovered TU is compiled unchanged and `/proc/cpuinfo`,
+  `/sys/devices/system/cpu/present` and `.../possible` are served from an
+  in-memory fixture table through `-Wl,--wrap=open/read/close`. Eight scenarios:
+  v7+NEON (count 4, features 15), `(v6l)` correction, `vfpv3d16`-only, missing
+  cpuinfo (count 1 and sysfs never opened), present∩possible intersection,
+  unreadable cpulists → clamp to 1, missing `Features` field, and
+  pthread_once caching (cpuinfo opened exactly once across three getters).
+- Negative control: a copy of the test with `neon` removed from the fixture
+  aborts on the feature assertion, proving the wrappers supply the data.
+- Wired as CTest `cpu_features_behaviour_init`, added to `tools/check_all.sh`
+  and to `tools/setup/record_build_provenance.py` (own `link_inputs`).
+- Verification: `cmake --build build/host` clean, `ctest` 15/15 pass,
+  `bash tools/check_all.sh` exit 0 (16 audited artifacts). Local scratch objects
+  and listings stay under `.cache/cpufeat/`; nothing proprietary was written
+  outside `.cache` or committed.

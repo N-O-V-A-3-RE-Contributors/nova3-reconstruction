@@ -1,5 +1,59 @@
 # Status — source resource, mesh and texture reconstruction
 
+## cpu-features TU: initializer proven end-to-end, char signedness settled (2026-10-31)
+
+Two open items from the previous milestone are now closed or converted into
+measured statements.
+
+**1. `android_cpuInit` is now covered by behaviour tests end-to-end.**
+`reconstruction/tests/recovered/libNOVA3_neon/cpu_features_init_test.c` compiles
+the recovered TU unchanged and serves `/proc/cpuinfo`,
+`/sys/devices/system/cpu/present` and `.../possible` from an in-memory fixture
+table by redirecting `open`/`read`/`close` at link time (`-Wl,--wrap=…`).  The
+recovered source keeps its fixed absolute paths; no macro or injected root was
+added, so the path handling under test is the shipped one.  Scenarios covered:
+
+* ARMv7 + `neon vfpv3` cpuinfo, `present`/`possible` = `0-3` → count 4,
+  family ARM, features `ARMv7|VFPv3|NEON|LDREX_STREX`.
+* `CPU architecture: 7` with a `(v6l)` Processor → ARMv7 bit cleared,
+  LDREX/STREX still set, no VFP.
+* `vfpv3d16` only, architecture 6 → VFPv3 without NEON, no ARMv7 bit.
+* cpuinfo unreadable → count stays 1, features 0, and the two sysfs cpulists
+  are never opened (the early return is observable).
+* `present` = `0-3`, `possible` = `0,1` → count is the intersection (2).
+* both cpulists unreadable → count clamps to 1.
+* cpuinfo without a `Features` field → architecture-derived bits survive the
+  later early return.
+* three getters in a row → cpuinfo opened exactly once; a fixture swap
+  afterwards does not change the cached values (the recovered
+  `pthread_once`/`g_once` behaviour).
+
+The test is sensitive to fixture content, checked with a negative control: a
+modified cpuinfo lacking `neon` makes it abort on the feature assertion, so the
+wrappers really are the source of the data.  It is `cpu_features_behaviour_init`
+in CTest, in `tools/check_all.sh`'s audited-artifact list and in
+`tools/setup/record_build_provenance.py`.
+
+**2. Char signedness is explained; the residual `cpuInit` gap is layout.**
+The reference window contains 11 `sxtb` and 18 `ldrsb` — it sign-extends every
+cpuinfo byte comparison.  Plain `char` is unsigned for
+arm-linux-androideabi-gcc, and the candidate emitted 0/0 of them.  Built with
+`-fsigned-char` the candidate reproduces exactly 11/18 and grows from 2600 to
+2648 bytes against the reference's 2632; the three getters stay word-equal at
+every measured `-O` level.  Remaining differences are inlining/layout, not
+missing source: this compiler inlines all three `has_list_item` feature tests
+while the reference sinks the 8-character `vfpv3d16` comparison into a shared
+out-of-line tail, and the listings differ in scheduling and branch polarity
+(reference `cmp r1, r0; bcs` where this compile emits `cmp r0, r1; bls`).
+Every feature-check permutation was measured: all six give 2648 bytes, so the
+order is not the cause.  No configuration of NDK r8e 4.4.3 reproduces 2632
+bytes, which points at a different 4.4.3 patchlevel or option set rather than
+at a source difference; that is recorded as unexplained, not forced.
+
+`tools/compare/cpufeatures_pilot.py` now carries `-fsigned-char` rows for every
+`-O`/stack-protector combination, so the effect stays measured in every report.
+`ctest` is 15/15 and `bash tools/check_all.sh` exits 0.
+
 ## All three cpu-features getters now match modulo relocation; TU tested for behaviour (2026-10-31)
 
 The one remaining source-level difference in the Premium `cpu-features.c` TU

@@ -133,4 +133,16 @@ if(BUILD_TESTING)
     find_package(Threads REQUIRED)
     target_link_libraries(cpu_features_behaviour_test PRIVATE Threads::Threads)
     add_test(NAME cpu_features_behaviour COMMAND cpu_features_behaviour_test)
+
+    # End-to-end behaviour of android_cpuInit and the getters.  The recovered
+    # source keeps its fixed /proc and /sys paths, so this target redirects
+    # open/read/close at link time (--wrap) to an in-memory fixture table; the
+    # translation unit under test is unchanged.  See the test file header.
+    add_executable(cpu_features_init_test
+        reconstruction/tests/recovered/libNOVA3_neon/cpu_features_init_test.c)
+    set_property(TARGET cpu_features_init_test PROPERTY C_STANDARD 99)
+    target_compile_options(cpu_features_init_test PRIVATE -UNDEBUG -D_GNU_SOURCE)
+    target_link_libraries(cpu_features_init_test PRIVATE Threads::Threads
+        -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=close)
+    add_test(NAME cpu_features_behaviour_init COMMAND cpu_features_init_test)
 endif()

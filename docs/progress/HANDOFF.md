@@ -10,11 +10,16 @@ three exported getters (0x000d2f10/0x000d2f3c/0x000d2f6c, 44/48/44 B, A32) now m
 the reference instruction stream modulo the two unavoidable relocation words under
 NDK r8e GCC 4.4.3 at `-O2`/`-O3`/`-Os`, with the reference `.bss` layout — the last
 source difference was getter *definition* order, not a missing toolchain flag.
-`android_cpuInit` (0x000d2f98) is IMPLEMENTED but still 2600 B vs the reference
-2632 B and NOT matched. Behaviour is tested for the pure helpers only
-(`cpu_features_behaviour` in CTest, fixtures, no `/proc`); the initializer's
-end-to-end path is still untested. `tools/compare/cpufeatures_pilot.py` reproduces
-the comparison with `source_matching_verified=False`; the older
+`android_cpuInit` (0x000d2f98) is IMPLEMENTED and TESTED but still not matched:
+with `-fsigned-char` (settled by the reference's 11 `sxtb` / 18 `ldrsb`) it is
+2648 B against the reference 2632 B; the residual is inlining/scheduling, and no
+measured NDK r8e 4.4.3 configuration reproduces 2632 B. Behaviour is covered by two
+CTest targets — `cpu_features_behaviour` (pure helpers over fixtures) and
+`cpu_features_behaviour_init` (android_cpuInit end-to-end, with `/proc/cpuinfo` and
+the two sysfs cpulists served from an in-memory table via link-time
+`-Wl,--wrap=open/read/close`, so the recovered paths are untouched).
+`tools/compare/cpufeatures_pilot.py` reproduces the comparison with
+`source_matching_verified=False` and now carries `-fsigned-char` rows; the older
 `cpufeatures_queries.cpp` context ABI candidate and `tools/compare/cpuquery_pilot.py`
 remain as a separate, superseded measurement. Nothing claims an original compiler,
 `.o`, relocation set or `.so` hash.
@@ -27,7 +32,7 @@ Native analyzed inventory:4ELFs,76,344symbol rows/73,318distinct binary+addresse
 
 ## Build and verification
 
-`NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` runs host tests, Python guard/archive checks, source-only artifact checks and selected original oracles. Latest host13/13, Python13/13, ASan/UBSan13/13, clean source-only Release13/13; ARMv7 source rebuild successful. Actual exit0 logs .cache/logs/scrambled-final-{checks,clean,sanitizer,armv7}.log. Source-only guard rejects both original APKs and4ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
+`NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` runs host tests, Python guard/archive checks, source-only artifact checks and selected original oracles. Latest host13/13, Python13/13, ASan/UBSan13/13, clean source-only Release13/13; ARMv7 source rebuild successful. Actual exit0 logs .cache/logs/scrambled-final-{checks,clean,sanitizer,armv7}.log. The 2026-10-31 cpu-features work added two CTest targets, so the current host count is 15/15 (`ctest --test-dir build/host`, Debug/Ninja) and `bash tools/check_all.sh` exits 0 with the new `cpu_features_init_test` in the audited-artifact list; the ASan/Release counts above predate that and were not re-run. Source-only guard rejects both original APKs and4ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
 
 `cmake -S . -B build/host -G Ninja && cmake --build build/host -j2 && ctest --test-dir build/host --output-on-failure` works from a source-only checkout. Clean disposable build: `.venv/bin/python tools/compare/clean_build.py`. Existing build/sanitize-nopie has clang ASan/UBSan/non-PIE flags needed on this host (docs/toolchain.md). Android NDK29 /opt/android-ndk, SDK ready, output build/android-armv7/libnova3_core.so; no APK packaging yet. No new host installs this continuation.
 

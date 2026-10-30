@@ -47,27 +47,34 @@
  * Matching status, measured by tools/compare/cpufeatures_pilot.py with the
  * local NDK r8e GCC 4.4.3 (nothing here asserts a match):
  *
- *   optimum           android_cpuInit  getCpuCount  getCpuFeatures  getCpuFamily
- *   -O3 -fstack-protector   2600/2632    44/44 DIFF   48/48 EQUAL    44/44 DIFF
- *   -O2 -fstack-protector    740/2632    44/44 DIFF   48/48 EQUAL    44/44 DIFF
- *   -Os -fstack-protector    760/2632    44/44 DIFF   48/48 EQUAL    44/44 DIFF
+ *   optimum                 cpuInit      getCpuCount  getCpuFeatures  getCpuFamily
+ *   -O3 -fstack-protector   2600/2632    44/44 EQUAL  48/48 EQUAL     44/44 EQUAL
+ *   -O3 -fstack-protector
+ *        -fsigned-char      2648/2632    44/44 EQUAL  48/48 EQUAL     44/44 EQUAL
  *
- * `android_getCpuFeatures` reproduces the reference instruction stream word
- * for word (all non-relocation, non-literal words equal).  The other two
- * getters have the correct size and shape but each contains one differing
- * word: the `[base, #offset]` immediate of the final load.  That is a .bss
- * ordering artifact, not a source-level difference - this compiler lays the
- * two int-sized objects out as g_cpuFamily@+4, g_cpuCount@+16, while the
- * reference has g_cpuCount@+4, g_cpuFamily@+16.  Declaration order, object
- * type and symbol names were all varied and do not change this compiler's
- * choice, so the reference layout was produced by a toolchain configuration
- * not yet reproduced; it stays unexplained here rather than fudged.
+ * The three getters reproduce the reference instruction stream word for word
+ * (all non-relocation, non-literal words equal) at every measured `-O`
+ * level once the getters are defined in the order recorded below; the two
+ * differing words per getter are the `BL pthread_once` PLT relocation and the
+ * `.bss` `R_ARM_REL32` addend, which an ET_REL object cannot contain.
  *
- * `android_cpuInit` is 32 bytes (8 instructions) short of the reference and
- * still diverges structurally: the inlined field extraction is very close
- * (the reference sign-extends the byte comparisons with LDRSB where this
- * compile uses LDRB, and the Features block is ordered differently), but it
- * is NOT a match.  No byte-identity claim is made for this TU.
+ * `android_cpuInit` is still NOT matched.  Char signedness is now settled by
+ * the instructions themselves: the reference sign-extends every cpuinfo byte
+ * comparison (11 `sxtb`, 18 `ldrsb` in the window) while plain `char` is
+ * unsigned for arm-linux-androideabi-gcc, which emits none of them; building
+ * this file with `-fsigned-char` reproduces exactly 11/18 and lifts the
+ * function from 2600 to 2648 bytes against the reference's 2632.  The
+ * residual difference is code layout, not a missing source construct: the
+ * candidate inlines all three `has_list_item` feature tests in place while the
+ * reference sinks one of them (the 8-character `vfpv3d16` comparison) into a
+ * shared out-of-line tail, and the two listings differ in instruction
+ * scheduling and branch polarity (e.g. reference `cmp r1, r0; bcs` where this
+ * compile emits `cmp r0, r1; bls`).  No measured configuration of this
+ * compiler reproduces 2632 bytes, so the original is either a different
+ * 4.4.3 patchlevel or a different option set; that stays unexplained here
+ * rather than being forced with padding or hand-written assembly.
+ *
+ * No byte-identity claim is made for this TU.
  */
 
 #include <errno.h>

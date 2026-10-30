@@ -1,6 +1,39 @@
 # Next tasks
 
-## Immediate: finish the cpu-features TU (2026-10-31)
+## Immediate: the cpu-features TU is behaviourally closed; one layout gap stays open (2026-10-31)
+
+`reconstruction/recovered/libNOVA3_neon/cpu_features.c` is the whole recovered
+TU.  The three getters are word-equal to the reference modulo link-time
+relocation words, the `.bss` layout matches, and the TU now has both helper
+tests (`cpu_features_behaviour`) and end-to-end initializer tests
+(`cpu_features_behaviour_init`, fixtures served through link-time
+`--wrap=open/read/close`).  What remains:
+
+1. **`android_cpuInit` is 2648 B against the reference's 2632 B.**  Char
+   signedness is settled (`-fsigned-char`; reference 11 `sxtb` / 18 `ldrsb` are
+   reproduced exactly), so the residual is inlining/scheduling: this compiler
+   inlines all three `has_list_item` feature tests while the reference sinks
+   the `vfpv3d16` comparison into a shared out-of-line tail.  Measured and
+   rejected already: all six feature-check orders (2648 each),
+   `-fno-toplevel-reorder` (2628 unsigned / different getter shapes),
+   `-fno-crossjumping` (2720), `-fno-reorder-blocks` and
+   `-fno-guess-branch-probability` (2612 each), `-fno-tree-dominator-opts`
+   (2800), `-fno-if-conversion2` (2652), `-fno-omit-frame-pointer` (2672).
+   The next bounded step is a *different GCC 4.4.3 patchlevel* (NDK r7c/r8b
+   prebuilt or a FSF 4.4.3 cross build), not more source edits: the source
+   already expresses the reference behaviour, and padding or hand-written
+   assembly is forbidden.  If no toolchain reproduces 2632 B, record that and
+   stop chasing it — the function is IMPLEMENTED and TESTED regardless.
+2. **Do not re-litigate the getter match.**  `cpu_features_pilot.py` keeps the
+   `-fsigned-char`, `-noToplevelReorder` and default rows visible so the
+   definition-order and signedness conclusions stay measured.
+3. **Next subsystem, not this TU.**  With the cpu-features slice closed to
+   TESTED, the next executable milestone is the caller side: find where
+   `android_getCpuFeatures()` gates NEON code paths in the engine (symbol/
+   call-site search in Ghidra exports) so the recovered TU can be linked into
+   a real source target rather than only a test binary.
+
+## Previous: finish the cpu-features TU (2026-10-31)
 
 `reconstruction/recovered/libNOVA3_neon/cpu_features.c` is now the whole
 recovered TU. All three exported getters match the reference instruction stream

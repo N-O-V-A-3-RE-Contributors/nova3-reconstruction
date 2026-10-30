@@ -12,10 +12,10 @@
  *     cpulist_count) against fixtures.
  *   - It does NOT establish behaviour of android_cpuInit or of the three
  *     exported getters end-to-end: those read fixed absolute paths
- *     (/proc/cpuinfo, /sys/devices/system/cpu/present, .../possible) and the
- *     reconstruction keeps those paths in the source instead of injecting
- *     them, so an integration test needs a fixture root in the process
- *     filesystem.  See docs/progress/NEXT.md for that open task.
+ *     (/proc/cpuinfo, /sys/devices/system/cpu/present, .../possible).  That
+ *     path is covered separately by cpu_features_init_test.c, which serves
+ *     those paths from an in-memory fixture table through link-time
+ *     --wrap=open/read/close and leaves this source's paths untouched.
  *   - It says nothing about machine-code equivalence; that is measured
  *     separately by tools/compare/cpufeatures_pilot.py.
  *

@@ -112,6 +112,21 @@ def toolchain_matrix(ndk: Path) -> list[dict]:
                     "flags": [opt, "-fno-toplevel-reorder"]
                              + ([prot] if prot else []) + arm_flags + [f"-I{sysroot}"],
                 })
+                # Char signedness.  The reference sign-extends every cpuinfo
+                # byte comparison (`sxtb` in the inlined has_list_item, `ldrsb`
+                # for the ':' / ' ' delimiters in extract_cpuinfo_field), while
+                # arm-linux-androideabi-gcc defaults to unsigned plain char and
+                # emits neither.  -fsigned-char is therefore a measured source
+                # property of the original TU, not a tuning knob; these rows
+                # keep its effect visible in every report and let the residual
+                # android_cpuInit gap be read as code layout, not as an
+                # unexplained instruction difference.
+                matrix.append({
+                    "name": f"ndk-r8e-gcc-4.4.3{opt}{prot}-signedChar",
+                    "cc": str(r8e_bin / "arm-linux-androideabi-gcc"),
+                    "flags": [opt, "-fsigned-char"] + ([prot] if prot else [])
+                             + arm_flags + [f"-I{sysroot}"],
+                })
     return matrix
 
 
