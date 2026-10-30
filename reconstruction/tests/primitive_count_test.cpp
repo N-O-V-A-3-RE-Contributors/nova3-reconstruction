@@ -6,11 +6,13 @@
 // in the reconstruction is caught as a mismatch.
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 // Extern "C" dispatch symbols compiled from the recovered source blocks.
 extern "C" std::uint32_t nova3_recovered_get_primitive_count(std::uint32_t, std::uint32_t);
 extern "C" std::uint32_t nova3_recovered_get_triangle_count(std::uint32_t, std::uint32_t);
 extern "C" std::uint32_t nova3_recovered_get_index_count(std::uint32_t, std::uint32_t);
+extern "C" const char* const* nova3_recovered_get_strings_internal(std::uint32_t*);
 
 static int g_failures = 0;
 
@@ -29,13 +31,13 @@ static const std::uint32_t kPrimCount[9][9] = {
     //         t0 t1 t2 t3 t4 t5 t6 t7 t8
     /*N=0*/ {  0, 0, 0, 0, 0, 0, 0, 0, 0 },
     /*N=1*/ {  1, 0, 1, 0, 0, 0, 0, 0, 0 },
-    /*N=2*/ {  2, 1, 2, 0, 0, 0, 0, 0, 0 },
+    /*N=2*/ {  2, 1, 2, 1, 0, 0, 0, 0, 0 },
     /*N=3*/ {  3, 2, 3, 1, 1, 1, 1, 0, 0 },
-    /*N=4*/ {  4, 3, 4, 1, 2, 2, 1, 1, 1 },
-    /*N=5*/ {  5, 4, 5, 1, 3, 3, 1, 1, 1 },
-    /*N=6*/ {  6, 5, 6, 2, 4, 4, 2, 2, 1 },
-    /*N=7*/ {  7, 6, 7, 2, 5, 5, 2, 2, 1 },
-    /*N=8*/ {  8, 7, 8, 2, 6, 6, 2, 3, 2 },
+    /*N=4*/ {  4, 3, 4, 2, 2, 2, 1, 1, 1 },
+    /*N=5*/ {  5, 4, 5, 2, 3, 3, 1, 1, 1 },
+    /*N=6*/ {  6, 5, 6, 3, 4, 4, 2, 2, 1 },
+    /*N=7*/ {  7, 6, 7, 3, 5, 5, 2, 2, 1 },
+    /*N=8*/ {  8, 7, 8, 4, 6, 6, 2, 3, 2 },
 };
 
 // getTriangleCount(type, indexCount) — literal expected table.
@@ -99,6 +101,24 @@ int main() {
           nova3_recovered_get_primitive_count(4, 1), 0);
     check("getTriangleCount(saturate)", 7, 1,
           nova3_recovered_get_triangle_count(7, 1), 0);
+
+    // Enum display names — literal table transcribed from the .data.rel.ro
+    // string table at 0xd365fc (see primitive_types.h), indexed by enum 0..8.
+    static const char* const kTypeNames[9] = {
+        "Points",         "Line Strip",    "Line Loop",      "Lines",
+        "Triangle Strip", "Triangle Fan",  "Triangles",      "Quad Strip",
+        "Quads",
+    };
+    const char* const* strings = nova3_recovered_get_strings_internal(nullptr);
+    for (std::uint32_t t = 0; t <= 8; ++t) {
+        const char* got = strings[t];
+        const char* want = kTypeNames[t];
+        if (std::strcmp(got ? got : "", want) != 0) {
+            std::printf("FAIL getPrimitiveTypeName(%u): got \"%s\", want \"%s\"\n",
+                        t, got ? got : "(null)", want);
+            ++g_failures;
+        }
+    }
 
     if (g_failures == 0) {
         std::printf("primitive_count: all checks passed\n");

@@ -1,122 +1,132 @@
-# Sprint STATUS — Pass 9 of 12
+# Sprint STATUS — Pass 10 of 12
 
 Sprint: 20261030-163856
 Pass completed: 2026-10-30 (AEDT)
 Branch: automation/gated-20261030-163856 (isolated worktree)
 
-## Summary
+## What this pass did
 
-This pass recovered a coherent cluster of three `glitch::video` engine
-primitive-counting functions, fully behavioural-tested against literal
-disassembly-derived truth tables, and ARM-compared under the pinned clang-21
-profile. No byte-window match (consistent with the historical GCC 4.4.3
-blocker documented since pass 6).
+Two things, both verified against the linked ELF before any change:
 
-## Recovered functions (this pass)
+1. **Corrected a pass-9 reconstruction error in `getPrimitiveCount`.**
+   Pass 9 recorded enum value 3 as `indexCount / 3` and named it
+   "legacy Triangles". The linked ARM jump table says otherwise: case 3
+   (0x77bf9c) branches to 0x77bfcc = `lsr r1,r1,#1`, i.e. `N / 2`, while
+   case 6 ("Triangles") is the only case that uses the `umull` divide-by-3
+   chain. Value 3 is genuinely **"Lines"** (GL_LINES): N/2 primitives.
 
-All three are A32 (ARM), verified from `.symtab` and linked-ELF disassembly.
+2. **Verified all nine `E_PRIMITIVE_TYPE` names from the original string
+   table.** `getStringsInternal(E_PRIMITIVE_TYPE*)` (0x0077bf74, 16 B) loads
+   literal `0x005ba67c` and returns `0x77bf80 + 0x005ba67c = 0x00d365fc`,
+   the base of a 9-entry `const char* const[]` in `.data.rel.ro`. The nine
+   relocated pointers name the enum 0..8 as: Points, Line Strip, Line Loop,
+   Lines, Triangle Strip, Triangle Fan, Triangles, Quad Strip, Quads. This
+   *confirms* the previously INFERRED values 2 and 3 and corrects the pass-9
+   labels for 6 ("Triangle List" -> "Triangles") and 8 ("Quad List" ->
+   "Quads"). The pass-9 note that "Points" sits at rodata 0xcaf4c0 was
+   accidentally right in address; the relocation/pointer link was missing and
+   is now established (R_ARM_RELATIVE at 0xd365fc, addend 0xcaf4c0).
 
-| Function | ELF VA | Size | Mangled symbol | Result |
-|----------|--------|------|----------------|--------|
-| getPrimitiveCount | 0x0077bf84 | 152 B | `_ZN6glitch5video17getPrimitiveCountENS0_16E_PRIMITIVE_TYPEEj` | BEHAVIOURAL; cand 144 vs ref 152 |
-| getTriangleCount  | 0x0077c1e0 | 112 B | `_ZN6glitch5video16getTriangleCountENS0_16E_PRIMITIVE_TYPEEj` | BEHAVIOURAL; same 112 B size, bytes differ |
-| getIndexCount     | 0x0077c250 | 124 B | `_ZN6glitch5video13getIndexCountENS0_16E_PRIMITIVE_TYPEEj` | BEHAVIOURAL; cand 112 vs ref 124 |
+## Recovered / corrected functions
 
-## Recovered behaviour
+| Function | ELF VA | Size | Result |
+|----------|--------|------|--------|
+| getPrimitiveCount | 0x0077bf84 | 152 B | BEHAVIOURAL; now cand 152 B == ref 152 B (was 144 vs 152) — FUNCTION_BYTES_DIFFERENT |
+| getStringsInternal(E_PRIMITIVE_TYPE*) | 0x0077bf74 | 16 B | DATA-VERIFIED string table (9 names) |
+| getTriangleCount | 0x0077c1e0 | 112 B | unchanged (enum names corrected) |
+| getIndexCount | 0x0077c250 | 124 B | unchanged ("Lines" -> 0 quirk re-confirmed) |
 
-Each function is a 9-entry run-time switch (`cmp #8 / addls pc,pc,rN,lsl#2`
-jump table; values > 8 fall through to `return 0`). Recovered enum semantics
-(values 0..8) cross-checked across all three functions:
+## Corrected behaviour table (verified against disassembly)
 
-| value | primitiveCount(N) | indexCount(P) | triangleCount(N) | name |
-|-------|-------------------|---------------|------------------|------|
-| 0 | N | P | 0 | Points (string "Points" confirmed at rodata 0xcaf4c0) |
+| value | getPrimitiveCount | getIndexCount | getTriangleCount | name (verified) |
+|-------|-------------------|---------------|------------------|-----------------|
+| 0 | N | P | 0 | Points |
 | 1 | max(N-1,0) | P+1 | 0 | Line Strip |
-| 2 | N | P | 0 | Line Loop (INFERRED) |
-| 3 | N/3 | 0 (quirk) | 0 (quirk) | legacy Triangles (INFERRED) |
+| 2 | N | P | 0 | Line Loop |
+| 3 | **N/2** | 0 (quirk) | 0 | **Lines** |
 | 4 | max(N-2,0) | P+2 | max(N-2,0) | Triangle Strip |
 | 5 | max(N-2,0) | P+2 | max(N-2,0) | Triangle Fan |
-| 6 | N/3 | 3P | N/3 | Triangle List |
+| 6 | N/3 | 3P | N/3 | Triangles |
 | 7 | max((N-2)/2,0) | 2P+2 | 2*max((N-2)/2,0) | Quad Strip |
-| 8 | N/4 | 4P | 2*floor(N/4) | Quad List |
+| 8 | N/4 | 4P | 2*floor(N/4) | Quads |
+| else | 0 | 0 | 0 | (default) |
 
-Original `/3` and `/4` cases compile as magic-constant multiplies
-(`0xaaaaaaab >> 33`) which equal integer floor division for unsigned inputs;
-the recovery uses portable `/` and documents this. Enum value 3 is an
-observed inconsistency (getPrimitiveCount divides by 3 yet getIndexCount and
-getTriangleCount return 0); reproduced verbatim, not normalized.
+The "Lines" asymmetry (N/2 primitives, but 0 index/triangle counts) is an
+observed original quirk reproduced verbatim, now with its true name attached.
 
 ## Evidence
 
 - ELF SHA-256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
-- Disassembled with arm-none-eabi-objdump at the three VAs above; full
-  semantics transcribed into `reconstruction/recovered/libNOVA3_neon/primitive_types.h`.
+- Disassembly: `arm-none-eabi-objdump -d` at the four VAs; see
+  `sprint_notes/evidence_pass10.json` for the jump-table trace and the full
+  string-table entry list.
 - Compiler: NDK r29 clang-21 (`--target=armv7a-linux-androideabi21 -marm -O2
-  -fomit-frame-pointer -fPIC -std=c++17`). Comparison matrices in
-  `.cache/om-getPrimitiveCount|getTriangleCount|getIndexCount/matrix.json`.
+  -fomit-frame-pointer -fPIC -std=c++17`). New comparison report at
+  `.cache/om-getPrimitiveCount-v2/matrix.json`.
 
 ## Host test results
 
-CTest **24/24 passed** (23 prior + 1 new `primitive_count`).
+CTest **24/24 passed**. `primitive_count` now carries 243 literal truth-table
+checks + out-of-range + floor/saturate edges **plus 9 string-name checks**
+(transcribed from the ELF string table).
 
-New test `primitive_count` (243 truth-table checks + 15 out-of-range +
-4 floor/saturate edge cases):
-- Literal 9x9 expected tables for getPrimitiveCount / getTriangleCount /
-  getIndexCount, values transcribed directly from disassembly (not re-derived
-  by calling recovered logic).
-- Out-of-range discriminant -> 0 for all three functions.
-- Floor-division and wrap-saturation edge cases.
-- Negative control executed: flipping one table cell made the test fail with
-  a precise message (exit 1), confirming the test actually guards the
-  reconstruction.
+Negative control executed: flipping value 3 back to N/3 makes
+`primitive_count` fail with 6 precise mismatches (type=3, N in {2,4,5,6,7,8}),
+exit 1 — proving the test guards the reconstruction, and proving the pass-9
+table really was wrong.
 
 ## Files changed (this pass)
 
-1. `reconstruction/recovered/libNOVA3_neon/primitive_types.h` — NEW
-   (enum + 3 inline functions with INFERRED names and documented quirk)
-2. `reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp` — NEW (getPrimitiveCount)
-3. `reconstruction/recovered/libNOVA3_neon/block_0077c1e0.cpp` — NEW (getTriangleCount)
-4. `reconstruction/recovered/libNOVA3_neon/block_0077c250.cpp` — NEW (getIndexCount)
-5. `reconstruction/tests/primitive_count_test.cpp` — NEW (literal truth tables)
-6. `CMakeLists.txt` — +primitive_count test target
+1. `reconstruction/recovered/libNOVA3_neon/primitive_types.h` — corrected
+   value 3 (N/2, "Lines"), renamed 6/8 to "Triangles"/"Quads", added
+   string-table evidence header and `getPrimitiveTypeName()`.
+2. `reconstruction/recovered/libNOVA3_neon/block_0077bf74.cpp` — NEW
+   (getStringsInternal string-table reconstruction).
+3. `reconstruction/tests/primitive_count_test.cpp` — fixed t3 column to N/2,
+   added 9-name check.
+4. `CMakeLists.txt` — +block_0077bf74.cpp to primitive_count target.
+5. `sprint_notes/evidence_pass10.json` — NEW manifest.
 
 ## Honest scope and limitations
 
-- **0 new MATCHED_ARM this pass.** All three differ in bytes; getTriangleCount
-  is the closest (identical 112-byte size) but differs in jump-table scheme
-  (clang PIC LUT `ldr [r2,r0,lsl#2]` vs GCC relative branch table `addls
-  pc,pc,rN,lsl#2`) and saturation idiom (clang `subs/movcc` vs GCC `sub/bic`).
-- Enum symbolic names for values 2 and 3 are INFERRED from arithmetic; only
-  value 0 ("Points") is confirmed by a surviving string. Value 3's anomaly is
-  an observed original quirk, not a reconstruction bug.
-- Behavioural equivalence is independently host-tested (literal truth tables,
-  not self-referential).
+- **0 new MATCHED_ARM.** getPrimitiveCount improved from size-mismatch to
+  same-size-bytes-differ; the residual diff is clang-21 PIC LUT
+  (`ldr [r2,r0,lsl#2] ; add pc`) vs GCC 4.4.3 relative branch table
+  (`addls pc,pc,rN,lsl#2`) and `subs/movcc` vs `sub/bic` saturation.
+- The compiler_matrix `source_sha256` hashes only the `.cpp` wrapper, not the
+  included header, so it did not change despite the header correction; the
+  candidate object/code hashes DID change (recorded in the v2 matrix).
+- The string table is data, not a switch-function; block_0077bf74.cpp returns
+  the literals and is DATA-VERIFIED at the 9-entry scope, not ARM byte-compared.
+- Historical GCC 4.4.3 toolchain still unestablished (unchanged blocker).
 
 ## Cumulative statistics
 
-| Measure | Before pass 9 | After pass 9 |
-|---------|--------------|--------------|
-| Host CTest | 23/23 | 24/24 |
+| Measure | Before pass 10 | After pass 10 |
+|---------|---------------|---------------|
+| Host CTest | 24/24 | 24/24 |
 | MATCHED_ARM functions | 7 | 7 (unchanged) |
-| COMPILED+BEHAVIOURAL (bytes differ) | 8 | 11 (+3) |
-| Total source-owned funcs (pass-6 pipeline) | 15 | 18 |
+| COMPILED+BEHAVIOURAL (same-size, bytes differ) | 1 | 2 (+getPrimitiveCount) |
+| Total source-owned funcs in primitive cluster | 3 | 4 (+getStringsInternal) |
+| Enum names VERIFIED (was 1 confirmed / 8 inferred) | 1 | 9 |
 
 ## Next functions (priority order)
 
-1. `getStringsInternal(E_PRIMITIVE_TYPE)` (0x0077bf74) + the enum->string
-   lookup it feeds: recovering the actual E_PRIMITIVE_TYPE string names would
-   upgrade values 2/3 from INFERRED to VERIFIED.
+1. `CFPSCounter::CFPSCounter` (0x0077bb7c, 56 B): field-zeroing constructor,
+   small and unambiguous.
 2. `CVertexStreams::getActiveAttributeMask` (0x0077bd28, 84 B) and
-   `addOffset(int)` (0x0077be04, 64 B): small, symbol-bearing, clear semantics.
-3. `CFPSCounter::CFPSCounter` (0x0077bb7c, 56 B): field-zeroing constructor.
-4. Continue the existing `computeMipmapSizeInBytes(6-arg)` / getSizeInBytes
-   (unsigned char) ARM comparison (0x0077d4a8) once sub-call relocations are
-   handled.
+   `addOffset(int)` (0x0077be04, 64 B): symbol-bearing, clear semantics.
+3. The `E_INDEX_TYPE` / `E_BUFFER_USAGE` / `E_BUFFER_TYPE` string tables
+   (adjacent in `.data.rel.ro` at 0xd36624 / 0xd36634 / 0xd365f8): recover
+   the neighbouring enums the same way, using getStringsInternal as the
+   accessor.
+4. Continue `computeMipmapSizeInBytes(6-arg)` / `getSizeInBytes(unsigned char)`
+   ARM comparison once sub-call relocations are handled.
 
 ## Current blockers (unchanged)
 
 1. Historical GCC 4.4.3 ARM toolchain still not established; clang-21 emits
-   different jump-table and conditional-move idioms for switch-based code.
+   different jump-table/conditional idioms for switch code.
 2. Whole-`.so` SHA equality not established (not attempted).
 3. Switch/jump-table functions show the largest codegen gap under clang; the
    relative-branch (GCC) vs PIC-LUT (clang) split implies the original was
