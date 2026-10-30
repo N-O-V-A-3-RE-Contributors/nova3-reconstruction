@@ -13,6 +13,7 @@ class InspectionTests(unittest.TestCase):
         b=io.BytesIO()
         with zipfile.ZipFile(b,"w",compression=zipfile.ZIP_DEFLATED) as z:z.writestr("real.dat",b"data"*100)
         data=b.getvalue()
+        (archive.ROOT/"research/assets").mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(dir=archive.ROOT/"research/assets") as temp:
             old=archive.OUT;archive.OUT=pathlib.Path(temp)
             try:
