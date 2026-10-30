@@ -182,6 +182,7 @@ if(BUILD_TESTING)
 endif()
 
 # Recovered CDataInfo accessors: DDS/PVR CImageLoader CDataInfo family
+#   getFilePitch DDS 0x007b8934
 #   getFileDataSize DDS 0x007b892c, PVR 0x007b8974
 #   getFaceStartOffset DDS 0x007b8958
 #   isLittleEndian DDS 0x007b8960, needsFlip DDS 0x007b8968
@@ -190,6 +191,7 @@ if(BUILD_TESTING)
     add_executable(cimage_datainfo_test
         reconstruction/tests/cimage_datainfo_test.cpp
         reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8934.cpp
         reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp
         reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp
         reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp
@@ -211,4 +213,32 @@ if(BUILD_TESTING)
     target_compile_options(ccollada_get_version_test PRIVATE -UNDEBUG -fno-pie)
     target_link_options(ccollada_get_version_test PRIVATE -no-pie)
     add_test(NAME ccollada_get_version COMMAND ccollada_get_version_test)
+endif()
+
+# Recovered Collada named-parameter accessor cluster:
+# getMaterial by name (0x007146ac), getImage by name (0x0071476c).
+# Both call strcmp, which carries a relocation in ARM ET_REL.
+if(BUILD_TESTING)
+    add_executable(ccollada_by_name_test
+        reconstruction/tests/ccollada_by_name_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp)
+    target_include_directories(ccollada_by_name_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(ccollada_by_name_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(ccollada_by_name_test PRIVATE -no-pie)
+    add_test(NAME ccollada_by_name COMMAND ccollada_by_name_test)
+endif()
+if(BUILD_TESTING)
+    add_executable(ccollada_accessors_test
+        reconstruction/tests/ccollada_accessors_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_00710160_v2.cpp
+        reconstruction/recovered/libNOVA3_neon/block_00710318.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0071034c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_00710368_v2.cpp)
+    target_include_directories(ccollada_accessors_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(ccollada_accessors_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(ccollada_accessors_test PRIVATE -no-pie)
+    add_test(NAME ccollada_accessors COMMAND ccollada_accessors_test)
 endif()

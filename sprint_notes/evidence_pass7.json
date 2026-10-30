@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "sprint": "20261030-163856",
+  "pass": 7,
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "architecture": "ARM EABI, 32-bit little-endian, ARM (A32) mode"
+  },
+  "compiler_profile": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "flags": [
+      "--target=armv7a-linux-androideabi21",
+      "-marm",
+      "-O2",
+      "-fomit-frame-pointer",
+      "-fPIC",
+      "-std=c++17"
+    ],
+    "profile_file": ".cache/armv7-clang-omitfp.json",
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+    "note": "clang-21 is a candidate tool, NOT the historical GCC 4.4.3 compiler."
+  },
+  "functions": [
+    {
+      "address": "0x007b8934",
+      "symbol": "_ZNK6glitch5video15CImageLoaderDDS9CDataInfo12getFilePitchEh",
+      "size": 36,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8934.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_file_pitch",
+      "report": ".cache/om-cdatinfo-dds-filepitch-v2/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (36 B, 0 relocs). Structurally correct: same branch pattern, same offsets. clang uses ldrb for flags byte vs original ldr word load (LE bit-3 optimization)."
+      }
+    },
+    {
+      "address": "0x00710160",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase20linkInstanceMaterialEPNS0_17SInstanceMaterialE",
+      "size": 28,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710160_v2.cpp",
+      "candidate_symbol": "nova3_recovered_collada_link_instance_material",
+      "report": ".cache/om-collada-linkInstanceMaterial/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (28 B, 0 relocs). Structurally identical ldr/str offsets; register allocation differs (r0 vs r3 walk register)."
+      }
+    },
+    {
+      "address": "0x00710318",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase8getImageEi",
+      "size": 24,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710318.cpp",
+      "candidate_symbol": "nova3_recovered_collada_get_image",
+      "report": ".cache/om-collada-getImage/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (24 B, 0 relocs). Identical ldr offsets + add lsl#4; walk through r0 vs original r3."
+      }
+    },
+    {
+      "address": "0x0071034c",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getMaterialEi",
+      "size": 28,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071034c.cpp",
+      "candidate_symbol": "nova3_recovered_collada_get_material",
+      "report": ".cache/om-collada-getMaterial/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (28 B, 0 relocs). Identical add r1,r1,r1,lsl#3 and ldr offsets; walk through r0 vs original r3."
+      }
+    },
+    {
+      "address": "0x00710368",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getGeometryEi",
+      "size": 24,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710368_v2.cpp",
+      "candidate_symbol": "nova3_recovered_collada_get_geometry",
+      "report": ".cache/om-collada-getGeometry/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (24 B, 0 relocs). Identical ldr offsets + add lsl#4; walk through r0 vs original r3."
+      }
+    }
+  ],
+  "totals": {
+    "functions_this_pass": 5,
+    "linked_window_equal": 0,
+    "bytes_different_behavioural": 5,
+    "relocation_carried": 0,
+    "end_to_end_game_functionality": false,
+    "whole_so_sha_matched": false,
+    "cumulative_matched_arm": 7,
+    "cumulative_behavioural": 6
+  }
+}

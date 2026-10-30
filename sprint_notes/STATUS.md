@@ -1,4 +1,4 @@
-# Sprint STATUS — Pass 6 of 12
+# Sprint STATUS — Pass 8 of 12
 
 Sprint: 20261030-163856
 Pass completed: 2026-10-30 (AEDT)
@@ -6,142 +6,120 @@ Branch: automation/gated-20261030-163856 (isolated worktree)
 
 ## Summary
 
-This pass filled the ARM-compilation + comparison gates that prior passes
-deferred, and produced the project's **first independently verified ARM
-instruction-window matches** (7 functions, `LINKED_FUNCTION_WINDOW_EQUAL`),
-plus one behaviourally correct 4-level pointer-walk function that compiles to
-20 identical instructions but differs only in register allocation.
+This pass added 2 new source-owned C++ implementations: Collada
+named-parameter accessors getMaterial by name (0x007146ac) and
+getImage by name (0x0071476c). Both are 96-byte strcmp-based linear
+search functions with the same 3-level database -> resource -> header ->
+collada_root pointer walk shared by the pass-7 accessor cluster.
 
-## Key finding: original is compiled WITHOUT a frame pointer
-
-The trivial `CDataInfo` accessors in the original are single `ldr / bx lr`
-(or `mov / bx lr`) sequences with **no `push {r11,lr}` prologue**. The NDK
-clang-21 default (with `-marm -O2`) emitted a frame pointer, doubling every
-function size and preventing a byte match. Adding `-fomit-frame-pointer`
-yielded exact 8/4-byte matches. This is a concrete, evidence-backed compiler
-flag observation (the original was built with frame-pointer omission, as is
-GCC's `-O2` default), not a fabricated profile.
+Both functions compile under the pass-6 clang-21/-marm/-O2/-fomit-frame-pointer
+profile, pass host behavioral tests (22 new checks), and produce
+structurally similar but larger instruction sequences (116 vs 96 bytes)
+due to clang-21 loop-unrolling and down-counter optimization differences
+vs the historical GCC 4.4.3 compiler. No byte-window match.
 
 ## Recovered functions (this pass)
 
-All functions are A32 (ARM), confirmed from `$a` mapping symbols + `.symtab`.
+All functions are A32 (ARM), confirmed from `.symtab`.
 
 | Function | ELF VA | Size | Mangled symbol | Result |
 |----------|--------|------|----------------|--------|
-| DDS CDataInfo::getFileDataSize | 0x007b892c | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo15getFileDataSizeEv` | MATCHED_ARM |
-| PVR CDataInfo::getFileDataSize | 0x007b8974 | 8 B | `_ZNK6glitch5video15CImageLoaderPVR9CDataInfo15getFileDataSizeEv` | MATCHED_ARM |
-| DDS CDataInfo::getFaceStartOffset | 0x007b8958 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo18getFaceStartOffsetEv` | MATCHED_ARM |
-| DDS CDataInfo::isLittleEndian | 0x007b8960 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo14isLittleEndianEv` | MATCHED_ARM |
-| DDS CDataInfo::needsFlip | 0x007b8968 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo9needsFlipEv` | MATCHED_ARM |
-| DDS CDataInfo::~CDataInfo | 0x007b8970 | 4 B | `_ZN6glitch5video15CImageLoaderDDS9CDataInfoD1Ev` | MATCHED_ARM |
-| PVR CDataInfo::getFilePitch(h) | 0x007b897c | 8 B | `_ZNK6glitch5video15CImageLoaderPVR9CDataInfo12getFilePitchEh` | MATCHED_ARM |
-| CColladaDatabase::getVersion | 0x0071017c | 20 B | `_ZNK6glitch7collada16CColladaDatabase10getVersionEv` | COMPILED + BEHAVIOURAL; bytes differ (regalloc) |
+| CColladaDatabase::getMaterial by name | 0x007146ac | 96 B | `_ZNK6glitch7collada16CColladaDatabase11getMaterialEPKc` | COMPILED+BEHAVIOURAL; bytes differ (116 vs 96, clang unrolls loop) |
+| CColladaDatabase::getImage by name | 0x0071476c | 96 B | `_ZNK6glitch7collada16CColladaDatabase8getImageEPKc` | COMPILED+BEHAVIOURAL; bytes differ (116 vs 96, clang down-counter) |
 
 ## Recovered behaviour
 
-**CDataInfo (DDS/PVR shared image-info record):**
-- +0x0c `file_data_size`: `getFileDataSize` returns it (both DDS and PVR).
-- +0x10 `face_start_offset`: `getFaceStartOffset` returns it (DDS).
-- +0x04 `header_word`: pointer word (evidenced by the longer DDS getFilePitch
-  at 0x007b8934 performing `ldr r3,[r0,#0x4] ... ldr r0,[r3,#0x10]`).
-- `isLittleEndian` -> 1; `needsFlip` -> 0; PVR `getFilePitch(h)` -> 0 (stub).
+Both functions share the pattern established in pass 7:
+- 3-level pointer walk: this+0 -> file+0x10 -> header+0x20 -> collada_root
+- getMaterial: count at collada[+0x78] (i32), records at collada[+0x7c], stride 36
+- getImage: count at collada[+0x68] (i32), records at collada[+0x6c], stride 16
+- Count <= 0 returns nullptr
+- Linear scan: strcmp(record[0] (id pointer), name) for each element
+- First exact match returns pointer to record; exhaustion returns nullptr
+- Original GCC loop structure: non-header entry, pre-increment stride,
+  up-counter. Equivalent to standard counted for-loop.
 
-**CColladaDatabase::getVersion:** four-level 32-bit pointer walk
-`*(*(*(root+0x00)+0x10)+0x20)+0x00` (root at +0x00 in the object).
-
-The `static_assert(offsetof(...))` assertions in `cimage_datainfo.h` and the
-sentinel values in the test are the "catch a wrong reconstruction" guard: a
-mislocated field fails at compile time or produces a wrong read at run time.
-
-## ARM comparison evidence (compiler_matrix -> object_compare)
+## ARM comparison evidence
 
 - ELF SHA-256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
-- Compiler: `/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21`
-  (Android NDK r29, clang 21.0.0).
-- Flags: `--target=armv7a-linux-androideabi21 -marm -O2 -fomit-frame-pointer -fPIC -std=c++17`
-- Profile: `.cache/armv7-clang-omitfp.json`
-- Per-function reports: `.cache/om-*/matrix.json` (JSON, private local cache).
+- Compiler: NDK r29 clang-21, `--target=armv7a-linux-androideabi21 -marm -O2 -fomit-frame-pointer -fPIC -std=c++17`
+- Reports in `.cache/om-getMaterialByName/matrix.json` and `.cache/om-getImageByName/matrix.json`
 
-Each MATCHED_ARM entry has: reference window SHA == candidate code SHA, same
-size, A32 == A32, and **0 relocations**. Example (DDS getFileDataSize):
-`reference_size=8 candidate_size=8 candidate_relocation_count=0`
-`reference_window_sha256 == candidate_code_sha256 = 687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1`.
+Both functions: FUNCTION_SIZE_MISMATCH (116 vs 96 B), 2 strcmp relocations each.
+Clang-21 differences vs GCC 4.4.3:
+- **getMaterial by name**: clang unrolls loop body (two strcmp per iteration),
+  uses signed count<1 (blt) guard and down-counter; original GCC uses simple
+  up-counter with single strcmp per iteration.
+- **getImage by name**: clang uses down-counter with separate sub/cmp/bne;
+  original GCC uses up-counter with cmp/add/beq.
+- **Both**: clang walks chain through r0 (return register); GCC uses r3 (scratch).
+  Clang saves r11 instead of r8 (frame pointer register preference).
 
 ## Host test results
 
-CTest **21/21 passed** (19 prior + 2 new). New tests:
-- `cimage_datainfo` (7 CDataInfo accessors: field offsets, sentinel reads,
-  constant/zero returns, no-op destructor).
-- `ccollada_get_version` (4-level walk; linked `-no-pie` so the 32-bit walk is
-  addressable on LP64; skips cleanly if static storage exceeds 4 GiB).
+CTest **23/23 passed** (22 prior + 1 new ccollada_by_name).
 
-## Honest scope and limitations
-
-- **7 MATCHED_ARM** are `LINKED_FUNCTION_WINDOW_EQUAL`, not
-  `MATCHED_LIBRARY_SHA256`, not proof of the historical GCC 4.4.3 compiler,
-  original `.o` TU boundaries, relocations, or full source equivalence. They
-  are real, independently-written C++ whose ARM code bytes equal the original
-  linked window with a pinned, documented compiler profile and no relocations.
-- These functions are **trivial leaf accessors** where codegen is effectively
-  compiler-independent; the match is real but narrowly scoped.
-- `getVersion` compiles to the same 5-instruction/20-byte shape but clang-21
-  threads the walk through r0 while the original uses r3 as the walk register
-  (register-allocation variance). Marked `FUNCTION_BYTES_DIFFERENT`, behaviour
-  independently host-tested.
-- `-fomit-frame-pointer` matches observed bytes but is **not** proof the
-  historical toolchain/NDK used the same flags; it is one required flag among
-  an unknown full set.
-
-## Correction to prior pass-5 STATUS
-
-Pass 5 listed `0x0078668c` as "CVirtualTexture::getSizeInBytes(unsigned int)".
-The actual `.symtab` symbol at `0x0078668c` is
-`_ZNK6glitch5video15CImageWriterPVR16writeTextureDescE...` (CImageWriterPVR::
-writeTextureDesc, a large non-trivial writer), not getSizeInBytes. That
-assumption is retracted; no such unsigned-int overload exists at that address.
+New test: `ccollada_by_name` (22 checks):
+- get_material_by_name: 11 checks (count 0/null, count -1/null, 3-element find
+  each, not-found, duplicate first-match, empty string, single element)
+- get_image_by_name: 11 checks (same categories, stride-16 verification)
+- All 32-bit addressable static chain, verified pointer arithmetic.
 
 ## Files changed (this pass)
 
-1. `reconstruction/recovered/libNOVA3_neon/cimage_datainfo.h` — NEW (CDataInfo layout + inline accessors + extern-"C" decls)
-2. `reconstruction/recovered/libNOVA3_neon/ccollada_database.h` — NEW (getVersion walk)
-3. `reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp` — NEW (DDS getFileDataSize)
-4. `reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp` — NEW (DDS getFaceStartOffset)
-5. `reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp` — NEW (DDS isLittleEndian)
-6. `reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp` — NEW (DDS needsFlip)
-7. `reconstruction/recovered/libNOVA3_neon/block_007b8970.cpp` — NEW (DDS ~CDataInfo)
-8. `reconstruction/recovered/libNOVA3_neon/block_007b8974.cpp` — NEW (PVR getFileDataSize)
-9. `reconstruction/recovered/libNOVA3_neon/block_007b897c.cpp` — NEW (PVR getFilePitch)
-10. `reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp` — NEW (Collada getVersion)
-11. `reconstruction/tests/cimage_datainfo_test.cpp` — NEW
-12. `reconstruction/tests/ccollada_get_version_test.cpp` — NEW
-13. `CMakeLists.txt` — +2 test targets (cimage_datainfo, ccollada_get_version)
+1. `reconstruction/recovered/libNOVA3_neon/ccollada_database.h` — extended
+   (get_material_by_name, get_image_by_name inline functions + 2 extern "C" decls)
+2. `reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp` — NEW
+   (getMaterial by name extern "C" wrapper)
+3. `reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp` — NEW
+   (getImage by name extern "C" wrapper)
+4. `reconstruction/tests/ccollada_by_name_test.cpp` — NEW (22 behavioral checks)
+5. `CMakeLists.txt` — +ccollada_by_name test target
+
+## Honest scope and limitations
+
+- **0 new MATCHED_ARM** this pass. Both functions differ in size and instruction
+  bytes due to compiler codegen differences (clang-21 vs GCC 4.4.3).
+  Behavioural equivalence is independently host-tested.
+- The `_walk_to_collada` helper refactoring changes register allocation from
+  the original per-function inline walks, preventing byte-window match for
+  the three-level walk portion.
+- Both functions call strcmp, creating 2 relocations in ARM ET_REL. The
+  original PLT entry vs ET_REL relocation difference prevents byte-window
+  match for the BL strcmp instructions.
+- Collada struct layouts at +0x68 (image_count), +0x6c (image_base),
+  +0x78 (material_count), +0x7c (material_base) are now recovered and tested
+  with actual strcmp semantics.
+
+## Cumulative statistics
+
+| Measure | Before pass 8 | After pass 8 |
+|---------|--------------|--------------|
+| Host CTest | 22/22 | 23/23 |
+| MATCHED_ARM functions | 7 | 7 (unchanged) |
+| COMPILED+BEHAVIOURAL (bytes differ) | 6 | 8 (+2) |
+| Total source-owned funcs in pass-6 pipeline | 13 | 15 |
+| Collada struct offsets recovered | +0x00, +0x08, +0x6c, +0x7c, +0x88 | + +0x68 (image_count), +0x78 (material_count) |
 
 ## Next functions (priority order)
 
-1. Remaining DDS CDataInfo `getFilePitch` (0x007b8934, ~30 B, non-trivial):
-   the only CDataInfo accessor left; records the +0x04 header pointer semantics.
-2. DDS CDataInfo accessor cluster continuation: `getFaceStartOffset`
-   neighbours, or the PVR/DDS `getFilePitch` family fully.
-3. More trivial leaf accessors in the 0x00710160..0x00710368 Collada range
-   (`linkInstanceMaterial`, `getImage`, `getMaterial` from existing evidence
-   task 31) — multi-level pointer/offset walks of the getVersion shape.
-4. Revisit pass-5 `ITexture::computeSizeInBytes` / `CVirtualTexture` blocks
-   with `-fomit-frame-pointer` now that the flag is characterized; these have
-   data-table relocations so full byte equality will require relocation
-   handling, but the flag removes the frame-pointer size inflation.
+1. **CVirtualTexture::getSizeInBytes(unsigned char)** (0x0077d4a8): already has
+   source in block_0077d4a8.cpp with behavioral tests. Try ARM compilation
+   and comparison. This function calls getMipmapCount and computeMipmapSizeInBytes
+   internally — needs all sub-functions compiled together or relocation handling.
+2. **Remaining non-trivial functions**: move from accessors to functions with
+   branches, loops, and data dependencies. Target functions that are 48–128 bytes
+   with clear control flow.
+3. **GCC 4.4.3 toolchain**: still the core blocker for byte-window matches.
+   Clang-21 consistently generates different register allocation and loop
+   optimization patterns.
+4. **Functions with explicit GOT/data relocations**: start the relocation
+   worksheet approach described in docs/DISCORD_IMPLEMENTATION.md.
 
-## Current blockers (unchanged + new)
+## Current blockers (unchanged)
 
-1. Historical GCC 4.4.3 ARM toolchain still not established; modern clang-21
-   matches trivial leaves but diverges on register allocation for walks.
-2. Whole-`.so` SHA equality not established (not attempted; requires original
-   compiler/linker/link-order/padding).
-3. Functions with data references (pixel_format table, vtable[0x14]) carry
-   relocations and cannot byte-match trivially; need a relocation worksheet.
-4. CDataInfo layout beyond +0x10 is UNKNOWN (only four fields evidenced).
-
-## Evidence manifest
-
-See `sprint_notes/evidence_pass6.json` for the per-function status chain
-(DISCOVERED -> ANALYZED -> SOURCE -> ARM_COMPILES -> COMPARISON_CHECKED
--> BEHAVIOR_TESTED -> VERIFIED_AT_SCOPED_LEVEL).
+1. Historical GCC 4.4.3 ARM toolchain still not established.
+2. Whole-`.so` SHA equality not established (not attempted).
+3. Functions with data references carry relocations and need a worksheet.
+4. Clang-21 consistently generates larger/different code for loops and
+   strcmp-based functions compared to GCC 4.4.3.

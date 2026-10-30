@@ -16,8 +16,7 @@
 //
 // The offset 0x04 pointer (recovered from the longer DDS getFilePitch at
 // 0x007b8934, which performs `ldr r3,[r0,#0x4]; ... ldr r0,[r3,#0x10]`)
-// is a second, more complex accessor and is listed here only to document
-// the field, not implemented as a single accessor.
+// is a second, more complex accessor implemented below.
 
 #pragma once
 
@@ -47,6 +46,20 @@ struct CDataInfo {
     std::uint32_t get_face_start_offset() const noexcept { return face_start_offset; }
     bool          is_little_endian() const noexcept { return true; }
     bool          needs_flip() const noexcept { return false; }
+    // DDS overload: non-trivial, level-gated, flags-dependent.  Reads the
+    // header_word pointer, checks a flags bit at header+0x04, and returns
+    // the pitch at header+0x10 when bit 3 is set.
+    // See ELF VA 0x007b8934 (36 B) for the original A32 window:
+    //   cmp r1,#0; bne ret0; ldr r3,[r0,#4]; ldr r2,[r3,#4];
+    //   tst r2,#8; ldrne r0,[r3,#16]; bxne lr; ret0: mov r0,#0; bx lr
+    std::uint32_t get_file_pitch_dds(std::uint8_t level) const noexcept {
+        if (level != 0) return 0;
+        const std::uint32_t* hdr = reinterpret_cast<const std::uint32_t*>(
+            static_cast<std::uintptr_t>(header_word));
+        const std::uint32_t flags = hdr[1];   // word at hdr+0x04
+        if ((flags & 8u) == 0u) return 0;
+        return hdr[4];                        // word at hdr+0x10
+    }
     // PVR overload: documented stub that returns 0 for every mip level.
     std::uint32_t get_file_pitch(std::uint8_t /*h*/) const noexcept { return 0; }
 };
@@ -67,3 +80,4 @@ extern "C" std::uint32_t nova3_recovered_dds_cdatainfo_needs_flip(const nova3::r
 extern "C" void         nova3_recovered_dds_cdatainfo_destructor(nova3::recovered::video::CDataInfo*);
 extern "C" std::uint32_t nova3_recovered_pvr_cdatainfo_file_data_size(const nova3::recovered::video::CDataInfo*);
 extern "C" std::uint32_t nova3_recovered_pvr_cdatainfo_file_pitch(const nova3::recovered::video::CDataInfo*, std::uint8_t);
+extern "C" std::uint32_t nova3_recovered_dds_cdatainfo_file_pitch(const nova3::recovered::video::CDataInfo*, std::uint8_t);

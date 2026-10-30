@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "sprint": "20261030-163856",
+  "pass": 8,
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "architecture": "ARM EABI, 32-bit little-endian, ARM (A32) mode"
+  },
+  "compiler_profile": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "flags": [
+      "--target=armv7a-linux-androideabi21",
+      "-marm",
+      "-O2",
+      "-fomit-frame-pointer",
+      "-fPIC",
+      "-std=c++17"
+    ],
+    "profile_file": ".cache/armv7-clang-omitfp.json",
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+    "note": "clang-21 is a candidate tool, NOT the historical GCC 4.4.3 compiler."
+  },
+  "functions": [
+    {
+      "address": "0x007146ac",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getMaterialEPKc",
+      "size": 96,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp",
+      "candidate_symbol": "nova3_recovered_collada_get_material_by_name",
+      "report": ".cache/om-getMaterialByName/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_SIZE_MISMATCH (candidate 116 B, reference 96 B, 2 relocs). Clang unrolls loop body (two strcmp/iteration) and uses down-counter vs original GCC up-counter. Identical 3-level walk offsets (+0x00, +0x10, +0x20, +0x78, +0x7c) and stride 36."
+      }
+    },
+    {
+      "address": "0x0071476c",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase8getImageEPKc",
+      "size": 96,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp",
+      "candidate_symbol": "nova3_recovered_collada_get_image_by_name",
+      "report": ".cache/om-getImageByName/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_SIZE_MISMATCH (candidate 116 B, reference 96 B, 2 relocs). Clang uses down-counter with sub/cmp/bne; original GCC uses up-counter with cmp/add/beq. Identical 3-level walk offsets (+0x00, +0x10, +0x20, +0x68, +0x6c) and stride 16."
+      }
+    }
+  ],
+  "totals": {
+    "functions_this_pass": 2,
+    "linked_window_equal": 0,
+    "bytes_different_behavioural": 2,
+    "relocation_carried": 2,
+    "end_to_end_game_functionality": false,
+    "whole_so_sha_matched": false,
+    "cumulative_matched_arm": 7,
+    "cumulative_behavioural": 8
+  }
+}
