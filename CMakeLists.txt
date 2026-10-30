@@ -180,3 +180,35 @@ if(BUILD_TESTING)
     target_compile_options(itexture_compute_size_test PRIVATE -UNDEBUG)
     add_test(NAME itexture_compute_size COMMAND itexture_compute_size_test)
 endif()
+
+# Recovered CDataInfo accessors: DDS/PVR CImageLoader CDataInfo family
+#   getFileDataSize DDS 0x007b892c, PVR 0x007b8974
+#   getFaceStartOffset DDS 0x007b8958
+#   isLittleEndian DDS 0x007b8960, needsFlip DDS 0x007b8968
+#   ~CDataInfo DDS 0x007b8970, getFilePitch PVR 0x007b897c
+if(BUILD_TESTING)
+    add_executable(cimage_datainfo_test
+        reconstruction/tests/cimage_datainfo_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8970.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b8974.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007b897c.cpp)
+    target_include_directories(cimage_datainfo_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(cimage_datainfo_test PRIVATE -UNDEBUG)
+    add_test(NAME cimage_datainfo COMMAND cimage_datainfo_test)
+endif()
+
+# Recovered function: CColladaDatabase::getVersion (0x0071017c)
+# Linked non-PIE so the four-level 32-bit pointer walk is addressable on LP64.
+if(BUILD_TESTING)
+    add_executable(ccollada_get_version_test
+        reconstruction/tests/ccollada_get_version_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp)
+    target_include_directories(ccollada_get_version_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(ccollada_get_version_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(ccollada_get_version_test PRIVATE -no-pie)
+    add_test(NAME ccollada_get_version COMMAND ccollada_get_version_test)
+endif()

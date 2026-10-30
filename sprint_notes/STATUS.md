@@ -1,119 +1,147 @@
-# Sprint STATUS — Pass 5 of 12
+# Sprint STATUS — Pass 6 of 12
 
 Sprint: 20261030-163856
 Pass completed: 2026-10-30 (AEDT)
+Branch: automation/gated-20261030-163856 (isolated worktree)
 
 ## Summary
 
-This pass recovered two additional virtual texture size-computation functions from Premium `libNOVA3_neon.so`, extending the pixfmt descriptor/mipmap infrastructure.
+This pass filled the ARM-compilation + comparison gates that prior passes
+deferred, and produced the project's **first independently verified ARM
+instruction-window matches** (7 functions, `LINKED_FUNCTION_WINDOW_EQUAL`),
+plus one behaviourally correct 4-level pointer-walk function that compiles to
+20 identical instructions but differs only in register allocation.
+
+## Key finding: original is compiled WITHOUT a frame pointer
+
+The trivial `CDataInfo` accessors in the original are single `ldr / bx lr`
+(or `mov / bx lr`) sequences with **no `push {r11,lr}` prologue**. The NDK
+clang-21 default (with `-marm -O2`) emitted a frame pointer, doubling every
+function size and preventing a byte match. Adding `-fomit-frame-pointer`
+yielded exact 8/4-byte matches. This is a concrete, evidence-backed compiler
+flag observation (the original was built with frame-pointer omission, as is
+GCC's `-O2` default), not a fabricated profile.
 
 ## Recovered functions (this pass)
 
-| Function | ELF VA | Size | A32 | Status |
-|----------|--------|------|-----|--------|
-| CVirtualTexture::getSizeInBytes() no-arg | 0x007863e4 | 680 B | yes | BEHAVIORAL (host) |
-| ITexture::computeSizeInBytes() const | 0x0077d99c | 128 B | yes | BEHAVIORAL (host) |
+All functions are A32 (ARM), confirmed from `$a` mapping symbols + `.symtab`.
 
-Mangled symbols:
-- `_ZNK6glitch5video15CVirtualTexture14getSizeInBytesEv`
-- `_ZNK6glitch5video8ITexture18computeSizeInBytesEv`
+| Function | ELF VA | Size | Mangled symbol | Result |
+|----------|--------|------|----------------|--------|
+| DDS CDataInfo::getFileDataSize | 0x007b892c | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo15getFileDataSizeEv` | MATCHED_ARM |
+| PVR CDataInfo::getFileDataSize | 0x007b8974 | 8 B | `_ZNK6glitch5video15CImageLoaderPVR9CDataInfo15getFileDataSizeEv` | MATCHED_ARM |
+| DDS CDataInfo::getFaceStartOffset | 0x007b8958 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo18getFaceStartOffsetEv` | MATCHED_ARM |
+| DDS CDataInfo::isLittleEndian | 0x007b8960 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo14isLittleEndianEv` | MATCHED_ARM |
+| DDS CDataInfo::needsFlip | 0x007b8968 | 8 B | `_ZNK6glitch5video15CImageLoaderDDS9CDataInfo9needsFlipEv` | MATCHED_ARM |
+| DDS CDataInfo::~CDataInfo | 0x007b8970 | 4 B | `_ZN6glitch5video15CImageLoaderDDS9CDataInfoD1Ev` | MATCHED_ARM |
+| PVR CDataInfo::getFilePitch(h) | 0x007b897c | 8 B | `_ZNK6glitch5video15CImageLoaderPVR9CDataInfo12getFilePitchEh` | MATCHED_ARM |
+| CColladaDatabase::getVersion | 0x0071017c | 20 B | `_ZNK6glitch7collada16CColladaDatabase10getVersionEv` | COMPILED + BEHAVIOURAL; bytes differ (regalloc) |
 
 ## Recovered behaviour
 
-**CVirtualTexture::getSizeInBytes() const (no-arg):**
-Sums mipmap chain sizes across all levels.
-- Fast path (descriptor[0x2c] & 2): returns vtable[0x14](this, 0) * cubemap_factor
-- Slow path: getMipmapCount() determines level count, then for each level computes computeSizeInBytes(fmt, w>>lvl, h>>lvl) * max(1, depth>>lvl), sums, multiplies by cubemap_factor
-- Cubemap factor: (descriptor[0x24] & 7) == 3 ? 6 : 1
-- Four inner-loop variants match the original: both dims compressed (bpb*ceil(w/bw)*ceil(h/bh)), one compressed (bpb or bpp paths), both uncompressed (bpp>>3 path)
+**CDataInfo (DDS/PVR shared image-info record):**
+- +0x0c `file_data_size`: `getFileDataSize` returns it (both DDS and PVR).
+- +0x10 `face_start_offset`: `getFaceStartOffset` returns it (DDS).
+- +0x04 `header_word`: pointer word (evidenced by the longer DDS getFilePitch
+  at 0x007b8934 performing `ldr r3,[r0,#0x4] ... ldr r0,[r3,#0x10]`).
+- `isLittleEndian` -> 1; `needsFlip` -> 0; PVR `getFilePitch(h)` -> 0 (stub).
 
-**ITexture::computeSizeInBytes() const:**
-128-byte alignment + cubemap weight dispatch.
-- Path A (descriptor[0x2c] & 2 == 0): inner table lookup, raw value rounded up to 128, formula: weight*aligned + raw
-- Path B: two vtable[0x14] calls (A, B), formula: weight*align_up(B,128) + A
-- Cubemap weight: (descriptor[0x24] & 7) == 3 ? 5 : 0
+**CColladaDatabase::getVersion:** four-level 32-bit pointer walk
+`*(*(*(root+0x00)+0x10)+0x20)+0x00` (root at +0x00 in the object).
 
-Descriptor struct fields observed:
-- +0x10: pointer to inner uint32_t array (Path A)
-- +0x24: uint32_t — bits [2:0] = cubemap flag
-- +0x2c: uint8_t — bit 1 = fast path selector
-- +0x2f: uint8_t — index into inner array (Path A)
+The `static_assert(offsetof(...))` assertions in `cimage_datainfo.h` and the
+sentinel values in the test are the "catch a wrong reconstruction" guard: a
+mislocated field fails at compile time or produces a wrong read at run time.
 
-## Evidence manifest
+## ARM comparison evidence (compiler_matrix -> object_compare)
 
-| Step | CVirtualTexture no-arg | ITexture::computeSizeInBytes |
-|------|----------------------|---------------------------|
-| DISCOVERED | Symbol from .symtab; 0x7863e4, 680B | Symbol from .symtab; 0x77d99c, 128B |
-| ANALYZED | Capstone A32; 4 loop variants traced; control flow mapped | Capstone A32; two-path dispatch, align/cubemap traced |
-| SOURCE | block_007863e4.cpp (needs pixel_format.h headers) | block_0077d99c.cpp (standalone inline helpers) |
-| ARM_COMPILES | Not done (time constraint) | Not done (time constraint) |
-| COMPARISON_CHECKED | Not done | Not done |
-| BEHAVIOR_TESTED | Hand-computed values + table-driven cross-check (40 fmts, 11 dims, 5 cnts, 8 flags) | Hand-computed + table-driven (raw/A/B vals, all flags) |
-| VERIFIED_AT_SCOPED_LEVEL | BEHAVIORAL (host) | BEHAVIORAL (host) |
+- ELF SHA-256: `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+- Compiler: `/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21`
+  (Android NDK r29, clang 21.0.0).
+- Flags: `--target=armv7a-linux-androideabi21 -marm -O2 -fomit-frame-pointer -fPIC -std=c++17`
+- Profile: `.cache/armv7-clang-omitfp.json`
+- Per-function reports: `.cache/om-*/matrix.json` (JSON, private local cache).
 
-## Original ELF reference
-
-- Path: /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so
-- SHA-256: 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf
-
-## Files changed (this pass)
-
-1. `reconstruction/recovered/libNOVA3_neon/block_007863e4.cpp` — NEW (CVirtualTexture no-arg getSizeInBytes)
-2. `reconstruction/recovered/libNOVA3_neon/block_0077d99c.cpp` — NEW (ITexture computeSizeInBytes)
-3. `reconstruction/tests/virtual_texture_get_size_in_bytes_noarg_test.cpp` — NEW
-4. `reconstruction/tests/itexture_compute_size_test.cpp` — NEW
-5. `CMakeLists.txt` — +2 test targets (virtual_texture_get_size_in_bytes_noarg, itexture_compute_size)
+Each MATCHED_ARM entry has: reference window SHA == candidate code SHA, same
+size, A32 == A32, and **0 relocations**. Example (DDS getFileDataSize):
+`reference_size=8 candidate_size=8 candidate_relocation_count=0`
+`reference_window_sha256 == candidate_code_sha256 = 687b83fbb1b1084c4b61325547b5f8fadfb354f0d8aa39fcef5ecb6ba6b86ed1`.
 
 ## Host test results
 
-CTest 19/19 passed. No regressions. Python tests unchanged (13/13 verified in prior passes).
+CTest **21/21 passed** (19 prior + 2 new). New tests:
+- `cimage_datainfo` (7 CDataInfo accessors: field offsets, sentinel reads,
+  constant/zero returns, no-op destructor).
+- `ccollada_get_version` (4-level walk; linked `-no-pie` so the 32-bit walk is
+  addressable on LP64; skips cleanly if static storage exceeds 4 GiB).
 
-## Cumulative recovered functions
+## Honest scope and limitations
 
-| Function | ELF VA | Bytes | Pass |
-|----------|--------|-------|------|
-| computePitch | 0x0077d37c | 80 | 2 |
-| computeSizeInBytes | 0x0077d3cc | 112 | 2 |
-| computeSizeInBytes_slices | 0x0077d43c | 20 | 2 |
-| computeMipmapSizeInBytes | 0x0077d450 | 32 | 3 |
-| computeMipmapSizeInBytes_slices | 0x0077d470 | 56 | 3 |
-| getMipmapCount | 0x007b84e0 | 108 | 4 |
-| CVirtualTexture::getSizeInBytes(tgt) | 0x0077d4a8 | 96 | 4 |
-| CVirtualTexture::getSizeInBytes() no-arg | 0x007863e4 | 680 | 5 |
-| ITexture::computeSizeInBytes() const | 0x0077d99c | 128 | 5 |
+- **7 MATCHED_ARM** are `LINKED_FUNCTION_WINDOW_EQUAL`, not
+  `MATCHED_LIBRARY_SHA256`, not proof of the historical GCC 4.4.3 compiler,
+  original `.o` TU boundaries, relocations, or full source equivalence. They
+  are real, independently-written C++ whose ARM code bytes equal the original
+  linked window with a pinned, documented compiler profile and no relocations.
+- These functions are **trivial leaf accessors** where codegen is effectively
+  compiler-independent; the match is real but narrowly scoped.
+- `getVersion` compiles to the same 5-instruction/20-byte shape but clang-21
+  threads the walk through r0 while the original uses r3 as the walk register
+  (register-allocation variance). Marked `FUNCTION_BYTES_DIFFERENT`, behaviour
+  independently host-tested.
+- `-fomit-frame-pointer` matches observed bytes but is **not** proof the
+  historical toolchain/NDK used the same flags; it is one required flag among
+  an unknown full set.
 
-Total: 9 functions, all BEHAVIORAL (host), 0 MATCHED_ARM.
+## Correction to prior pass-5 STATUS
+
+Pass 5 listed `0x0078668c` as "CVirtualTexture::getSizeInBytes(unsigned int)".
+The actual `.symtab` symbol at `0x0078668c` is
+`_ZNK6glitch5video15CImageWriterPVR16writeTextureDescE...` (CImageWriterPVR::
+writeTextureDesc, a large non-trivial writer), not getSizeInBytes. That
+assumption is retracted; no such unsigned-int overload exists at that address.
+
+## Files changed (this pass)
+
+1. `reconstruction/recovered/libNOVA3_neon/cimage_datainfo.h` — NEW (CDataInfo layout + inline accessors + extern-"C" decls)
+2. `reconstruction/recovered/libNOVA3_neon/ccollada_database.h` — NEW (getVersion walk)
+3. `reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp` — NEW (DDS getFileDataSize)
+4. `reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp` — NEW (DDS getFaceStartOffset)
+5. `reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp` — NEW (DDS isLittleEndian)
+6. `reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp` — NEW (DDS needsFlip)
+7. `reconstruction/recovered/libNOVA3_neon/block_007b8970.cpp` — NEW (DDS ~CDataInfo)
+8. `reconstruction/recovered/libNOVA3_neon/block_007b8974.cpp` — NEW (PVR getFileDataSize)
+9. `reconstruction/recovered/libNOVA3_neon/block_007b897c.cpp` — NEW (PVR getFilePitch)
+10. `reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp` — NEW (Collada getVersion)
+11. `reconstruction/tests/cimage_datainfo_test.cpp` — NEW
+12. `reconstruction/tests/ccollada_get_version_test.cpp` — NEW
+13. `CMakeLists.txt` — +2 test targets (cimage_datainfo, ccollada_get_version)
 
 ## Next functions (priority order)
 
-1. CVirtualTexture::getSizeInBytes(unsigned int) — the overload at 0x0078668c (2484 B).
-   Directly follows the no-arg overload; likely the same loop + offset/stride computation.
-   Large but approachable since all dependencies (descriptor layout, compute helpers,
-   cubemap factors) are now established.
+1. Remaining DDS CDataInfo `getFilePitch` (0x007b8934, ~30 B, non-trivial):
+   the only CDataInfo accessor left; records the +0x04 header pointer semantics.
+2. DDS CDataInfo accessor cluster continuation: `getFaceStartOffset`
+   neighbours, or the PVR/DDS `getFilePitch` family fully.
+3. More trivial leaf accessors in the 0x00710160..0x00710368 Collada range
+   (`linkInstanceMaterial`, `getImage`, `getMaterial` from existing evidence
+   task 31) — multi-level pointer/offset walks of the getVersion shape.
+4. Revisit pass-5 `ITexture::computeSizeInBytes` / `CVirtualTexture` blocks
+   with `-fomit-frame-pointer` now that the flag is characterized; these have
+   data-table relocations so full byte equality will require relocation
+   handling, but the flag removes the frame-pointer size inflation.
 
-2. CImageLoaderPVR::CDataInfo::getFileDataSize (0x007b8974, 8 B) — trivial accessor,
-   `ldr r0,[r0,#0xc]; bx lr`.  Too simple to merit a standalone test, but useful
-   for completeness.
+## Current blockers (unchanged + new)
 
-3. CColladaDatabase::getVersion (0x0071017c, 20 B) — 4-level pointer chain,
-   `ldr r3,[r0]; ldr r3,[r3,#0x10]; ldr r3,[r3,#0x20]; ldr r0,[r3]; bx lr`.
-   Also trivial accessor.
+1. Historical GCC 4.4.3 ARM toolchain still not established; modern clang-21
+   matches trivial leaves but diverges on register allocation for walks.
+2. Whole-`.so` SHA equality not established (not attempted; requires original
+   compiler/linker/link-order/padding).
+3. Functions with data references (pixel_format table, vtable[0x14]) carry
+   relocations and cannot byte-match trivially; need a relocation worksheet.
+4. CDataInfo layout beyond +0x10 is UNKNOWN (only four fields evidenced).
 
-4. Additional glitch::video functions in 0x0077d500–0x0077da00 range,
-   several in 16–196 byte range (descendant accessors, format queries).
+## Evidence manifest
 
-## Current blockers
-
-1. No historical GCC 4.4.3 ARM cross-compiler (unchanged).
-2. Byte-level ARM instruction match remains impossible without historical toolchain.
-3. CVirtualTexture vtable layout beyond slot 0x14 is UNKNOWN.
-4. Descriptor struct layout beyond +0x2f is UNKNOWN.
-
-## Limitations
-
-- CVirtualTexture no-arg function uses compute_size_in_bytes inline (header design),
-  so generated ARM will be structurally different from original's 4-path loop unrolling.
-- ITexture function requires vtable[0x14] mock for testing; its real implementation
-  is not independently recovered.
-- All recovered functions are behavioral (host); 0 MATCHED_ARM.
-- Field names are INFERRED (descriptor, width, height, mipCount); original names UNKNOWN.
+See `sprint_notes/evidence_pass6.json` for the per-function status chain
+(DISCOVERED -> ANALYZED -> SOURCE -> ARM_COMPILES -> COMPARISON_CHECKED
+-> BEHAVIOR_TESTED -> VERIFIED_AT_SCOPED_LEVEL).
