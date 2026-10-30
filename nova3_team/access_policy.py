@@ -729,3 +729,17 @@ def _repository_matches(repo: Mapping[str, object], target: Repository) -> None:
             or repo["owner"]["type"] not in {"Organization", "User"}
             or type(repo["private"]) is not bool):
         raise _Denied()
+
+
+def verify_repository(payload: Mapping[str, object], target: Repository) -> None:
+    """Public structural attestation of a live repository payload.
+
+    Raises ValueError when the payload does not match the pinned numeric
+    repository/owner identity. Trusted callers use this as a deployment
+    preflight so a name-reused or misconfigured checkout never activates a
+    queue against the wrong repository.
+    """
+    try:
+        _repository_matches(payload, target)
+    except (_Denied, KeyError, TypeError, AttributeError):
+        raise ValueError("repository identity mismatch") from None
