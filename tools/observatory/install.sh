@@ -31,14 +31,21 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s "$SOURCE_DIR/tests" -q
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
 OLD_TARGET="$DATA_HOME/nova3-observatory"
 TARGET="$DATA_HOME/nova3-control-center"
-STAGING="$DATA_HOME/.nova3-control-center.stage.$$"
 BINDIR="$HOME/.local/bin"
 install -d -m 700 "$DATA_HOME" "$BINDIR"
 # Stage and health-check before replacing anything. The legacy directory is
 # preserved so an interrupted upgrade can always fall back to it.
-rm -rf -- "$STAGING"
-install -d -m 700 "$STAGING"
-trap 'rm -rf -- "$STAGING"' EXIT
+STAGING="$(mktemp -d "$DATA_HOME/.nova3-control-center.stage.XXXXXXXX")"
+cleanup_staging() {
+  # Only unlink regular files in our newly created private staging directory.
+  # Unexpected directories or symlinks are preserved for inspection.
+  for staged_file in "$STAGING"/*; do
+    [[ -f "$staged_file" && ! -L "$staged_file" ]] || continue
+    unlink -- "$staged_file"
+  done
+  rmdir -- "$STAGING" 2>/dev/null || true
+}
+trap cleanup_staging EXIT
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py; do
   install -m 600 "$SOURCE_DIR/$file" "$STAGING/$file"
 done
@@ -53,10 +60,10 @@ install -m 600 "$HISTORICAL_GUIDE" "$STAGING/HISTORICAL_TOOLCHAIN.md"
 install -m 600 "$LIVE_GUIDE" "$STAGING/OBSERVATORY_LIVE_INTEGRATION.md"
 install -m 600 "$FORECAST_GUIDE" "$STAGING/FORECAST_POLICY.md"
 # Offline synthetic health check, outside the source tree and with -I (no PYTHONPATH).
-PYTHONDONTWRITEBYTECODE=1 python3 -I "$STAGING/observer.py" --demo --once >/dev/null
+python3 -B -I "$STAGING/observer.py" --demo --once >/dev/null
 # Fail closed if the provider registry / Accounts page could not load; the
 # observer otherwise degrades silently to "Accounts module unavailable".
-PYTHONDONTWRITEBYTECODE=1 python3 -I -c "import sys; sys.path.insert(0, r'$STAGING'); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" >/dev/null
+python3 -B -I -c "import sys; sys.path.insert(0, sys.argv[1]); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" "$STAGING" >/dev/null
 install -d -m 700 "$TARGET"
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py provider_accounts.py provider_runtime.py historical_toolchain.py HISTORICAL_TOOLCHAIN.md OBSERVATORY_LIVE_INTEGRATION.md FORECAST_POLICY.md; do
   install -m 600 "$STAGING/$file" "$TARGET/$file"
