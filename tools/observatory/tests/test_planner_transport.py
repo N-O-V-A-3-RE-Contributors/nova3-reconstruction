@@ -8,6 +8,9 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
+import io
+import concurrent.futures
 
 
 HERE = Path(__file__).resolve().parents[1]
@@ -23,6 +26,7 @@ def load(name, filename):
 
 transport = load("nova_test_native_planner", "planner_transport.py")
 chat = load("nova_test_native_planner_chat", "planning_chat.py")
+helper = load("nova_test_openrouter_helper", "openrouter_helper.py")
 
 
 class NativePlannerTests(unittest.TestCase):
@@ -141,6 +145,96 @@ class NativePlannerTests(unittest.TestCase):
             self.assertEqual(restored.state()["thread"]["provider_state"], "CONNECTED")
             self.assertEqual(len(restored.transcript()), 4)
             restored.close()
+
+
+class BoundedPlannerTests(unittest.TestCase):
+    def test_wallet_persists_and_never_refunds_errors_or_resets_on_reopen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wallet = Path(directory) / "wallet.json"
+            for _ in range(4):
+                transport.reserve_test_budget(wallet)
+            self.assertEqual(json.loads(wallet.read_text())["reserved_micro_usd"], 48000)
+            self.assertEqual(wallet.stat().st_mode & 0o777, 0o600)
+            with self.assertRaisesRegex(transport.TransportError, "exhausted"):
+                transport.reserve_test_budget(wallet)
+            self.assertEqual(json.loads(wallet.read_text())["calls"], 4)
+
+    def test_wallet_concurrent_reservations_fail_closed_at_total_cap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wallet = Path(directory) / "wallet.json"
+            def reserve(_):
+                try:
+                    transport.reserve_test_budget(wallet)
+                    return True
+                except transport.TransportError:
+                    return False
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+                results = list(pool.map(reserve, range(8)))
+            self.assertEqual(sum(results), 4)
+            self.assertEqual(json.loads(wallet.read_text())["reserved_micro_usd"], 48000)
+
+    def test_corrupt_wallet_denies_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            wallet = Path(directory) / "wallet.json"
+            wallet.write_text('{"reserved_micro_usd":"zero","calls":0}')
+            with self.assertRaises(transport.TransportError):
+                transport.reserve_test_budget(wallet)
+
+    def test_context_keeps_decisions_and_latest_turn_with_bounded_request(self):
+        context = {"ledger": {"accepted_decisions": [{"text": "Retain the cobalt decision"}]},
+                   "recent_turns": [{"text": "old " * 5000}, {"text": "latest"}],
+                   "github_project_state": {"fetched_at": "fixture", "issue": 11}}
+        bounded = transport.bounded_context(context, "short question")
+        self.assertIn("cobalt", json.dumps(bounded))
+        self.assertIn("latest", json.dumps(bounded))
+        self.assertEqual(len(bounded["recent_turns"]), 1)
+        self.assertIn("github_project_state", bounded)
+        self.assertLess(len(json.dumps(bounded).encode()), 7000)
+
+    def test_oversized_pins_or_message_deny_instead_of_losing_decisions(self):
+        with self.assertRaisesRegex(transport.TransportError, "Pinned"):
+            transport.bounded_context({"ledger": {"accepted_decisions": ["x" * 9000]}}, "question")
+        with self.assertRaisesRegex(transport.TransportError, "Message"):
+            transport.bounded_context({}, "x" * 8192)
+
+    def test_direct_helper_fixed_endpoint_caps_no_fallback_tools_or_extra_calls(self):
+        stream = io.BytesIO(b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+                            b'data: {"usage":{"cost":0.001},"choices":[]}\n\n'
+                            b'data: [DONE]\n\n')
+        class Response:
+            def __enter__(self): return stream
+            def __exit__(self, *args): return False
+        opener = mock.Mock()
+        opener.open.return_value = Response()
+        emitted = []
+        with tempfile.TemporaryDirectory() as directory:
+            prompt = Path(directory) / "prompt"
+            prompt.write_text("Fixture prompt")
+            with mock.patch.object(helper.sys, "argv", ["helper", "fixture", "infer", "deepseek/test", str(prompt)]), \
+                 mock.patch.object(helper, "resolve", return_value=("deepseek/test", {"api_key": "fixture"})), \
+                 mock.patch.object(helper.urllib.request, "build_opener", return_value=opener), \
+                 mock.patch.object(helper, "emit", side_effect=emitted.append):
+                self.assertEqual(helper.main(), 0)
+        opener.open.assert_called_once()
+        request = opener.open.call_args.args[0]
+        body = json.loads(request.data)
+        self.assertEqual(request.full_url, helper.ENDPOINT)
+        self.assertEqual(body["max_tokens"], 512)
+        self.assertEqual(body["reasoning"], {"effort": "none"})
+        self.assertEqual(body["provider"], {"require_parameters": True,
+            "allow_fallbacks": False, "max_price": {"prompt": 1, "completion": 4, "request": 0}})
+        self.assertNotIn("tools", body)
+        self.assertEqual(emitted[0], {"type": "text", "text": "Hello"})
+        self.assertEqual(emitted[-1]["usage"]["cost"], 0.001)
+
+    def test_http_errors_and_auth_details_never_enter_output(self):
+        emitted = []
+        with mock.patch.object(helper.sys, "argv", ["helper", "fixture", "probe", ""]), \
+             mock.patch.object(helper, "resolve", side_effect=RuntimeError("private credential diagnostic")), \
+             mock.patch.object(helper, "emit", side_effect=emitted.append):
+            self.assertEqual(helper.main(), 1)
+        self.assertNotIn("private credential", json.dumps(emitted))
+        self.assertFalse(emitted[0]["available"])
 
 
 if __name__ == "__main__":

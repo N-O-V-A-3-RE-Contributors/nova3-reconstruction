@@ -2324,6 +2324,16 @@ class Observatory:
 
     def _plan_role_provider(self):
         """Fresh owner/admin resolution seam; network only in the real CLI path."""
+        identity_provider = getattr(self.collector, 'planning_identity_provider', None)
+        if identity_provider is not None:
+            try:
+                identity = self._planning_user(refresh=True)
+                if self.planning is not None and self.planning.user != identity:
+                    return {'allowed': False, 'role': 'UNKNOWN',
+                            'reason': 'GitHub account changed; reopen Plan & Chat'}
+            except Exception:
+                return {'allowed': False, 'role': 'UNKNOWN',
+                        'reason': 'Authenticated GitHub identity unavailable'}
         provider = getattr(self.collector, 'owner_access_provider', None)
         if provider is not None:
             return provider()
@@ -2335,17 +2345,58 @@ class Observatory:
         return {'allowed': False, 'role': 'UNKNOWN',
                 'reason': 'No fresh authorization seam configured'}
 
-    def _planning_user(self) -> str:
+    def _planning_user(self, *, refresh=False) -> str:
+        provider = getattr(self.collector, 'planning_identity_provider', None)
+        if provider is not None:
+            identity = getattr(self, '_planning_identity_cache', None)
+            if refresh or identity is None:
+                raw = provider()
+                if (not isinstance(raw, dict) or type(raw.get('id')) is not int
+                        or raw['id'] <= 0 or not isinstance(raw.get('login'), str)
+                        or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]{0,62}', raw['login'])):
+                    raise ValueError('Verified GitHub numeric identity required')
+                identity = 'github-' + str(raw['id'])
+                self._planning_identity_cache = identity
+            return identity
+        # Explicit collector seams below are for offline fixtures. Production
+        # always installs planning_identity_provider, never USER/NOVA3_VIEWER.
         explicit = getattr(self.collector, 'viewer_login', None)
         if explicit:
             return str(explicit)
         return os.environ.get('NOVA3_VIEWER') or os.environ.get('USER') or 'owner'
+
+    def _planning_project_state(self):
+        snap = self.collector.view()
+        def rows(items):
+            return [{key: row.get(key) for key in ('number', 'title', 'state', 'url', 'updatedAt')}
+                    for row in items[:6] if isinstance(row, dict)]
+        return {'repository': self.collector.repo, 'fetched_at': snap.github_updated,
+                'state': 'CACHED' if snap.github_errors else 'OBSERVED',
+                'provenance': 'gh issue/pr/actions read-only collector; bounded listing',
+                'issues': rows(snap.issues), 'pull_requests': rows(snap.prs),
+                'workflow_runs': [{'name': row.get('workflowName'),
+                                   'conclusion': row.get('conclusion'), 'url': row.get('url')}
+                                  for row in snap.runs[:3]]}
 
     def ensure_planning(self, *, refresh: bool = False):
         """Create the workspace lazily; refresh only at entry, never per repaint."""
         if planning_chat is None:
             self.plan_error = 'Plan & Chat module unavailable; reinstall the Control Center'
             return None
+        if refresh and self.planning is not None:
+            try:
+                user = self._planning_user(refresh=True)
+            except Exception:
+                self.planning.resolve_role()
+                self.plan_error = 'Authenticated GitHub identity unavailable; private memory locked'
+                return None
+            if self.planning.user != user:
+                if self.planning._streaming:
+                    self.planning.cancel()
+                    self.plan_error = 'Account changed; waiting for prior private turn to close'
+                    return None
+                self.planning.close()
+                self.planning = None
         if self.planning is None:
             state_dir = getattr(self.collector, 'state_dir', None) or (
                 Path(os.getenv('XDG_STATE_HOME', str(Path.home()/'.local/state')))
@@ -2361,6 +2412,7 @@ class Observatory:
                     user=self._planning_user(),
                     role_provider=self._plan_role_provider,
                     adapters=adapters,
+                    project_state_provider=self._planning_project_state,
                 )
             except Exception as exc:
                 self.plan_error = ('Planning workspace unavailable: '
@@ -2481,6 +2533,8 @@ class Observatory:
             ('PRIVACY  ' + state['privacy'], 'yellow'),
             'OBJECTIVE: ' + state['objective'][:max(20, w-16)],
         ]
+        if thread.get('provider_note'):
+            summary.insert(2, thread['provider_note'])
         if state['next_actions']:
             summary.append('NEXT: ' + state['next_actions'][0])
         else:
@@ -3208,6 +3262,8 @@ def cli(argv=None):
     # Plan & Chat re-resolves owner/admin authority from GitHub on every entry
     # and privileged action; injected here so tests and demo never hit the network.
     c.owner_access_provider = lambda: operator_ops.owner_access(args.repo)
+    c.planning_identity_provider = (operator_ops.viewer_identity
+                                   if not args.demo and not args.offline else lambda: {})
     workers=max(1,min(32,args.workers))
     if args.once:
         if not args.demo and not args.offline:

@@ -5,56 +5,75 @@ worker action and no transcript in this repository. The UI lives in
 `tools/observatory/observer.py`; all behavior is in
 `tools/observatory/planning_chat.py` and is driven directly by tests.
 
-## Native Hermes transport
+## Bounded OpenRouter transport through the configured Hermes account
 
-The production UI now discovers `planner_transport.HermesPlanner`. An installed
-Hermes CLI passing its bounded `chat --help` capability probe displays `UNKNOWN`
-until the first successful inference, then `CONNECTED`; failed inference shows
-`UNAVAILABLE`. Discovery does not submit a prompt or prove authentication.
-Demo mode continues to avoid native providers. The Unix and Windows installers
-ship the transport and its existing Hermes runtime helper.
+The production UI discovers `planner_transport.BoundedOpenRouter` for both
+`hermes` and `openrouter` choices. Its label explicitly says **OpenRouter via
+configured Hermes account**. A private helper executes in the installed Hermes
+interpreter and resolves credentials using Hermes' native
+`resolve_runtime_provider(requested="openrouter", target_model=...)` mechanism.
+Only readiness metadata, model text and bounded token/cost statistics cross
+stdout; credentials and native diagnostic text never do. No gateway session,
+worker, global Hermes configuration or credential file is changed.
 
-Press `C`, `T` to create a private thread, then `I` to type and submit. Responses
-use the installed Hermes `--format stream-json` protocol, including live `text`
-deltas and the terminal `result`. Nonstreaming providers still display the
-terminal answer. Credentials are resolved by Hermes through its normal local
-mechanism; Control Center neither parses nor copies them. Errors do not echo
-provider stderr, response errors or environment values.
+The actual native configured model is read during readiness, rather than using
+the earlier placeholder/pinned model guess. `NOVA3_HERMES_PLANNER_MODEL` can
+explicitly select a DeepSeek model; its identifier is validated and no silent
+model fallback occurs. Legacy `hermes-planner`/`planner-default` thread labels
+migrate to the resolved model. Local readiness displays `UNKNOWN` until a real
+inference succeeds, then `CONNECTED`; actual failure displays `UNAVAILABLE`.
+The UI never treats a local credential resolver as proof of successful inference.
 
-Planner settings are separate: `NOVA3_HERMES_PLANNER_MODEL` and
-`NOVA3_HERMES_PLANNER_PROVIDER` (default OpenRouter). Provider allowlisting and
-identifier validation use the existing Hermes runtime. The UI shows the actual
-configured model. Old threads saved with `hermes-planner` migrate at invocation.
-The default model remains the runtime's pinned model; availability must be
-checked against the operator's actual provider, never assumed.
+Press `C`, `T` to create a private thread, then `I` to enter a message. Provider
+SSE content streams into the existing redacted chat event queue and is saved in
+the per-user ledger. Switching Hermes/OpenRouter rereads the same memory and uses
+the **same wallet**, as does closing/reopening the application. Demo mode never
+starts native providers. Both installers ship the helper and transport.
 
-Each turn creates an isolated, temporary working directory and private 0600
-prompt containing the current bounded continuation envelope. The subprocess
-uses DEVNULL stdin/stderr and its own process group; cancellation terminates
-only that group. No worker PID, lease, model, session, service or coordinator
-endpoint is inspected or changed. The envelope remains durable in the private
-per-user ledger and is supplied again after UI restarts/provider switches.
+Every POST uses the exact official HTTPS OpenRouter endpoint, refuses redirects,
+requests `max_tokens=512`, disables reasoning, enables no tools, sets
+`provider.require_parameters=true`, `allow_fallbacks=false`, and
+`max_price={prompt:1,completion:4,request:0}` in dollars per million tokens
+(prompt/completion). There are no retries, fallback models, title generators or
+auxiliary inference. The entire UTF-8 prompt file is capped at 8192 bytes. The
+bounded envelope retains every retrieved accepted decision, verified fact and
+goal before filling the remaining space with recent turns/summaries; overflowing
+pins fail clearly rather than silently disappearing. Current public GitHub
+issue/PR/workflow metadata is included with source/freshness and an explicit
+untrusted/informational label; it never becomes queue authorization evidence.
 
-Model tools are explicitly disabled with `--toolsets ''`, which the installed
-Hermes gateway parses as an empty list. Omitting this flag would enable defaults.
-No file-write, terminal, GitHub, delegation or worker tool is granted. Enabling
-tools requires separate model capability and permission validation. Native
-inference has a 120-second local viewer deadline and one tool-calling iteration.
-The installed gateway-backed Hermes CLI rejects `--run-budget` in streaming
-mode despite advertising it in help, so the transport omits that flag. Stopping
-the CLI viewer does **not** prove its already accepted gateway inference was
-cancelled; the gateway may finish the isolated planner session after detachment.
-No global gateway or worker process is terminated. Hard cancellation of the
-accepted turn needs a session-scoped native interrupt adapter.
-These are **not monetary limits**: the Hermes CLI has no documented output-token
-or dollar-cap argument. Strict paid-test budgets require a verified provider
-cap or separately bounded transport; do not equate wall time with cost.
+Before every request the parent atomically reserves **$0.012** against the
+**$0.05 TOTAL test budget** in the canonical OS-user wallet:
+`$XDG_STATE_HOME/nova3-observatory/planning_chat/openrouter-test-wallet.json`
+(default `~/.local/state/...`). It uses file locking, 0600 permissions, file and
+parent-directory fsync, rejects corrupt state and never refunds uncertain errors
+or replenishes itself. The canonical production wallet is shared across provider
+choices, GitHub account switches, custom UI state directories and restarts. The
+UI reports reserved and remaining amounts. Four reservations fit; a fifth fails
+before any POST. Changing a provider, clicking retry or reopening cannot reset
+the wallet. Further spending requires explicit owner budget authorization and a
+reviewed implementation change; this installation does not grant unlimited use.
 
-Offline regression command (uses real fixture subprocesses, no model calls):
+The helper is an internal implementation, not a standalone inference CLI: live
+verification must call `BoundedOpenRouter.stream()` through `ChatWorkspace` or
+the UI, preserving the wallet boundary. Native Hermes CLI mode remains an
+optional transport class for offline protocol tests; it is **not** the production
+default. The installed gateway CLI rejects its advertised `--run-budget` flag
+in streaming mode, and killing that viewer can leave accepted gateway work
+running. The bounded direct helper avoids creating such a gateway session and
+retains its full reservation even after local cancellation or timeout.
+
+The production UI keys memory by fresh authenticated GitHub **numeric user ID**
+from `gh api user`, rather than `USER`/`NOVA3_VIEWER`. Account changes recheck
+identity/owner authority and lock the previous account's memory. Missing identity
+fails closed. Explicit offline collector seams remain available for tests.
+
+Offline regression command (real fixture subprocesses, no paid model calls):
 `python3 -m unittest discover -s tools/observatory/tests -p test_planner_transport.py -v`.
-It covers streaming, terminal-only replies, protocol failures, cancellation,
-timeouts, tool denial, private prompt cleanup and restart continuity. Live
-inference readiness must be recorded separately by the installation verifier.
+Tests cover streaming, protocol failures, timeout/cancel isolation, test-wallet
+persistence/concurrency/corruption, hard request settings, no redirects/fallbacks,
+context retention and restart continuity. Live inference evidence is recorded
+separately by the installation verifier.
 
 ## Why this shape
 
