@@ -43,6 +43,12 @@ cleanup_staging() {
     [[ -f "$staged_file" && ! -L "$staged_file" ]] || continue
     unlink -- "$staged_file"
   done
+  for backend_file in access_policy.py planning_bridge.py planning_memory.py; do
+    staged_file="$STAGING/planning_backend/$backend_file"
+    [[ -f "$staged_file" && ! -L "$staged_file" ]] || continue
+    unlink -- "$staged_file"
+  done
+  rmdir -- "$STAGING/planning_backend" 2>/dev/null || true
   rmdir -- "$STAGING" 2>/dev/null || true
 }
 trap cleanup_staging EXIT
@@ -51,6 +57,11 @@ for file in observer.py operator_ops.py presence_view.py progress.py forecast_mo
 done
 install -m 600 "$SOURCE_DIR/provider_accounts.py" "$STAGING/provider_accounts.py"
 install -m 600 "$PROVIDER_RUNTIME" "$STAGING/provider_runtime.py"
+install -m 600 "$SOURCE_DIR/planning_chat.py" "$STAGING/planning_chat.py"
+install -d -m 700 "$STAGING/planning_backend"
+for backend_file in access_policy.py planning_bridge.py planning_memory.py; do
+  install -m 600 "$SOURCE_DIR/../../nova3_team/$backend_file" "$STAGING/planning_backend/$backend_file"
+done
 # provider_runtime imports this sibling when the optional Hermes backend is
 # registered; stage it when present so the standalone install keeps loading.
 HERMES_RUNTIME="$SOURCE_DIR/../../nova3_team/hermes_runtime.py"
@@ -64,11 +75,17 @@ python3 -B -I "$STAGING/observer.py" --demo --once >/dev/null
 # Fail closed if the provider registry / Accounts page could not load; the
 # observer otherwise degrades silently to "Accounts module unavailable".
 python3 -B -I -c "import sys; sys.path.insert(0, sys.argv[1]); import provider_accounts; assert provider_accounts.provider_runtime.PROVIDERS" "$STAGING" >/dev/null
+python3 -B -I -c "import sys; sys.path.insert(0, sys.argv[1]); import planning_chat; assert planning_chat.planning_memory" "$STAGING" >/dev/null
 install -d -m 700 "$TARGET"
 for file in observer.py operator_ops.py presence_view.py progress.py forecast_model.py project_roadmap.json ui_components.py live_status.py journal_inspector.py onboarding.py provider_accounts.py provider_runtime.py historical_toolchain.py HISTORICAL_TOOLCHAIN.md OBSERVATORY_LIVE_INTEGRATION.md FORECAST_POLICY.md; do
   install -m 600 "$STAGING/$file" "$TARGET/$file"
 done
 [[ -f "$STAGING/hermes_runtime.py" ]] && install -m 600 "$STAGING/hermes_runtime.py" "$TARGET/hermes_runtime.py"
+install -m 600 "$STAGING/planning_chat.py" "$TARGET/planning_chat.py"
+install -d -m 700 "$TARGET/planning_backend"
+for backend_file in access_policy.py planning_bridge.py planning_memory.py; do
+  install -m 600 "$STAGING/planning_backend/$backend_file" "$TARGET/planning_backend/$backend_file"
+done
 # Shared state (accounts.json, snapshot.json) intentionally stays in the old
 # XDG state path; install never deletes ~/.local/share/nova3-observatory.
 printf '%s\n' \
