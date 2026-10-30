@@ -60,3 +60,46 @@ Source mode4 texture path rewrite added from native CCustomFileSystem0x2ad998/Us
 Committed game filename routing1e64037. Added independently compiled scrambled_zip.* header parser from native scanner0x411fc0/init0x412730, reusing verified basename-XOR and ZIP header/payload modules. Actual SB body is26-byte ZIP local body, no PK signature; same four-byte prefix length preserves offsets.30packages(19main/11patch),4,885records,2,703,534,940decoded bytes match independent Python metadata/inflate/CRC. All flags0, methods0/8; one emptySEND package; SDIR metadata and19otherGLAvariants remain unparsed. Original NV_DiffuseVC effect and2shader source references found inside effects.gla and kept under ignored .cache/assets only. These3files match between main/patch; no production use of original shader code.
 
 Final verification exit0: tools/check_all.sh(host13/13,Python13/13,source-only artifact checks); clean source-only Release13/13; ASan/UBSan13/13; ARMv7 source rebuild. Logs .cache/logs/scrambled-final-*. SQLite source mapping update/check complete,62Ghidra exports,17stage2 scoped source mappings,3full native utility mappings;13source engine modules. No new tool installs/host config changes. Next genuine milestone is effect/material/vertex semantic/sampler binding and own renderer; source SB mount integration/SDIR/other PAK types still missing.
+
+## 2026-10-31 — CPU-query thunk ABI correction and matching-context pilot
+
+- Read AGENTS/STATUS/NEXT/HANDOFF and docs/OBJECT_MATCHING.md; confirmed Premium SHA-256 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf unchanged. Disk 19 GiB free, ~2 GiB available RAM, one lightweight compile pipeline only.
+- Ran the existing `tools/run_compiler_pilot.sh`: recorded `FUNCTION_SIZE_MISMATCH` for the legacy context-pointer candidate (`nova3_recovered_cpu_count`), as its own comments predict; evidence in `.cache/revalidation/compiler-pilot-*/matrix.json`.
+- Wrote `reconstruction/recovered/libNOVA3_neon/cpufeatures_queries.cpp`: all three Premium CPU-query thunks with the observed no-argument ABI, one 20-byte word-aligned state object, `android_cpuInit` left as an unresolved dependency. Covers 0x000d2f10 (44 B), 0x000d2f3c (48 B), 0x000d2f6c (44 B).
+- Added `tools/compare/window_diff.py` (relocation-aware per-word diff with A32 PC-relative literal detection) and `tools/compare/cpuquery_pilot.py`; wired the pilot into `tools/check_all.sh` behind NOVA3_RESEARCH_ORACLES=1.
+- Found and used the local NDK r8e GCC 4.4.3 at `/home/jason/.local/opt/android-ndk-r8e` (the historical pilot documented it). Compiler candidates measured: NDK clang 21, arm-none-eabi-g++ 16.2, r8e GCC 4.4.3.
+- Measurements: no candidate is byte-equal (`LINKED_FUNCTION_WINDOW_EQUAL` never occurs); with a matching-context variant, r8e GCC 4.4.3 reproduces every instruction word of all three windows and clang/GCC 16.2 reproduce two of three. Divergence left: `R_ARM_PLT32` call displacement and literal-pool addends.
+- Two inferences recorded then withdrawn after measurement: (a) "GCC-only codegen shape" — clang/GCC 16.2 reproduce the same shape once the state object and initializer binding are right; (b) "pre-LDRD compiler age" — the reference contains 1,789 LDRD and 1,576 STRD instructions elsewhere. The two-LDR feature load is instead modelled as a word-aligned aggregate, which GCC 4.4.3 reproduces exactly.
+- `tools/verify_source_only.py`: an uncommitted edit limited the forbidden-path check to the first component. This is correct (absolute paths and `..` are rejected already, so only the root component can name a private tree) but was undocumented; restored with an explanatory comment, a `forbidden()` helper and a new regression test covering both acceptance of committed `reconstruction/research/*` source and rejection of `research/*`, `analysis/*` and `reconstruction/../research/*`.
+- Private evidence copy `research/elf/cpuquery_matching_verification.json` (18 compiler/variant/function results). No original code bytes are printed by any tool; full disassembly stayed in ignored `.cache/logs/premium-full-disasm.txt`.
+
+## 2026-10-31 — cpu-features getter definition order closes the last source difference
+
+- Verified the interrupted run's state: `cpu_features.c` (whole TU), `cpu_features.h`,
+  `tools/compare/cpufeatures_pilot.py`, `window_diff.py` present and the pilot
+  reproducible (12-config matrix; nothing uploaded).
+- Root-caused the `.bss` ordering "toolchain mystery" to a source-ordering effect:
+  GCC 4.4.3 emits exported functions in reverse definition order and lays out `.bss`
+  in the order the emitted functions first reference it. Four declaration
+  permutations of the four objects left `g_cpuFamily@+4` unchanged; defining the
+  getters in reverse order (Family, Features, Count, after `android_cpuInit`) gives
+  the reference layout `g_cpuCount +0x4 / g_cpuFeatures +0x8 / g_cpuFamily +0x10`
+  *and* the reference function order.
+- Rejected, measured: `-fno-toplevel-reorder` also reproduces the offsets but grows
+  the getters to 48/52 B and switches them to `ldr rX, [pc, rY]` addressing, which
+  the reference does not use. Kept as an explicit matrix row so the conclusion stays
+  measured.
+- Result (r8e GCC 4.4.3, `-O2`/`-O3`/`-Os` × `-fstack-protector` on/off): all three
+  getters `ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION` (9/10/9 EQUAL, 2
+  RELOCATION_FIELD each, 0 ENCODING_DIFFERENCE), sizes 44/48/44. `android_cpuInit`
+  still 2600 B vs 2632 B (`FUNCTION_SIZE_MISMATCH`). No byte-match or compiler claim.
+- Added `reconstruction/tests/recovered/libNOVA3_neon/cpu_features_test.c`:
+  fixture-driven behaviour tests for `has_list_item`, `parse_decimal`, the cpulist
+  helpers and `extract_cpuinfo_field`; wired into CMake/CTest as
+  `cpu_features_behaviour`, into `tools/check_all.sh`'s source-only audit and into
+  `tools/setup/record_build_provenance.py` (with its own `link_inputs`).
+- Verification: `cmake --build build/host && ctest` 14/14 pass; `bash tools/check_all.sh`
+  exit 0 (source-only audit now includes the new binary). With
+  `NOVA3_RESEARCH_ORACLES=1` the run stops in `tools/compare/zip_headers.py` because
+  this worker worktree's private `research/assets/` is empty (2 OBB index files exist
+  only in the main tree) — pre-existing local-environment gap, not a regression.

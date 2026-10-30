@@ -1,5 +1,93 @@
 # Next tasks
 
+## Immediate: finish the cpu-features TU (2026-10-31)
+
+`reconstruction/recovered/libNOVA3_neon/cpu_features.c` is now the whole
+recovered TU. All three exported getters match the reference instruction stream
+modulo the two unavoidable relocation words under NDK r8e GCC 4.4.3 at `-O2`,
+`-O3` and `-Os`, with the reference `.bss` layout, and the helpers have
+behavioural tests (`cpu_features_behaviour`, CTest). Two bounded gaps remain.
+
+1. **Close `android_cpuInit`'s 32-byte gap** (candidate 2600 B vs reference
+   2632 B at `-O3 -fstack-protector`). Known structural differences: the
+   reference sign-extends the cpuinfo-field delimiters (`LDRSB` where this
+   compile uses `LDRB`) and orders the `Features` block differently. Compare
+   `.cache/cpufeat/rec/cpuinit.txt` (reference listing) with the candidate
+   listing function-by-function, starting from the first divergence the pilot
+   reports. `.cache/cpufeat/cpuinit_refs.json` already resolves every literal.
+   Do not synthesise instructions to close the gap; if the source cannot
+   produce it, record the divergence and stop.
+2. **Behavioural test for the initializer end-to-end.** `android_cpuInit` reads
+   fixed paths, so an integration test needs either a fixture root mounted into
+   the process (e.g. a test-only build with redirected paths behind a macro that
+   is itself documented as not present in the original) or a host test that
+   runs against a synthetic cpuinfo in a `chroot`/mount namespace. Decide and
+   document which; do not silently change the recovered source's paths.
+3. Keep the rejected hypotheses visible: the pilot's `-noToplevelReorder` rows
+   and `.cache/cpufeat/order/` exist so the definition-order conclusion stays
+   measured. Do not delete them.
+
+## Previous: close the two measured gaps in the cpu-features TU (2026-10-31)
+
+`reconstruction/recovered/libNOVA3_neon/cpu_features.c` now covers the whole
+recovered TU and is measured by `tools/compare/cpufeatures_pilot.py`. Two
+concrete, bounded gaps remain; both are measured, not speculative.
+
+1. **Reproduce the reference `.bss` ordering.** With the local NDK r8e GCC
+   4.4.3 the two int-sized objects always land `g_cpuFamily@+4`,
+   `g_cpuCount@+16`, while the reference has `g_cpuCount@+4`,
+   `g_cpuFamily@+16`. Declaration order, object type and symbol names were
+   varied with no effect. Test, in this order: (a) another 4.4.3 build (the
+   `.comment` string only proves GCC 4.4.3, not the patchlevel or NDK
+   revision); (b) `-fdata-sections` plus an explicit linker script, and measure
+   the *linked* result instead of the ET_REL object; (c) GCC 4.6/4.7 from the
+   same r8e NDK as a bound. Do not force the layout with padding or attributes
+   and call it recovered. Closing this removes the single divergent word in the
+   `android_getCpuCount` and `android_getCpuFamily` windows.
+2. **Close `android_cpuInit`'s 32-byte gap.** The reconstructed body is 2600 B
+   at `-O3 -fstack-protector` against the reference's 2632 B. Known structural
+   differences: the reference sign-extends the field delimiters (`LDRSB`
+   against `LDRB`) and orders the `Features` block differently. Work from
+   `.cache/cpufeat/rec/cpuinit.txt` (reference listing) and the candidate
+   listing side by side; the `tools/compare/literal_map.py` output in
+   `.cache/cpufeat/cpuinit_refs.json` already resolves every literal.
+3. **Behavioural tests for the TU.** The helpers (`parse_decimal`,
+   `cpulist_parse`, `has_list_item`, `extract_cpuinfo_field`) are pure functions
+   over caller buffers. Add a host test target with fixture buffers (cpuinfo
+   with/without `Features`, `vfpv3d16`-only, `(v6l)` misreport, `0-3`/`2,4-7`
+   cpulists, truncated/invalid input) so the TU reaches TESTED for behaviour
+   independently of the byte-match question.
+
+## Previous: relocate the thunks, then recover the initializer (2026-10-31)
+
+The Premium CPU-query thunks now match instruction-for-instruction under three
+different compilers, so the open question is no longer "which compiler shape"
+but "can the relocation and literal-pool words be resolved to the reference
+values". NDK r8e GCC 4.4.3 is installed locally at
+`/home/jason/.local/opt/android-ndk-r8e`; the pilot picks it up automatically
+(override with `NOVA3_R8E_NDK`).
+
+1. **Relocation/link experiment.** Compile the matching-context variant with
+   r8e GCC 4.4.3 and expose the `.bss`/`.text` layout the reference implies, so
+   `R_ARM_PLT32` and `R_ARM_REL32` resolve to the observed displacements. This
+   is the only measured remaining difference; until it closes, no byte-match
+   claim is permissible. Keep any linker script or synthetic object under
+   `.cache` and out of production targets.
+2. **Recover `android_cpuInit` (0x000d2f98, 2,632 B)** at least far enough to
+   own its writes to the state block, which also removes the need for the
+   matching-context stand-in and restores direct (non-preemptible) binding of
+   the initializer.
+3. **Settle the alignment inference.** The two-`LDR` feature load is modelled as
+   a word-aligned aggregate. Cross-check it against other 64-bit field accesses
+   in the reference: if other 64-bit fields at provable 8-byte alignment use
+   `LDRD`, the word-alignment reading gains support; if not, the model is wrong
+   and the candidate struct must be corrected rather than kept.
+4. Keep `reconstruction/recovered/libNOVA3_neon/block_000d2f10.cpp` (context
+   ABI) alongside the corrected candidate but do not present it as the
+   original interface.
+
+Existing source-engine and asset milestones remain valuable and are retained.
+
 ## Immediate evidence/worker priorities (2026-10-28)
 
 **Pre-start checkpoint:** Jason's local six-stage audit succeeded. It

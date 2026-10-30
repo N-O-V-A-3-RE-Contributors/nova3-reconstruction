@@ -4,6 +4,21 @@ Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and do
 
 ## Current source and exact limits
 
+Newest (2026-10-31): `reconstruction/recovered/libNOVA3_neon/cpu_features.c` is the
+whole Premium `cpu-features.c` TU (getters + `android_cpuInit` + helpers) and its
+three exported getters (0x000d2f10/0x000d2f3c/0x000d2f6c, 44/48/44 B, A32) now match
+the reference instruction stream modulo the two unavoidable relocation words under
+NDK r8e GCC 4.4.3 at `-O2`/`-O3`/`-Os`, with the reference `.bss` layout — the last
+source difference was getter *definition* order, not a missing toolchain flag.
+`android_cpuInit` (0x000d2f98) is IMPLEMENTED but still 2600 B vs the reference
+2632 B and NOT matched. Behaviour is tested for the pure helpers only
+(`cpu_features_behaviour` in CTest, fixtures, no `/proc`); the initializer's
+end-to-end path is still untested. `tools/compare/cpufeatures_pilot.py` reproduces
+the comparison with `source_matching_verified=False`; the older
+`cpufeatures_queries.cpp` context ABI candidate and `tools/compare/cpuquery_pilot.py`
+remain as a separate, superseded measurement. Nothing claims an original compiler,
+`.o`, relocation set or `.so` hash.
+
 13 independently compiled engine .cpp modules: CRC32, repeating XOR, ZIP local headers/payloads, native logical ZIP lookup/heap policy, seekable ZIP archive/resource mounts, contiguous BRES relocation, bounded inline Collada mesh reading, PVR header/mips, SPLIT RGB/alpha bundles, ETC1 pixels, game ETC filename rewrite, SB scrambled headers. zlib1.3.2 is vendored source with pinned provenance/license. No original ELF/APK needed to build. Assets remain separate local data. No Android APK, scene renderer, controls/gameplay/audio/campaign or networking yet.
 
 Only3 complete native utility mappings are verified (ComputeCRC, CRC wrapper, unscramble),317 original differential cases.17 additional stage2 address-to-source mappings are explicitly partial. Native lookup184cases+3orders, BRES4bases+7headers, PVR header388cases, ETC1 pixels272cases, texture rewrite165cases have scoped original-ARM evidence; see individual reports for hooks/exclusions. 31 sampled first meshes/37,522vertices/25,289triangles match independent field reading; one sampled resource has0geometries. All1,332 texture assets/1,691planes/17,505mips decode1,829,884,023RGB pixels. SB30packages/4,885entries/2,703,534,940bytes independently match fields/inflate/CRC. SB SDIR/trailer validation, descriptor forms and19otherGLA variants remain unsupported.

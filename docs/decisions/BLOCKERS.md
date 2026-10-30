@@ -2,6 +2,22 @@
 
 ## Compiler-aware matching and AI-queue blockers (2026-10-28)
 
+- CPU-query thunk byte equality is blocked on link-time values, not on source
+  shape (updated 2026-10-31). Under r8e GCC 4.4.3 at `-O2`/`-O3`/`-Os` the
+  reconstructed `cpu_features.c` reproduces every instruction word of
+  `android_getCpuCount`, `android_getCpuFeatures` and `android_getCpuFamily`
+  except the `R_ARM_PLT32` call displacement and the `.bss` `R_ARM_REL32`
+  addend, so `object_compare` never reports `LINKED_FUNCTION_WINDOW_EQUAL`.
+  Closing it needs a measured relocation/link experiment; `android_cpuInit` is
+  still 32 bytes short of the reference (2600 vs 2632 B), which is the only
+  remaining structural difference in the TU.
+- The earlier "word-aligned 20-byte state aggregate" inference is retracted
+  (superseded 2026-10-31): the symbol table shows four separate file-scope
+  objects (`g_once` 4 B, `g_cpuCount` 4 B, `g_cpuFeatures` 8 B, `g_cpuFamily`
+  4 B) and the observed `.bss` offsets (`+4`, `+8`, `+16`) follow from getter
+  definition order under GCC 4.4.3. What remains INFERRED is only the pointer
+  type of `g_once` (`pthread_once_t`), which the bionic typedef makes 4 bytes.
+
 - The Premium library contains repeated GCC 4.4.3 compiler strings, but no proven complete original per-TU flags, assembler/linker version, build order or reproducible toolchain profile. Modern NDK Clang builds demonstrate portability only. Some recovered C++ uses C++17 and cannot simply be recompiled by GCC 4.4.3 unchanged; create separate historical-ABI candidates when byte matching is justified.
 - The linked `.so` cannot uniquely restore discarded original `.o` sections/translation-unit boundaries and pre-link relocations. Synthetic wrappers are research references, not original objects; an identical full-`.so` SHA and valid final linker script have not been reproduced. A relocation worksheet and measured linker experiments are still prerequisites.
 - The Cyrus debug ELF is a promising symbol/DWARF donor, but compile-unit and function transfers are inferred until Premium mapping is validated. A reported behavioural/short-window match from a previous issue is not automatically an independent new-standard compiler/objdiff result.

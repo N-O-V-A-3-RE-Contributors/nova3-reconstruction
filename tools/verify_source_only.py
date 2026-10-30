@@ -12,6 +12,11 @@ def sha(data):return hashlib.sha256(data).hexdigest()
 def verify(path,manifest,denied):
  errors=[];seen=[];budget=[MAX_TOTAL]
  approved=manifest.get('executables',{})
+ # FORBIDDEN_PARTS names private trees at the repository root. Absolute paths and
+ # '..' components are rejected separately, so the first component is the only
+ # one that can name them; a deeper component may legitimately be our own source
+ # (e.g. committed reconstruction/research/arm32_cpu_query_*.cpp).
+ def forbidden(parts):return bool(set(parts[:1])&FORBIDDEN_PARTS)
  def scan(label,data,depth=0):
   digest=sha(data)
   if digest in denied:errors.append(f'{label}: original executable hash');return
@@ -40,11 +45,11 @@ def verify(path,manifest,denied):
   if not sources:errors.append(f'{label}: empty source provenance')
   for source in sources:
    rel=pathlib.PurePosixPath(source['path'])
-   if rel.is_absolute() or '..' in rel.parts or set(rel.parts)&FORBIDDEN_PARTS:errors.append(f'{label}: forbidden source path {rel}');continue
+   if rel.is_absolute() or '..' in rel.parts or forbidden(rel.parts):errors.append(f'{label}: forbidden source path {rel}');continue
    src=ROOT/rel
    if not src.is_file() or sha(src.read_bytes())!=source['sha256']:errors.append(f'{label}: source hash mismatch {rel}')
   for inp in entry.get('link_inputs',[]):
-   if set(pathlib.PurePosixPath(inp).parts)&FORBIDDEN_PARTS:errors.append(f'{label}: forbidden linker input {inp}')
+   if forbidden(pathlib.PurePosixPath(inp).parts):errors.append(f'{label}: forbidden linker input {inp}')
   if not entry.get('build_command'):errors.append(f'{label}: missing build command')
  if path.is_dir():
   for p in sorted(path.rglob('*')):

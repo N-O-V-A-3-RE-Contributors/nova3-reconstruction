@@ -119,3 +119,18 @@ if(BUILD_TESTING)
     target_compile_options(scrambled_zip_test PRIVATE -UNDEBUG)
     add_test(NAME scrambled_zip_headers COMMAND scrambled_zip_test)
 endif()
+
+# Behavioural regression for the reconstructed cpu-features TU.  The test
+# compiles the recovered TU into itself so its file-scope helpers can be
+# exercised over fixture buffers; it needs no proprietary input and no game
+# code.  Machine-code equivalence is measured separately by
+# tools/compare/cpufeatures_pilot.py and is not claimed here.
+if(BUILD_TESTING)
+    add_executable(cpu_features_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/cpu_features_test.c)
+    set_property(TARGET cpu_features_behaviour_test PROPERTY C_STANDARD 99)
+    target_compile_options(cpu_features_behaviour_test PRIVATE -UNDEBUG -D_GNU_SOURCE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(cpu_features_behaviour_test PRIVATE Threads::Threads)
+    add_test(NAME cpu_features_behaviour COMMAND cpu_features_behaviour_test)
+endif()

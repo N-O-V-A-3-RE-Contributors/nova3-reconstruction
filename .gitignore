@@ -61,3 +61,11 @@ __pycache__/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+
+# Worktree symlinks to the private reference trees (a symlink is not a dir,
+# so the trailing-slash patterns above do not cover them).
+/originals
+/Archive
+/analysis
+/research
+/generated

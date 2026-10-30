@@ -18,6 +18,19 @@ def test_source_mismatch_and_reference_link(tmp_path):
 def test_data_allowed(tmp_path):
  path=tmp_path/'data';path.write_bytes(b'BRES'+bytes(64));assert guard.verify(path,{},set())['ok']
 
+def test_private_root_tree_and_own_nested_source(tmp_path):
+ # Only the root component can name a private tree; committed source whose path
+ # merely contains a component of that name is legitimate.
+ blob=b'\x7fELF'+b'own-source-fixture'
+ nested='reconstruction/research/arm32_cpu_query_candidate.cpp'
+ digest=hashlib.sha256((ROOT/nested).read_bytes()).hexdigest()
+ approved={hashlib.sha256(blob).hexdigest():{'sources':[{'path':nested,'sha256':digest}],'build_command':'compile','link_inputs':['reconstruction/research/arm32_cpu_query_candidate.o']}}
+ path=tmp_path/'own.so';path.write_bytes(blob)
+ assert guard.verify(path,{'executables':approved},set())['ok']
+ for bad in ('research/private.cpp','analysis/private.cpp','reconstruction/../research/x.cpp'):
+  denied={'executables':{hashlib.sha256(blob).hexdigest():{'sources':[{'path':bad,'sha256':digest}],'build_command':'compile','link_inputs':[]}}}
+  assert not guard.verify(path,denied,set())['ok'],bad
+
 def test_prefixed_nested_zip_denied(tmp_path):
  blob=b'\x7fELF'+b'original-code-fixture'*50
  nested=io.BytesIO()
