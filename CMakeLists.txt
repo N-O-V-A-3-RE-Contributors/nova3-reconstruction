@@ -242,3 +242,14 @@ if(BUILD_TESTING)
     target_link_options(ccollada_accessors_test PRIVATE -no-pie)
     add_test(NAME ccollada_accessors COMMAND ccollada_accessors_test)
 endif()
+if(BUILD_TESTING)
+    add_executable(primitive_count_test
+        reconstruction/tests/primitive_count_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077c1e0.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077c250.cpp)
+    target_include_directories(primitive_count_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(primitive_count_test PRIVATE -UNDEBUG -fno-pie)
+    target_link_options(primitive_count_test PRIVATE -no-pie)
+    add_test(NAME primitive_count COMMAND primitive_count_test)
+endif()
