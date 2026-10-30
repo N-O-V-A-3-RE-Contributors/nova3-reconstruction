@@ -1,4 +1,4 @@
-# Accounts & GitHub user management (Observatory page U)
+# Accounts & GitHub user management (Control Center page U)
 
 Status: **IMPLEMENTED / TESTED locally**. No live vendor login, GitHub mutation
 or paid model call is performed by this screen.
@@ -6,7 +6,7 @@ or paid model call is performed by this screen.
 ## What the page is for
 
 The Accounts page makes optional AI-provider and GitHub setup legible without
-turning the Observatory into a credential collector:
+turning the Control Center into a credential collector:
 
 * per-provider **install / login readiness**, sourced from the verified
   `nova3_team/provider_runtime.py` registry (never re-declared here);

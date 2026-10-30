@@ -109,9 +109,11 @@ class VisualContracts(unittest.TestCase):
                 view = dashboard(width, height)
                 view.unicode = unicode
                 for tab, label in enumerate(o.TABS):
+                    if tab == 9:
+                        continue  # owner-only page is hidden from contributors
                     with self.subTest(size=(width, height), tab=label, unicode=unicode):
                         text, _ = self.render(view, tab)
-                        self.assertIn('OBSERVATORY', text)
+                        self.assertIn('CONTROL CENTER', text)
                         if width >= 72:
                             self.assertIn('[' + o.TAB_KEYS[tab] + ':' + label + ']', text)
                         else:
@@ -201,16 +203,18 @@ class VisualContracts(unittest.TestCase):
 
     def test_activity_missing_live_stale_and_past_task(self):
         for width, height in SIZES[1:]:
-            for records, badge in (([], 'MISSING'), ([record()], 'LIVE'),
-                                   ([record(age=91)], 'STALE'), ([record(age=-1)], 'UNKNOWN')):
+            for records, sub in (([], 'feed missing'), ([record()], 'structured feed live'),
+                                 ([record(age=91)], 'structured-event quiet'), ([record(age=-1)], 'structured feed live')):
                 view = dashboard(width, height, records)
                 text, frames = self.render(view, 12)
                 self.assertGreaterEqual(len(frames), 2)
                 self.assert_disjoint(frames, width, height)
-                self.assertIn('[' + badge + ']', text)
+                self.assertIn('RUNNING', text)
+                if width >= 100:
+                    self.assertIn(sub, text.lower())
                 if width >= 100:
                     self.assertGreaterEqual(len(frames), 3)
-                    self.assertIn('FEED / PRIVACY', text)
+                    self.assertIn('INDEPENDENT SIGNALS / PRIVACY', text)
                 if records and height >= 24:
                     self.assertIn('Commands 7 started / 6 completed', text)
                     self.assertIn('Tests 3 started / 2 completed', text)
@@ -244,11 +248,13 @@ class VisualContracts(unittest.TestCase):
         view = dashboard()
         view.snap.issues = []
         text, _ = self.render(view, 0)
-        self.assertIn('systemd active / running [IDLE]', text)
+        self.assertIn('systemd active / running | PID 123 | RUNNING', text)
+        self.assertIn('Quiet output is not a stopped', text)
         self.assertNotIn('[ERROR]', text)
         self.assertIn('PID 123', text)
-        text, _ = self.render(view, 9)
-        self.assertIn('LOCKED', text)
+        view.handle(ord('0'))
+        self.assertIn('ADMINISTRATION LOCKED', view.notice)
+        self.assertEqual(view.tab, 0)
         for key in ('s', 'x', 'r', 'd', 'n', 'u'):
             view.handle(ord(key))
         view.collector.action.assert_not_called()

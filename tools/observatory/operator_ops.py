@@ -18,9 +18,10 @@ import time
 from typing import Callable
 
 REPO_DEFAULT = 'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
-# MAINTAIN/WRITE/TRIAGE/READ never confer steering. Organization owners are
-# verified separately below; this set only covers effective repository ADMIN.
+# Only the authenticated organization owner or repository ADMIN may steer.
+# MAINTAIN/WRITE/TRIAGE/READ are contributor levels and never confer authority.
 OWNER_ROLES = frozenset({'ADMIN'})
+CONTRIBUTOR_ROLES = frozenset({'MAINTAIN', 'WRITE', 'TRIAGE', 'READ'})
 ORG_OWNER = 'ORG_OWNER'
 UNIT = 'nova3-discovery.timer'
 SERVICE = 'nova3-discovery.service'
@@ -78,32 +79,93 @@ def repo_permission(repo: str) -> str:
         raise CommandFailure('GitHub did not return an authenticated repository permission')
     return role
 
-def is_org_owner(repo: str, login: str) -> bool:
-    """Verified current active owner of the organization owning this repository."""
-    if not isinstance(login,str) or not re.fullmatch(r'[A-Za-z0-9-]{1,39}',login):
-        return False
-    owner = repo.split('/',1)[0]
+def org_owner_role(org: str, login: str) -> str:
+    """Return the organization membership role for the authenticated login.
+
+    Failures (not a member, no organization, API error) simply return ANONYMOUS
+    so the caller denies owner operations. No role metadata is trusted from the
+    UI or a local cache.
+    """
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{1,80}', org or '') or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,62}', login or ''):
+        raise CommandFailure('Invalid organization or account identifier')
     try:
-        data = gh_json('api',f'orgs/{owner}/memberships/{login}',
-                       '--jq','{role:.role,state:.state,organization:.organization.login}')
+        data = gh_json('api', f'orgs/{org}/memberships/{login}', '--jq',
+                       '{role:.role,state:.state,organization:.organization.login}')
     except CommandFailure:
-        return False
-    return (isinstance(data,dict) and data.get('state')=='active'
-            and data.get('role')=='admin'
-            and str(data.get('organization','')).casefold()==owner.casefold())
+        return 'ANONYMOUS'
+    if (not isinstance(data, dict) or data.get('state') != 'active'
+            or str(data.get('organization', '')).casefold() != org.casefold()):
+        return 'ANONYMOUS'
+    role = str(data.get('role') or '').lower()
+    return role.upper() if role in ('admin', 'member', 'billing_manager') else 'ANONYMOUS'
+
+
+def owner_access(repo: str, *, permission_reader: Callable[[str], str] | None = None,
+                 account_reader: Callable[[], str] | None = None,
+                 org_reader: Callable[[str, str], str] | None = None) -> dict:
+    """Resolve owner authority once, with injectable readers for offline tests.
+
+    Allowed only for repository ADMIN or an authenticated organization owner.
+    MAINTAIN/WRITE/TRIAGE/READ, unknown roles and every API failure fail closed.
+    Every mutating operation must call this again at execution time.
+    """
+    if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo or ''):
+        return {'allowed': False, 'role': 'UNKNOWN', 'account': 'UNKNOWN',
+                'organization_owner': False, 'source': 'validation',
+                'reason': 'Invalid repository identifier'}
+    permission_reader = permission_reader or repo_permission
+    account_reader = account_reader or viewer
+    org_reader = org_reader or org_owner_role
+    try:
+        role = str(permission_reader(repo) or 'UNKNOWN').upper()
+    except (OSError, ValueError, RuntimeError, CommandFailure) as exc:
+        return {'allowed': False, 'role': 'UNKNOWN', 'account': 'UNKNOWN',
+                'organization_owner': False, 'source': 'GitHub permission query',
+                'reason': 'GitHub permission recheck failed; owner actions fail closed: ' + str(exc)[:120]}
+    if role in OWNER_ROLES:
+        return {'allowed': True, 'role': role, 'account': 'UNKNOWN',
+                'organization_owner': False, 'source': 'repository permission',
+                'reason': 'repository ADMIN'}
+    if role not in CONTRIBUTOR_ROLES:
+        return {'allowed': False, 'role': role, 'account': 'UNKNOWN',
+                'organization_owner': False, 'source': 'repository permission',
+                'reason': 'GitHub role could not be verified; owner actions fail closed'}
+    org = repo.split('/', 1)[0]
+    try:
+        login = account_reader()
+        membership = str(org_reader(org, login) or '').lower()
+    except (OSError, ValueError, RuntimeError, CommandFailure):
+        login, membership = 'UNKNOWN', 'ANONYMOUS'
+    if membership == 'admin':
+        return {'allowed': True, 'role': role, 'account': login,
+                'organization_owner': True, 'source': 'organization owner + repository permission',
+                'reason': f'authenticated owner of {org}'}
+    return {'allowed': False, 'role': role, 'account': login,
+            'organization_owner': False, 'source': 'organization owner + repository permission',
+            'reason': 'Contributor role: owner actions require organization owner or repository ADMIN'}
+
 
 def require_owner_access(repo: str) -> str:
-    """Recheck GitHub permissions at the operation boundary (fail closed).
+    """Recheck owner/admin authority at the operation boundary (fail closed)."""
+    status = owner_access(repo)
+    if not status['allowed']:
+        raise CommandFailure('Owner operation locked: ' + status['reason'])
+    return ORG_OWNER if status['organization_owner'] else status['role']
 
-    Returns 'ADMIN' or 'ORG_OWNER'. MAINTAIN and every contributor role deny.
-    """
-    role = repo_permission(repo)
-    if role in OWNER_ROLES:
-        return role
-    identity = viewer_identity()
-    if is_org_owner(repo, identity['login']):
-        return ORG_OWNER
-    raise CommandFailure('Owner operation locked: verified repository ADMIN or organization owner required')
+
+def is_org_owner(repo: str, login: str) -> bool:
+    """Verified current active owner of the organization owning this repository."""
+    if not isinstance(login, str) or not re.fullmatch(r'[A-Za-z0-9-]{1,39}', login):
+        return False
+    owner = repo.split('/', 1)[0]
+    try:
+        data = gh_json('api', f'orgs/{owner}/memberships/{login}',
+                       '--jq', '{role:.role,state:.state,organization:.organization.login}')
+    except CommandFailure:
+        return False
+    return (isinstance(data, dict) and data.get('state') == 'active'
+            and data.get('role') == 'admin'
+            and str(data.get('organization', '')).casefold() == owner.casefold())
 
 def load_pr(repo: str, number: int) -> dict:
     pr = gh_json('pr','view',str(number),'-R',repo,'--json',FIELDS)

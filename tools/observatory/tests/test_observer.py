@@ -332,12 +332,13 @@ class ResponsiveTests(unittest.TestCase):
                             ui.tab = tab
                             ui.render()
                             text = ui.stdscr.text()
+                            if tab == 9 and not ui.is_owner():
+                                self.assertEqual(ui.tab, 0)
+                                continue
                             self.assertIn('['+o.TAB_KEYS[tab]+':'+o.TABS[tab]+']', ui.stdscr.line(4))
                             self.assertIn('['+o.TAB_GROUPS[ui.current_group()][0]+']', ui.stdscr.line(3))
                             self.assertIn('? help', ui.stdscr.line(height-1))
                             self.assertIn('Q quit', ui.stdscr.line(height-1))
-                            if tab == 9 and (role not in o.operator_ops.OWNER_ROLES or demo):
-                                self.assertIn('LOCKED', text)
                             if not unicode:
                                 self.assertTrue(text.isascii())
                 ui.collector.perform_action.assert_not_called()
@@ -580,7 +581,7 @@ class AccountsScreenTests(unittest.TestCase):
             self.assertIn('GITHUB IDENTITY / MEMBERS', text)
             self.assertIn('ChatGPT (Codex CLI)', text)
             self.assertIn('UNKNOWN', text)
-            self.assertIn('LOCKED (ADMIN/MAINTAIN required)', text)
+            self.assertIn('LOCKED (ADMIN or org owner required)', text)
             self.assertIn('settings/access', text)
             self.assertIn('[' + o.TAB_KEYS[o.ACCOUNTS_TAB] + ':' + o.TABS[o.ACCOUNTS_TAB] + ']',
                           ui.stdscr.line(4))

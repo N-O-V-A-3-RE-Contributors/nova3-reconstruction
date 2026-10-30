@@ -62,7 +62,7 @@ class ToolchainTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp) / 'standalone'
             target.mkdir()
-            for name in ('observer.py', 'operator_ops.py', 'presence_view.py', 'progress.py', 'forecast_model.py', 'project_roadmap.json', 'ui_components.py'):
+            for name in ('observer.py', 'operator_ops.py', 'presence_view.py', 'progress.py', 'forecast_model.py', 'project_roadmap.json', 'ui_components.py', 'live_status.py', 'journal_inspector.py', 'onboarding.py'):
                 shutil.copyfile(HERE / name, target / name)
             helper = HERE.parents[1] / 'nova3_team/historical_toolchain.py'
             shutil.copyfile(helper, target / 'historical_toolchain.py')
@@ -75,7 +75,7 @@ class ToolchainTests(unittest.TestCase):
             self.assertIn('Bundled extraction/pilot guide:', output.getvalue())
             self.assertEqual(Path(standalone.toolchain_module().__file__), target / 'historical_toolchain.py')
             installer = (HERE / 'install.sh').read_text()
-            self.assertIn('"$HISTORICAL_HELPER" "$TARGET/historical_toolchain.py"', installer)
+            self.assertIn('"$HISTORICAL_HELPER" "$STAGING/historical_toolchain.py"', installer)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-"""Offline, evidence-gated Observatory forecasts. See FORECAST_POLICY.md.
+"""Offline, evidence-gated Control Center forecasts. See FORECAST_POLICY.md.
 
 Inputs are normalized snapshots, never GitHub payloads. All times are UTC epoch
 seconds supplied by the caller. Nothing here reads files, clocks or services.

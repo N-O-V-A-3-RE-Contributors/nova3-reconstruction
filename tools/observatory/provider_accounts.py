@@ -25,7 +25,7 @@ import tempfile
 import types
 import urllib.parse
 
-# Observatory installs are standalone directories.  Load a sibling runtime if
+# Control Center installs are standalone directories.  Load a sibling runtime if
 # present (install.sh copies it), otherwise fall back to the repository package.
 # provider_runtime uses package-relative imports (e.g. ``from . import
 # hermes_runtime``), so a bare spec-from-file load breaks it.  Register a
@@ -247,7 +247,7 @@ class AccountsController:
 
     def __init__(self, repo: str, state_path: str | os.PathLike[str] | None = None, *,
                  probe=None, auth=None, identity_probe=None, role_resolver=None,
-                 opener=None, login_launcher=None):
+                 opener=None, login_launcher=None, owner_resolver=None):
         if not isinstance(repo, str) or not _REPO_RE.fullmatch(repo):
             raise ValueError('Repository must be OWNER/REPOSITORY.')
         self.repo = repo
@@ -256,6 +256,9 @@ class AccountsController:
         self._auth = auth or provider_runtime.check_auth
         self._identity_probe = identity_probe or self._probe_github_identity
         self._role_resolver = role_resolver or self._probe_repo_role
+        # Seam supplied by operator_ops.owner_access: organization owner OR repo
+        # ADMIN. Re-derived server-side; never a cached UI role.
+        self._owner_resolver = owner_resolver
         self._opener = opener
         # #134/#135 seam: a future verified login adapter can replace this
         # callable.  It must return a bounded result and must never hand the
@@ -493,6 +496,11 @@ class AccountsController:
         role = self._resolve_role()
         self.identity = GitHubIdentity(self.identity.state, self.identity.account,
                                        self.identity.scopes, self.identity.detail, role)
+        if self._owner_resolver is not None:
+            try:
+                return bool(self._owner_resolver()), role
+            except Exception:
+                return False, role
         return role in OWNER_ROLES, role
 
     def owner_member_url(self) -> str | None:

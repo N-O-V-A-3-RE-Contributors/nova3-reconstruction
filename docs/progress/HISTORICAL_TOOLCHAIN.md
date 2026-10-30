@@ -2,7 +2,7 @@
 
 Optional setup is now offered on the first worker run through `nova3_easy.py`
 and `START-LINUX.sh`. Declining or skipping it permits ordinary host-only tasks.
-The Observatory installer advertises its **H / TOOLCHAIN** page and bundles the
+The Control Center installer advertises its **H / TOOLCHAIN** page and bundles the
 same offline helper; monitoring requires no compiler, worker, or NDK download.
 The default flow never downloads, extracts, installs or executes GCC.
 
@@ -208,7 +208,7 @@ Validated offline on Python 3.14.8, 2026-10-29:
 | Check | Actual result |
 | --- | --- |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s nova3_team/tests -q` | Exit 0, **394 tests passed**, including 39 historical-toolchain tests and the unchanged #101 gate tests. |
-| Observatory `test_toolchain.py`, `test_render.py`, `test_operator_ui.py` via `unittest discover -p` | Exit 0, **4 + 3 + 8 tests passed**; offline CLI, standalone bundle, no compiler/network calls, navigation/scroll/rescan and rendering. |
+| Control Center `test_toolchain.py`, `test_render.py`, `test_operator_ui.py` via `unittest discover -p` | Exit 0, **4 + 3 + 8 tests passed**; offline CLI, standalone bundle, no compiler/network calls, navigation/scroll/rescan and rendering. |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/observatory/tests -q` | Exit 1, **78 tests: 76 passed, one failure and one error** in the preexisting `test_discovery_fix` tests; `systemd-analyze verify` is denied sandbox `SO_PASSRIGHTS` / `SO_PASSCRED` socket operations. Same blocker recorded by #101; no unrelated test/implementation repair. |
 | Actual `historical_toolchain onboard`, launcher `--historical-toolchain instructions`, observer `--toolchain-setup` | Exit 0; discovery reported `AVAILABLE_BUT_UNTRUSTED`, `NOT_PROVEN` across 13 roots, without executing a candidate. Both guidance routes work offline. |
 | Launcher `--self-test`, observer `--demo --once`, installer `bash -n`, `git diff --check` | Exit 0. |
@@ -233,7 +233,7 @@ packages, sudo, compiler execution, real NDK extraction, GitHub changes or
 source-match promotions occurred. The actual installer was not run because it
 would write outside this checkout and its full suite hits the blocker above.
 
-Handoff: review the ten allowed changed/new files, run the normal Observatory
+Handoff: review the ten allowed changed/new files, run the normal Control Center
 suite/installer on a host permitting systemd validation, then deliberately
 follow the manual candidate provenance/install steps above. Independently
 review compiler/binutils pins and sysroot/source hashes before the bounded

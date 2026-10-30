@@ -15,10 +15,10 @@ class BundleSmoke(unittest.TestCase):
     def test_installer_manifest_and_isolated_dashboard(self):
         installer = (HERE / 'install.sh').read_text()
         manifests = re.findall(r'^for file in (.+); do$', installer, re.M)
-        self.assertEqual(len(manifests), 2)
+        self.assertEqual(len(manifests), 3)
         self.assertEqual(manifests[0], manifests[1])
         self.assertIn('ui_components.py', manifests[0].split())
-        self.assertIn('python3 -I "$TARGET/observer.py" --demo --once', installer)
+        self.assertIn('python3 -B -I "$STAGING/observer.py" --demo --once', installer)
         with tempfile.TemporaryDirectory() as tmp:
             target = Path(tmp)
             for name in manifests[0].split():

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""NOVA3 OBSERVATORY — contributor/maintainer GitHub monitoring TUI.
+"""NOVA3 CONTROL CENTER — contributor/owner GitHub monitoring TUI.
+
+Formerly distributed as "NOVA3 Observatory"; module and executable names stay
+stable so existing launchers and tests keep working.
 
 Read-only until a key-driven, confirmed management action is requested.
 Does NOT import, patch, or restart the NOVA3 worker just by opening the UI.
@@ -33,13 +36,13 @@ import importlib.util as _importlib_util
 _progress_spec = _importlib_util.spec_from_file_location(
     "nova3_private_observer_progress", Path(__file__).resolve().parent / "progress.py")
 if _progress_spec is None or _progress_spec.loader is None:
-    raise ImportError("NOVA3 Observatory progress module is missing")
+    raise ImportError("NOVA3 Control Center progress module is missing")
 progress_map = _importlib_util.module_from_spec(_progress_spec)
 _progress_spec.loader.exec_module(progress_map)
 _ops_spec = _importlib_util.spec_from_file_location(
     "nova3_private_observer_ops", Path(__file__).resolve().parent / "operator_ops.py")
 if _ops_spec is None or _ops_spec.loader is None:
-    raise ImportError("NOVA3 Observatory operator module missing")
+    raise ImportError("NOVA3 Control Center operator module missing")
 # The module uses dataclasses; register it to support file-based imports in tests.
 import sys as _operator_sys
 operator_ops = _importlib_util.module_from_spec(_ops_spec)
@@ -48,23 +51,38 @@ _ops_spec.loader.exec_module(operator_ops)
 _presence_spec = _importlib_util.spec_from_file_location(
     "nova3_private_observer_presence", Path(__file__).resolve().parent / "presence_view.py")
 if _presence_spec is None or _presence_spec.loader is None:
-    raise ImportError('NOVA3 Observatory worker presence viewer missing')
+    raise ImportError('NOVA3 Control Center worker presence viewer missing')
 presence_view = _importlib_util.module_from_spec(_presence_spec)
 _presence_spec.loader.exec_module(presence_view)
 _forecast_spec = _importlib_util.spec_from_file_location(
     "nova3_private_observer_forecast", Path(__file__).resolve().parent / "forecast_model.py")
 if _forecast_spec is None or _forecast_spec.loader is None:
-    raise ImportError('NOVA3 Observatory forecast model missing; reinstall Observatory')
+    raise ImportError('NOVA3 Control Center forecast model missing; reinstall the Control Center')
 forecast_model = _importlib_util.module_from_spec(_forecast_spec)
 sys.modules[_forecast_spec.name] = forecast_model
 _forecast_spec.loader.exec_module(forecast_model)
 _ui_spec = _importlib_util.spec_from_file_location(
     "nova3_private_observer_ui", Path(__file__).resolve().parent / "ui_components.py")
 if _ui_spec is None or _ui_spec.loader is None:
-    raise ImportError('NOVA3 Observatory UI helper missing; reinstall Observatory')
+    raise ImportError('NOVA3 Control Center UI helper missing; reinstall the Control Center')
 ui_components = _importlib_util.module_from_spec(_ui_spec)
 sys.modules[_ui_spec.name] = ui_components
 _ui_spec.loader.exec_module(ui_components)
+
+
+def _load_sibling(name: str, filename: str):
+    spec = _importlib_util.spec_from_file_location(name, Path(__file__).resolve().parent / filename)
+    if spec is None or spec.loader is None:
+        raise ImportError(f'NOVA3 Control Center module missing: {filename}')
+    module = _importlib_util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+live_status = _load_sibling('nova3_private_control_live_status', 'live_status.py')
+journal_inspector = _load_sibling('nova3_private_control_journal', 'journal_inspector.py')
+onboarding = _load_sibling('nova3_private_control_onboarding', 'onboarding.py')
 try:
     _accounts_spec = _importlib_util.spec_from_file_location(
         "nova3_private_observer_accounts", Path(__file__).resolve().parent / "provider_accounts.py")
@@ -78,7 +96,7 @@ except (ImportError, OSError, AttributeError):
     # the Accounts page reports that the optional module must be reinstalled.
     provider_accounts = None
 
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 DEFAULT_REPO = "N-O-V-A-3-RE-Contributors/nova3-reconstruction"
 
 def configured_worktree() -> Path:
@@ -109,7 +127,7 @@ MAX_ISSUES = 1000
 MAX_PRS = 500
 MAX_RUNS = 80
 TAB_KEYS = ('1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'W', 'H', 'A', 'U', '?')
-TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "OWNER OPS", "WORKERS", "TOOLCHAIN", "ACTIVITY", "ACCOUNTS", "HELP"]
+TABS = ["PULSE", "TASKS", "PULL REQUESTS", "ACTIONS", "SERVICE LOGS", "FORECAST", "SOURCE MAP", "APK ATLAS", "ROADMAP", "ADMINISTRATION", "WORKERS", "TOOLCHAIN", "ACTIVITY", "ACCOUNTS", "HELP"]
 # Keep the established page order/shortcuts independent of the group navigator.
 TAB_GROUPS = (
     ('Overview', (0, 5, 8)),
@@ -119,7 +137,7 @@ TAB_GROUPS = (
     ('Administration', (9, 14)),
 )
 TAB_SHORT = ('Pulse', 'Tasks', 'PRs', 'Actions', 'Logs', 'Forecast', 'Source',
-             'APK', 'Roadmap', 'Owner', 'Workers', 'Tools', 'Activity', 'Accounts', 'Help')
+             'APK', 'Roadmap', 'Admin', 'Workers', 'Tools', 'Activity', 'Accounts', 'Help')
 ACCOUNTS_TAB = 13
 
 # One selected repository, two listing levels, never recursive/home-wide scans.
@@ -303,11 +321,21 @@ def activity_records(snap, now: datetime | None = None) -> list[dict]:
 
 def activity_line(snap, now: datetime | None = None) -> str:
     records = activity_records(snap, now)
+    service = getattr(snap, 'service', {}) or {}
+    running = (str(service.get('active', '')).lower() in ('active', 'activating')
+               and str(service.get('pid', '0')) not in ('', '0'))
     if not records:
         return 'AI UNKNOWN: local feed ' + snap.activity.get('state', 'MISSING') + ' (older/missing provider)'
     r = records[0]
-    prefix = 'AI observed' if r['active'] else 'AI recent'
     limit = ' [partial scan]' if snap.activity.get('limited') else ''
+    if running:
+        stamp = dt(r['timestamp_utc'])
+        if stamp is not None and ((now or datetime.now(timezone.utc)) - stamp).total_seconds() >= live_status.STRUCTURED_QUIET_SECONDS:
+            return (f"AI RUNNING #{r['issue']} r{r['round']} / structured-event quiet "
+                    f"{fmt_age(dt(r['timestamp_utc']), now)} ({r['task_relation']}){limit}")
+        prefix = 'AI observed' if r['active'] else 'AI RUNNING'
+        return f"{prefix} #{r['issue']} r{r['round']} {r['display_status']} / {r['event_category']} ({r['task_relation']}){limit}"
+    prefix = 'AI observed' if r['active'] else 'AI recent'
     return f"{prefix} #{r['issue']} r{r['round']} {r['display_status']} / {r['event_category']} ({r['task_relation']}){limit}"
 
 
@@ -322,7 +350,7 @@ def toolchain_module():
                 module = _importlib_util.module_from_spec(spec)
                 spec.loader.exec_module(module)
                 return module
-    raise ImportError('Optional historical toolchain helper missing; reinstall Observatory from the checkout.')
+    raise ImportError('Optional historical toolchain helper missing; reinstall NOVA3 Control Center from the checkout.')
 
 
 def historical_setup_text() -> str:
@@ -337,7 +365,7 @@ def historical_setup_text() -> str:
                 helper.setup_instructions() + guide_notice)
     except (ImportError, OSError, ValueError) as exc:
         return ('Optional compiler setup unavailable: ' + type(exc).__name__ +
-                '\nRead-only observer remains available. Reinstall Observatory from the checkout.\n'
+                '\nRead-only observer remains available. Reinstall NOVA3 Control Center from the checkout.\n'
                 'Source matching NOT PROVEN; no compiler is required to watch tasks.')
 
 
@@ -764,13 +792,15 @@ def gh_collect(repo: str) -> dict:
 
 def service_collect(service: str) -> dict:
     try:
-        raw = run_cmd(["systemctl", "--user", "show", service, "--property=ActiveState,SubState,MainPID,NRestarts,ExecMainStatus"], timeout=6)
+        raw = run_cmd(["systemctl", "--user", "show", service, "--property=ActiveState,SubState,MainPID,NRestarts,ExecMainStatus,Result,ActiveEnterTimestamp"], timeout=6)
         d = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
         return {"active": d.get("ActiveState", "unknown"), "sub": d.get("SubState", "unknown"),
                 "pid": d.get("MainPID", "0"), "restarts": d.get("NRestarts", "?"),
-                "exit_status": d.get("ExecMainStatus", "?"), "error": ""}
+                "exit_status": d.get("ExecMainStatus", "?"), "result": d.get("Result", ""),
+                "active_enter": d.get("ActiveEnterTimestamp", ""), "error": ""}
     except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
-        return {"active": "unknown", "sub": "unknown", "pid": "0", "restarts": "?", "exit_status": "?", "error": str(exc)}
+        return {"active": "unknown", "sub": "unknown", "pid": "0", "restarts": "?",
+                "exit_status": "?", "result": "", "active_enter": "", "error": str(exc)}
 
 
 def journal_collect(service: str) -> list[str]:
@@ -833,7 +863,24 @@ class Snapshot:
     presence_updated: str = ''
     presence_error: str = ''
     repo_role: str = 'UNKNOWN'
+    owner_status: dict = field(default_factory=dict)
     activity: dict = field(default_factory=dict)
+    log_health: dict = field(default_factory=dict)
+
+
+def is_owner_snapshot(snap) -> bool:
+    """Fail closed: only a live ADMIN/org-owner status grants steering UI."""
+    status = getattr(snap, 'owner_status', None)
+    if isinstance(status, dict) and status:
+        return bool(status.get('allowed'))
+    return getattr(snap, 'repo_role', 'UNKNOWN') in operator_ops.OWNER_ROLES
+
+
+def role_label(snap) -> str:
+    status = getattr(snap, 'owner_status', None)
+    if isinstance(status, dict) and status.get('allowed'):
+        return 'ORG OWNER' if status.get('organization_owner') else str(status.get('role') or 'ADMIN')
+    return str(getattr(snap, 'repo_role', 'UNKNOWN'))
 
 
 class Collector:
@@ -907,6 +954,21 @@ class Collector:
                 continue
             service = service_collect(self.service)
             logs = journal_collect(self.service)
+            log_bytes = sum(len(line.encode('utf-8', 'replace')) + 1 for line in logs)
+            with self.lock:
+                previous = self.snapshot.log_health if isinstance(self.snapshot.log_health, dict) else {}
+            previous_bytes = previous.get('bytes')
+            now = datetime.now(timezone.utc)
+            if (previous_bytes == log_bytes and previous.get('changed_at')):
+                log_health = {**previous, 'delta': 0}
+            else:
+                delta = (max(0, log_bytes - previous_bytes)
+                         if type(previous_bytes) is int else log_bytes)
+                log_health = {'bytes': log_bytes, 'delta': delta,
+                              'changed_at': now.isoformat(),
+                              'source': 'local systemd journal (byte count)'}
+            if any(str(line).startswith('journal unavailable:') for line in logs):
+                log_health['source'] = 'local systemd journal unavailable'
             try:
                 discovery = operator_ops.discovery_status(self.root)
                 git_state = operator_ops.git_alignment(self.root)
@@ -915,6 +977,7 @@ class Collector:
                 discovery, git_state, discovery_logs = {'message': str(exc)}, {'note': str(exc)}, [str(exc)]
             with self.lock:
                 self.snapshot.activity = activity
+                self.snapshot.log_health = log_health
                 self.snapshot.discovery = discovery
                 self.snapshot.git_alignment = git_state
                 self.snapshot.discovery_logs = discovery_logs
@@ -932,10 +995,16 @@ class Collector:
                 repo_role = operator_ops.repo_permission(self.repo)
             except (OSError, ValueError, RuntimeError):
                 repo_role = 'UNKNOWN'
+            try:
+                owner_status = operator_ops.owner_access(self.repo)
+            except (OSError, ValueError, RuntimeError):
+                owner_status = {'allowed': False, 'role': 'UNKNOWN',
+                                'reason': 'owner permission check failed'}
             now = datetime.now(timezone.utc)
             with self.lock:
                 snap = self.snapshot
                 snap.repo_role = repo_role
+                snap.owner_status = owner_status
                 # Keep last good data instead of interpreting failed network access as zero tasks.
                 for name in ("issues", "prs", "runs"):
                     failed = any(e.startswith(name + ":") for e in packet["errors"])
@@ -1188,6 +1257,10 @@ class Observatory:
         self.allow_no_checks = False
         self.merge_phrase = None
         self.merge_input = ''
+        self.journal_view = None
+        self.journal_choices = []
+        self.journal_index = 0
+        self.journal_scroll = 0
         self.stdscr = None
         self.snap = Snapshot()
         self.C = {}
@@ -1196,6 +1269,7 @@ class Observatory:
             collector.repo,
             (Path(state_dir) / 'accounts.json') if state_dir else None,
             role_resolver=lambda: operator_ops.repo_permission(collector.repo),
+            owner_resolver=lambda: operator_ops.owner_access(collector.repo).get('allowed', False),
             opener=self._open_external) if provider_accounts is not None else None)
         self.accounts_login = None
         encoding = getattr(sys.stdout, 'encoding', None) or 'ascii'
@@ -1277,9 +1351,11 @@ class Observatory:
         screen = self.stdscr
         screen.erase()
         h, w = screen.getmaxyx()
+        if self.tab == 9 and not self.is_owner():
+            self.tab = 0
         self.layout = ui_components.Layout(w, h)
         if self.layout.density == 'tiny':
-            rows = [("NOVA3 // OBSERVATORY", 'cyan'),
+            rows = [("NOVA3 // CONTROL CENTER", 'cyan'),
                     (TAB_GROUPS[self.current_group()][0]+' / '+TABS[self.tab], 'muted'),
                     ("Resize to >= 72 x 18. Q quits.", 'yellow'),
                     (activity_line(self.snap), 'cyan'),
@@ -1300,24 +1376,32 @@ class Observatory:
         now = datetime.now(timezone.utc)
         stamp = datetime.now().strftime("%a %d %b %Y  %H:%M:%S")
         accent = "magenta" if self.theme else "cyan"
-        self.put(0, 2, "◈ NOVA3 // OBSERVATORY", accent)
+        self.put(0, 2, "◈ NOVA3 // CONTROL CENTER", accent)
         if w >= 100:
             self.put(0, w-len(stamp)-3, stamp, "muted")
         gh_ok = bool(self.snap.github_updated) and not self.snap.github_errors
-        self.put(1, 2, f"Role {self.snap.repo_role} • {'DEMO' if self.collector.demo else 'LIVE READ-ONLY'} • {self.collector.repo}", "muted", w-4)
+        self.put(1, 2, f"Role {role_label(self.snap)} • {'DEMO' if self.collector.demo else 'LIVE READ-ONLY'} • {self.collector.repo}", "muted", w-4)
         self.put(2, 0, "─" * (w-1), "muted")
         group = self.current_group()
         ui_components.navigation(self, 3, [(i, name) for i, (name, _) in enumerate(TAB_GROUPS)],
                                  group, w, accent)
         entries = [(i, f'{TAB_KEYS[i]}:' + (TABS[i] if i == self.tab or not self.layout.compact
-                                            else TAB_SHORT[i])) for i in TAB_GROUPS[group][1]]
+                                            else TAB_SHORT[i])) for i in self.visible_pages(group)]
         ui_components.navigation(self, 4, entries, self.tab, w, accent)
         self.put(5, 0, "─" * (w-1), "muted")
         counts = task_counts(self.snap.issues, self.snap.prs)
         events = parse_log_events(self.snap.logs)
         estimate = build_estimates(self.snap.issues, self.snap.prs, self.snap.inventory, events, self.workers, now, snapshot=self.snap)
-        health, description = classify_health(self.snap.service,
-                                               "; ".join(self.snap.github_errors), counts, events, now)
+        self.live = live_status.collect_live_status(self.snap, now)
+        if self.live['process']['status'] == 'RUNNING':
+            health = self.live['health']['verdict']
+            description = (self.live['health']['notes'][0] if self.live['health']['notes']
+                           else 'Process is running; inspect independent signal ages below.')
+            if self.live['health']['structured_quiet']:
+                health = 'RUNNING'
+        else:
+            health, description = classify_health(self.snap.service,
+                                                   "; ".join(self.snap.github_errors), counts, events, now)
         content = self.layout.content
         top, bottom = content.y, content.y + content.h
         if self.tab == 0:
@@ -1339,7 +1423,7 @@ class Observatory:
         elif self.tab == 8:
             self.draw_roadmap(top, bottom, w)
         elif self.tab == 9:
-            if self.snap.repo_role in operator_ops.OWNER_ROLES and not self.collector.demo:
+            if self.is_owner():
                 self.draw_operator(top, bottom, w)
             else:
                 self.draw_operator_locked(top, bottom, w)
@@ -1367,7 +1451,7 @@ class Observatory:
         foot = f"Tab pages  {{ }} groups  {context}  ? help  Q quit"
         if not self.layout.compact:
             foot += ' | 1-9,0 W H A shortcuts | G sync | ' + (
-                'OWNER' if self.snap.repo_role in operator_ops.OWNER_ROLES and not self.collector.demo else 'OWNER LOCKED')
+                'OWNER' if self.is_owner() else 'CONTRIBUTOR')
         self.put(h-1, 1, foot, "muted", w-3)
         if self.notice and time.monotonic() < self.notice_until:
             self.put(h-2, 1, ' ' * (w-3), 'normal', w-3)
@@ -1383,14 +1467,31 @@ class Observatory:
         if self.merge_phrase is not None:
             self.modal('TYPE '+self.merge_phrase+' TO MERGE: '+self.merge_input+'_   (ESC cancels)', 'red')
         if self.confirm:
-            warning = ("This interrupts active Codex; saved work remains. Y continue / N cancel"
+            warning = ("Read a LOCAL private worker log? It stays on this host, is redacted and never uploaded. Y open / N cancel"
+                       if self.confirm == 'journal-open' else
+                       "This interrupts active Codex; saved work remains. Y continue / N cancel"
                        if self.confirm in ("stop", "restart") else
                        "Confirm " + self.confirm + " command?  Y yes / N cancel")
             self.modal(warning, "red")
         screen.refresh()
 
     def current_group(self):
-        return next(i for i, (_, pages) in enumerate(TAB_GROUPS) if self.tab in pages)
+        for i, (_, pages) in enumerate(TAB_GROUPS):
+            if self.tab in pages:
+                return i
+        return 0
+
+    def is_owner(self) -> bool:
+        """UI convenience only; every mutation rechecks server-side."""
+        return (not self.collector.demo) and is_owner_snapshot(self.snap)
+
+    def visible_tabs(self) -> list[int]:
+        """Owner-only pages disappear from navigation for everyone else."""
+        return [i for i in range(len(TABS)) if i != 9 or self.is_owner()]
+
+    def visible_pages(self, group: int) -> tuple[int, ...]:
+        owner = self.is_owner()
+        return tuple(page for page in TAB_GROUPS[group][1] if page != 9 or owner)
 
     def modal(self, msg: str, color="yellow"):
         h, w = self.stdscr.getmaxyx()
@@ -1418,17 +1519,20 @@ class Observatory:
 
     def worker_rows(self, health):
         records = activity_records(self.snap)
-        r = records[0] if records else None
         active = next((item for item in records if item['active']), None)
-        service = self.snap.service
+        model = getattr(self, 'live', None) or live_status.collect_live_status(self.snap)
+        p, lease, prov, feed = (model['process'], model['lease'],
+                                model['provider'], model['feed'])
         rows = [
-            (f"systemd {service.get('active', 'UNKNOWN')} / {service.get('sub') or 'UNKNOWN'} [{health}]", self.severity(health)),
-            f"PID {service.get('pid', 'UNKNOWN')}  |  restarts {service.get('restarts', 'UNKNOWN')}",
+            (f"systemd {p['active']} / {p['sub']} | PID {p['pid']} | {p['status']}", self.severity(p['status'])),
+            f"Elapsed {p['elapsed']} | AI session cap {p['ai_cap_seconds'] // 60}m"
+            + (f" ({p['ai_cap_remaining_seconds']}s left)" if p.get('ai_cap_remaining_seconds') is not None else ''),
+            (f"Lease: {lease['state']}" + (f" #{lease['issue']} age {lease['age']}" if lease.get('issue') else '')
+             + f" | presence {lease['presence_label']}", 'cyan' if lease['fresh'] else 'yellow'),
+            (f"Provider log: {prov['state']} | {prov['bytes'] if prov['bytes'] is not None else 'UNKNOWN'} bytes | last increase {prov['age']}", 'cyan' if not prov['quiet'] else 'yellow'),
+            (f"Structured feed: {feed['state']} | newest {feed['age']} ago", 'cyan' if not feed['quiet'] else 'yellow'),
             (f"Active issue: #{active['issue']} / round {active['round']}" if active else 'Active issue: UNKNOWN (no live task observation)', 'cyan'),
-            'Feed heartbeat: ' + (fmt_age(dt(r['timestamp_utc'])) + (' [FRESH]' if r['fresh'] else ' [STALE]') if r else 'UNKNOWN'),
-            'AI category: ' + (r['event_category'] if r else 'UNKNOWN'),
-            ('Observation: ' + (r['display_status'] if r else 'MISSING'), self.severity(r['display_status'] if r else 'MISSING')),
-            (activity_line(self.snap), 'muted'),
+            ('Quiet output is not a stopped, idle or failed worker.', 'muted'),
         ]
         if self.snap.worker_presence:
             rows += [(f"Contributor heartbeat records: {len(self.snap.worker_presence)} (W details)", 'muted')]
@@ -1458,7 +1562,11 @@ class Observatory:
         R = ui_components.Rect
         layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
         records = activity_records(self.snap)
-        feed_state = self.feed_badge(records)
+        model = getattr(self, 'live', None) or live_status.collect_live_status(self.snap)
+        feed_state = model['health']['verdict']
+        structured_badge = ('structured-event quiet' if model['health']['structured_quiet']
+                            else 'structured feed live' if not model['feed']['quiet']
+                            else 'structured feed missing')
         report = est['forecast']
         shared = forecast_lines(report)
         evidence_rows = [(shared[0], 'yellow'), (shared[3], 'cyan'), shared[1],
@@ -1471,6 +1579,8 @@ class Observatory:
             'Commands UNKNOWN | tests UNKNOWN',
             ('Waiting for a compatible worker feed.', 'muted'),
             ('No raw AI logs or internal thoughts.', 'muted')]
+        live_rows = [(f"Sub-badge: {structured_badge}", 'yellow' if model['health']['structured_quiet'] else 'cyan')] + live_rows
+        live_rows += live_status.summary_rows(model, provenance=False)[:3]
         for r in records[1:]:
             live_rows.append((f"[{r['display_status']}] #{r['issue']} r{r['round']} {r['event_category']} | {fmt_age(dt(r['timestamp_utc']))}", self.severity(r['display_status'])))
         specs = [('WORKER TELEMETRY', health, self.severity(health)),
@@ -1539,14 +1649,29 @@ class Observatory:
     def draw_activity(self, y, end, w):
         R = ui_components.Rect
         layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
+        model = getattr(self, 'live', None) or live_status.collect_live_status(self.snap)
+        if self.journal_view is not None:
+            self.draw_local_journal(y, end, w)
+            return
         records = activity_records(self.snap)
         fresh = sum(r['fresh'] for r in records)
-        feed_state = self.feed_badge(records)
-        header_h = 5 if end-y >= 14 else 4
-        header = self.card(R(y, 1, header_h, w-2), 'WORKER CONSOLE', feed_state, self.severity(feed_state))
-        header.lines([(activity_line(self.snap), 'cyan'),
-                      f"{len(records)} rounds | {fresh} fresh | feed {self.snap.activity.get('state', 'MISSING')} | Up/Down scroll rounds",
-                      ('Observed counters only; completed tests do not imply passing tests.', 'muted')])
+        verdict = model['health']['verdict']
+        badges = model['health']['badges']
+        header_h = 8 if end-y >= 20 else 6 if end-y >= 14 else 5
+        header = self.card(R(y, 1, header_h, w-2), 'LIVE WORKER STATUS',
+                           model['health']['badge'][:40], self.severity(verdict))
+        rows = live_status.summary_rows(model)
+        if header_h <= 5:
+            p, lease, prov, feed = (model['process'], model['lease'],
+                                    model['provider'], model['feed'])
+            rows = [
+                (f"PROCESS {p['status']} {p['active']}/{p['sub']} PID {p['pid']} | {p['elapsed']} / cap {p['ai_cap_seconds']//60}m",
+                 'green' if p['status'] == 'RUNNING' else 'red'),
+                (f"LEASE {lease['state']}" + (f" #{lease['issue']}" if lease.get('issue') else '')
+                 + f" | LOG {prov['state']} {prov['bytes'] if prov['bytes'] is not None else '?'}B"
+                 + f" | FEED {feed['state']} {feed['age']}", 'cyan' if lease['fresh'] else 'yellow'),
+            ]
+        header.lines(rows)
         area = R(y+header_h+1, 1, end-y-header_h-1, w-2)
         if layout.activity_columns == 2:
             console, side = ui_components.grid(area, columns=2, rows=1)
@@ -1554,23 +1679,23 @@ class Observatory:
                 feed_rect, privacy_rect = ui_components.grid(side, columns=1, rows=2)
             else:
                 feed_rect, privacy_rect = side, None
-            contract = self.card(feed_rect, 'FEED / PRIVACY', 'READ ONLY')
+            contract = self.card(feed_rect, 'INDEPENDENT SIGNALS / PRIVACY', 'READ ONLY')
             feed_rows = [
-                ('[OBSERVED] Local structured JSON only', 'cyan'),
-                f"Feed state: {self.snap.activity.get('state', 'MISSING')}",
-                f"Fresh observations: {fresh} / {len(records)} retained rounds",
-                f"Live task rounds: {sum(r['active'] for r in records)} (not worker capacity)",
-                f"Partial scan: {bool(self.snap.activity.get('limited'))}",
+                (f"Process: {model['process']['status']} (systemd)", self.severity(model['process']['status'])),
+                (f"Lease: {model['lease']['state']} | provider log: {model['provider']['state']}", 'cyan'),
+                (f"Structured feed: {model['feed']['state']} | newest {model['feed']['age']} ago", 'cyan'),
+                f"Rounds: {len(records)} retained / {fresh} fresh | partial {bool(self.snap.activity.get('limited'))}",
                 f"Rejected summaries: {self.snap.activity.get('rejected', 0)}",
+                ('Quiet output is not idle/stalled/failed.', 'yellow'),
+                ('J: owner/admin local journal (confirm)', 'muted'),
                 ('Whole-game ETA: UNKNOWN', 'yellow'),
             ]
             privacy_rows = [
-                'Freshness window: 90 seconds',
-                'A stale round is not a live worker.',
-                'No private paths, prompts or command args.',
-                'No assistant reasoning or raw AI logs.',
-                'SERVICE LOGS is a separate page (5).',
-                ('Completed counters do not prove passing tests.', 'yellow'),
+                'Structured JSON is sanitized; raw model reasoning is never read.',
+                'Journal view is local-only, bounded and redacted.',
+                'No private paths, prompts, credentials or command args leave this host.',
+                'SERVICE LOGS (5) is separate from the owner journal inspector.',
+                ('Log-byte growth does not prove useful progress.', 'yellow'),
             ]
             contract.lines(feed_rows)
             if privacy_rect:
@@ -1580,11 +1705,11 @@ class Observatory:
         else:
             console = area
         if not records:
-            empty = self.card(console, 'AWAITING OBSERVATIONS', 'MISSING', 'yellow')
-            empty.lines([('[UNKNOWN] No structured Codex activity', 'yellow'),
+            empty = self.card(console, 'AWAITING STRUCTURED OBSERVATIONS', 'FEED MISSING', 'yellow')
+            empty.lines([(f"[{model['process']['status']}] process state is independent of this feed", 'yellow'),
                          'Older / missing providers supply no counters.',
                          'Commands UNKNOWN | tests UNKNOWN',
-                         ('Worker upgrades/restarts are separate owner actions.', 'muted'),
+                         ('J opens the bounded local journal (owner/admin, confirmed).', 'muted'),
                          ('Whole-game ETA: UNKNOWN', 'yellow')])
             return
         start = min(self.scroll['activity'], max(0, len(records)-1))
@@ -1594,8 +1719,81 @@ class Observatory:
         visible = records[start:start+capacity]
         tiles = ui_components.grid(console, columns=1, rows=len(visible))
         for rect, record in zip(tiles, visible):
-            card = self.card(rect, f"#{record['issue']} / ROUND {record['round']}", record['display_status'], self.severity(record['display_status']))
+            label = record['display_status']
+            if model['process']['status'] == 'RUNNING' and record['display_status'] == 'STALE':
+                label = 'QUIET (process RUNNING)'
+            card = self.card(rect, f"#{record['issue']} / ROUND {record['round']}", label, self.severity(record['display_status']))
             card.lines(self.activity_rows(record))
+
+    def journal_base(self):
+        home = getattr(self.collector, 'home', None)
+        try:
+            return journal_inspector.journal_base(self.collector.repo, home=home)
+        except (ValueError, TypeError):
+            return None
+
+    def journal_candidates(self):
+        home = getattr(self.collector, 'home', None)
+        try:
+            return journal_inspector.candidates(self.collector.repo, home=home)
+        except (OSError, ValueError, TypeError):
+            return []
+
+    def open_journal(self, index=0):
+        """Explicit owner/admin action; bounded local read, no shell."""
+        if not self.is_owner():
+            self.show_notice('JOURNAL LOCKED: repository ADMIN or organization owner required')
+            return False
+        # Local logs are private: re-check the live server-side role at the
+        # action boundary, not only the polled snapshot that painted the page.
+        try:
+            operator_ops.require_owner_access(self.collector.repo)
+        except Exception:
+            self.show_notice('JOURNAL LOCKED: owner authority could not be re-verified')
+            return False
+        options = self.journal_candidates()
+        if not options:
+            self.show_notice('No local round journal was found under the protected state directory')
+            return False
+        choice = options[max(0, min(index, len(options)-1))]
+        try:
+            report = journal_inspector.read(self.collector.repo, choice['name'],
+                                             home=getattr(self.collector, 'home', None))
+        except (OSError, ValueError, TypeError) as exc:
+            self.show_notice('Journal refused: ' + str(exc)[:120])
+            return False
+        self.journal_view = report
+        self.journal_choices = options
+        self.journal_index = index
+        self.journal_scroll = 0
+        self.show_notice('LOCAL PRIVATE LOG: redacted, never uploaded')
+        return True
+
+    def close_journal(self):
+        self.journal_view = None
+        self.journal_choices = []
+        self.journal_scroll = 0
+
+    def draw_local_journal(self, y, end, w):
+        R = ui_components.Rect
+        view = self.journal_view
+        if not view:
+            return
+        card = self.card(R(y, 1, end-y, w-2), 'LOCAL PRIVATE JOURNAL (REDACTED)',
+                         'LOCAL ONLY', 'yellow')
+        header = [
+            ('Warning: local private log. Never uploaded or published automatically.', 'red'),
+            (f"File {view['name']} | {view['bytes']} bytes | {view['source']}", 'muted'),
+            ('Secrets are masked; prompts/private paths may still be sensitive.', 'yellow'),
+            ('Up/Down scroll | N next round | ESC closes', 'cyan'),
+        ]
+        lines = view['text'].splitlines() or ['(empty journal)']
+        capacity = max(1, card.inner.h - len(header) - 1)
+        start = max(0, min(self.journal_scroll, max(0, len(lines)-capacity)))
+        self.journal_scroll = start
+        card.lines(header)
+        for i, line in enumerate(lines[start:start+capacity]):
+            card.line(len(header)+i, line, 'normal')
 
     def _table(self, y, end, w, title, records, formatter, selector_key, hint=''):
         layout = ui_components.Layout(w, self.stdscr.getmaxyx()[0])
@@ -1844,12 +2042,12 @@ class Observatory:
         self.put(end-3,4,"No new AI accounts. For actual features: nova3-feature 'Describe feature'",'muted',w-9)
 
     def draw_operator_locked(self, y, end, w):
-        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'OWNER OPS', 'LOCKED', 'yellow')
-        rows = [('Owner actions require ADMIN or MAINTAIN permission for this repository.', 'yellow'),
-                'Your authenticated GitHub role: '+self.snap.repo_role,
+        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'ADMINISTRATION', 'LOCKED', 'yellow')
+        rows = [('Owner controls require an authenticated organization owner or repository ADMIN.', 'yellow'),
+                'Your effective GitHub role: '+role_label(self.snap),
                 'Access is checked again before every privileged action.',
                 'All telemetry, task, PR, coverage, worker and roadmap pages remain available.']
-        if self.snap.repo_role == 'UNKNOWN':
+        if self.snap.repo_role == 'UNKNOWN' and not is_owner_snapshot(self.snap):
             rows.append(('GitHub role could not be verified; owner operations fail closed.', 'red'))
         self.scroll['owner_lines'] = card.scrolled(rows, self.scroll['owner_lines'])
 
@@ -1955,7 +2153,7 @@ class Observatory:
         area = R(y, 1, end-y, w-2)
         if self.accounts is None:
             self.card(area, 'ACCOUNTS', 'UNAVAILABLE', 'yellow').lines([
-                ('Accounts module is not installed in this Observatory bundle.', 'yellow'),
+                ('Accounts module is not installed in this Control Center bundle.', 'yellow'),
                 'Reinstall with tools/observatory/install.sh to add provider readiness.',
                 ('No provider CLI, GitHub login or credential was touched.', 'muted')])
             return
@@ -1990,11 +2188,12 @@ class Observatory:
 
         identity = self.accounts.identity
         members = self.accounts.members
-        owner = identity.role in provider_accounts.OWNER_ROLES and not self.collector.demo
+        owner = (identity.role in provider_accounts.OWNER_ROLES
+                 or bool((self.snap.owner_status or {}).get('organization_owner'))) and self.is_owner()
         github_rows = [
             (f'GitHub identity: {identity.label}', self.severity(identity.label)),
-            (('Owner actions: ' + (identity.role + ' (O opens official settings)'
-                                   if owner else 'LOCKED (ADMIN/MAINTAIN required)')),
+            (('Owner actions: ' + (role_label(self.snap) + ' (O opens official settings)'
+                                   if owner else 'LOCKED (ADMIN or org owner required)')),
              'cyan' if owner else 'yellow'),
             (f'Members ({members.state}): M loads read-only collaborators', 'cyan'),
             (f'Invite / remove / role changes: {self.accounts.invitation_url}', 'yellow'),
@@ -2020,10 +2219,10 @@ class Observatory:
             github_rows, self.scroll['accounts_info'])
 
     def draw_help(self, y, end, w):
-        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'OPERATOR GUIDE', 'UP/DOWN')
+        card = self.card(ui_components.Rect(y, 1, end-y, w-2), 'CONTROL CENTER GUIDE', 'UP/DOWN')
         lines = [
             ('GROUPS', '{ / } previous / next group. Tab / Shift-Tab cycles every page.'),
-            ('CARDS', 'PULSE and OWNER OPS: PgUp/PgDn cycles card views. Up/Down scrolls expanded prose.'),
+            ('CARDS', 'PULSE and ADMINISTRATION: PgUp/PgDn cycles card views. Up/Down scrolls expanded prose.'),
             ('SEARCH', 'Tasks / PRs / Actions: / edits search. Enter applies, Esc restores. / then clear removes filter.'),
             ('DETAILS', 'Tasks / PRs / Actions: D toggles full details. PgUp/PgDn scrolls details or pages a compact list.'),
             ("WORKERS", "W monitors opt-in contributor heartbeats, idle/error/stale signals."),
@@ -2039,12 +2238,15 @@ class Observatory:
             ("ACTIVITY", "A opens local sanitized JSON observations. No internal thoughts or raw logs."),
             ("ACCOUNTS", "U shows optional AI provider readiness and read-only GitHub identity. R probes local CLIs."),
             ("ACCOUNT KEYS", "Up/Down select, T test connection, E enable/disable, L official login guidance, M members."),
-            ("ACCOUNT SAFETY", "No passwords/tokens collected. Owner settings open only after a fresh ADMIN/MAINTAIN check."),
+            ("ACCOUNT SAFETY", "No passwords/tokens collected. Owner settings open only after a fresh ADMIN/org-owner check."),
+            ("ONBOARDING", "First run: gh auth login, repo access, provider readiness, toolchain, game files, budget."),
+            ("CONTRIBUTOR", "Inspect status, install/login your own provider, read approved work, submit evidence/PR."),
+            ("ROLES", "Organization owner or repo ADMIN only; hidden from contributors and rechecked per action."),
             ("APPEARANCE", "T switches highlight palette   Q exits TUI (worker stays running)"),
-            ("OWNER OPS", "0 opens private controls: timer, one-shot scans, bulk PR merge, diagnostics."),
+            ("ADMINISTRATION", "0 opens owner controls: timer, one-shot scans, bulk PR merge, diagnostics. Hidden for contributors."),
             ("BULK MERGE", "On PR page B marks a PR, A marks all, Z clears; C checks GitHub then confirms."),
             ("PR SECURITY", "Requires typed MERGE N. Rechecks CI/commit/mergeability before each squash."),
-            ("TIMER", "On OWNER OPS press D repair, N scan now, U toggle timer (confirmed)."),
+            ("TIMER", "On ADMINISTRATION press D repair, N scan now, U toggle timer (confirmed)."),
             ("EXPORT", "P saves diagnostic report under private state folder for attachments."),
             ("SAFETY", "Worker service controls require confirmation. Merge never bypasses GitHub rules."),
             ("PRIVACY", "Presence uses private GitHub metadata; never transfers game source or credentials."),
@@ -2059,6 +2261,11 @@ class Observatory:
             ("EXPANSION", "Gameplay features require a concrete spec; roadmap handles scaffolding."),
         ]
         rows = [('PAGE SHORTCUTS: ' + ' | '.join(f'{key} {name}' for key, name in zip(TAB_KEYS, TABS)), 'cyan')]
+        context = {'provider_ready': bool(self.accounts and any(row.ready for row in self.accounts.rows())),
+                   'journal_available': bool(self.journal_candidates())}
+        role = onboarding.role_of(self.snap.owner_status, self.snap.repo_role)
+        rows += onboarding.summary_lines(role, context, width=w)
+        rows += [('', 'normal')]
         rows += [(left+': '+right, 'normal') for left, right in lines]
         self.scroll['help'] = card.scrolled(rows, self.scroll['help'])
 
@@ -2173,6 +2380,21 @@ class Observatory:
         # Resize is never text input or consent, even while a modal is active.
         if key == curses.KEY_RESIZE:
             return True
+        if self.journal_view is not None:
+            if key in (27, ord('q'), ord('Q')):
+                self.close_journal()
+            elif key in (curses.KEY_UP, ord('k'), ord('K')):
+                self.journal_scroll = max(0, self.journal_scroll - 1)
+            elif key in (curses.KEY_DOWN, ord('j'), ord('J')):
+                self.journal_scroll += 1
+            elif key == curses.KEY_PPAGE:
+                self.journal_scroll = max(0, self.journal_scroll - 10)
+            elif key == curses.KEY_NPAGE:
+                self.journal_scroll += 10
+            elif key in (ord('n'), ord('N')):
+                index = (getattr(self, 'journal_index', 0) + 1) % max(1, len(self.journal_choices))
+                self.open_journal(index)
+            return True
         if self.search_edit:
             if key in (10, 13, curses.KEY_ENTER):
                 self.search_edit = False
@@ -2196,7 +2418,7 @@ class Observatory:
                 self.merge_input=''
                 if supplied==expected:
                     self.collector.execute_merge(self.include_others,self.allow_no_checks)
-                    self.show_notice('Merge batch started; monitor OWNER OPS')
+                    self.show_notice('Merge batch started; monitor ADMINISTRATION')
                 else:
                     self.show_notice('Confirmation did not match; no merges started')
             elif key in (curses.KEY_BACKSPACE,127,8):
@@ -2215,6 +2437,8 @@ class Observatory:
                         self.show_notice('Opened official vendor login guidance; no credentials collected')
                     else:
                         self.show_notice('Login cancelled: no official page was opened')
+                elif action == 'journal-open':
+                    self.open_journal(getattr(self, 'journal_index', 0))
                 else:
                     self.collector.perform_action(action)
                     self.show_notice("Executing: " + action)
@@ -2227,7 +2451,7 @@ class Observatory:
                 if key not in (9, curses.KEY_BTAB, curses.KEY_LEFT, curses.KEY_RIGHT,
                                ord('{'), ord('}'), ord('?'), ord('q'), ord('Q')) and not (
                         ord('0') <= key <= ord('9')):
-                    self.show_notice('Accounts module unavailable; reinstall Observatory')
+                    self.show_notice('Accounts module unavailable; reinstall the Control Center')
                     return True
             elif self.handle_accounts(key):
                 return True
@@ -2270,8 +2494,8 @@ class Observatory:
             return True
         owner_command = ((self.tab == 9 and key in map(ord, 'cCiIjJdDnNuUpP')) or
                          key in (ord('f'), ord('F')))
-        if owner_command and (self.snap.repo_role not in operator_ops.OWNER_ROLES or self.collector.demo):
-            self.show_notice('OWNER OPS LOCKED: ADMIN/MAINTAIN role required')
+        if owner_command and not self.is_owner():
+            self.show_notice('ADMINISTRATION LOCKED: authenticated organization owner or repository ADMIN required')
             return True
         if key == ord('?'):
             self.tab = len(TABS)-1
@@ -2292,15 +2516,19 @@ class Observatory:
             self.tab = key-ord('1')
             return True
         if key == ord('0'):
-            if self.snap.repo_role in operator_ops.OWNER_ROLES and not self.collector.demo:
+            if self.is_owner():
                 self.tab = 9
             else:
-                self.show_notice('OWNER OPS LOCKED: ADMIN/MAINTAIN role required')
+                self.show_notice('ADMINISTRATION LOCKED: authenticated organization owner or repository ADMIN required')
             return True
         if key in (9, curses.KEY_RIGHT):
-            self.tab = (self.tab+1)%len(TABS)
+            visible = self.visible_tabs()
+            index = visible.index(self.tab) if self.tab in visible else 0
+            self.tab = visible[(index+1) % len(visible)]
         elif key in (curses.KEY_BTAB, curses.KEY_LEFT):
-            self.tab = (self.tab-1)%len(TABS)
+            visible = self.visible_tabs()
+            index = visible.index(self.tab) if self.tab in visible else 0
+            self.tab = visible[(index-1) % len(visible)]
         elif key in (ord('g'),ord('G')):
             self.collector.force_refresh()
             self.show_notice("GitHub refresh requested")
@@ -2327,8 +2555,8 @@ class Observatory:
             with self.collector.lock:self.collector.snapshot.merge_status='NONE'
             self.show_notice('PR selection cleared')
         elif key in (ord('c'),ord('C')) and self.tab in (2,9):
-            if self.snap.repo_role not in operator_ops.OWNER_ROLES or self.collector.demo:
-                self.show_notice('Bulk merge locked: GitHub ADMIN/MAINTAIN permission required')
+            if not self.is_owner():
+                self.show_notice('Bulk merge locked: organization owner or repository ADMIN required')
                 return True
             if self.snap.merge_status=='READY' and self.snap.merge_ready:
                 self.merge_phrase=f'MERGE {len(self.snap.merge_ready)}'
@@ -2381,9 +2609,18 @@ class Observatory:
             self.scroll['forecast'] = max(0, self.scroll['forecast']-1)
         elif self.tab == 5 and key in (curses.KEY_DOWN, ord('j'), ord('J')):
             self.scroll['forecast'] += 1
+        elif self.tab == 12 and key in (ord('j'), ord('J')):
+            if key == ord('J'):
+                if not self.is_owner():
+                    self.show_notice('JOURNAL LOCKED: repository ADMIN or organization owner required')
+                else:
+                    self.journal_index = 0
+                    self.confirm = 'journal-open'
+            else:
+                self.scroll['activity'] += 1
         elif self.tab == 12 and key in (curses.KEY_UP, ord('k'), ord('K')):
             self.scroll['activity'] = max(0, self.scroll['activity']-1)
-        elif self.tab == 12 and key in (curses.KEY_DOWN, ord('j'), ord('J')):
+        elif self.tab == 12 and key in (curses.KEY_DOWN,):
             self.scroll['activity'] += 1
         elif key in (ord('+'),ord('=')):
             self.workers = min(32, self.workers+1)
@@ -2433,8 +2670,9 @@ def text_once(snap: Snapshot, workers: int) -> str:
     est = build_estimates(snap.issues, snap.prs, snap.inventory, parse_log_events(snap.logs),
                           workers, snapshot=snap)
     report = est['forecast']
+    live = live_status.collect_live_status(snap)
     return "\n".join([
-        "NOVA3 OBSERVATORY — NONINTERACTIVE REPORT",
+        "NOVA3 CONTROL CENTER — NONINTERACTIVE REPORT",
         f"Service: {snap.service.get('active','unknown')}, PID {snap.service.get('pid','?')}",
         f"GitHub fetched: {snap.github_updated or 'not yet'}",
         f"GitHub collection errors: {len(snap.github_errors)}",
@@ -2446,6 +2684,9 @@ def text_once(snap: Snapshot, workers: int) -> str:
         f"Reconstructed C/C++ source: files={snap.coverage.get('source',{}).get('files','?')} lines={snap.coverage.get('source',{}).get('lines','?')}",
         f"Indexed APK packages: {len(snap.coverage.get('package',{}).get('apks', []))} (metadata only)",
         activity_line(snap),
+        f"Live health: {live['health']['verdict']} [{live['health']['badge']}]",
+        f"Process: {live['process']['status']} pid={live['process']['pid']} elapsed={live['process']['elapsed']}",
+        f"Lease: {live['lease']['state']} | provider log: {live['provider']['state']} | structured feed: {live['feed']['state']} age={live['feed']['age']}",
         'Local summary observations only; no assistant reasoning.',
         'Queue planning: evidence-gated; configured worker slots do not establish throughput.',
         *forecast_lines(report),

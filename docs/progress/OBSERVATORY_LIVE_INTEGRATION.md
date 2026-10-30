@@ -1,4 +1,4 @@
-# Observatory local activity and evidence-gated forecast (#111)
+# Control Center local activity and evidence-gated forecast (#111)
 
 This source-only integration reads sanitized worker observations; it does not
 show internal thoughts. No matching claim is made: **NOT MATCHED**. No game
@@ -13,9 +13,9 @@ git pull --ff-only && bash tools/observatory/install.sh
 ```
 
 That command is for the owner after merge, and was not run against GitHub by
-this worker. Observatory stays separate from the worker. Run the continuous
+this worker. Control Center stays separate from the worker. Run the continuous
 queue worker in its own terminal with `bash START-LINUX.sh` (without `--once`).
-Opening or quitting Observatory does not start/stop the worker.
+Opening or quitting Control Center does not start/stop the worker.
 
 PULSE shows the newest locally observed active session, preferring it over a
 more recent completed task. ACTIVITY is a focused scrollable page (A outside
@@ -150,13 +150,13 @@ Executed with Python 3.14.8 on 2026-10-29:
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/observatory/tests -p test_live_integration.py -q` | 24 passed, exit 0 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s nova3_team/tests -q` | 429 passed, exit 0 |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/observatory/tests -q` | 137 executed: 135 passed, one failure and one error, exit 1 |
-| Observatory discovery excluding exactly the two known systemd-dependent tests below | 135 passed, exit 0 |
+| Control Center discovery excluding exactly the two known systemd-dependent tests below | 135 passed, exit 0 |
 | Bash installer under a disposable temporary HOME/XDG configuration | Exit 1 at the same two systemd test failures; no launcher created, no real installation modified |
 | Standalone copied bundle, Python `-I`, `--offline --once`, outside repository import paths | Passed in integration suite; whole-game ETA UNKNOWN |
 | `PYTHONDONTWRITEBYTECODE=1 python3 tools/observatory/observer.py --demo --once` | Exit 0; queue/setup/whole-game UNKNOWN with sample/blocker explanations |
 | `PYTHONDONTWRITEBYTECODE=1 python3 -m nova3_team.guard --repo . --all` | Guard passed, 404 files, exit 0 |
 | `bash -n tools/observatory/install.sh` and `git diff --check` | Exit 0 |
-| `ast.parse(..., feature_version=(3, 10))` on observer, model and all Observatory test modules | 12 files passed; Python 3.10 runtime not available/tested |
+| `ast.parse(..., feature_version=(3, 10))` on observer, model and all Control Center test modules | 12 files passed; Python 3.10 runtime not available/tested |
 
 Known environmental failures reproduced before and after the integration:
 
