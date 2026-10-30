@@ -11,6 +11,7 @@ from . import reliability  # NOVA3-RELIABILITY-FAILSTOP-v2
 from . import activity_feed
 from .coordinator import EvidenceUnavailable, QueueDecision, build_gate
 from . import provider_runtime
+from . import hermes_runtime
 
 
 def run(cmd, cwd=None, timeout=90, capture=True, check=True):
@@ -287,6 +288,31 @@ def command_for(provider, prompt, status=None, aux_dir=None):
             codex_json = _codex_json_supported()
     return provider_runtime.build_command(
         provider, prompt, status=status, aux_dir=aux_dir, codex_json=codex_json)
+
+
+def hermes_command(prompt, work, aux_dir, status=None, config=None):
+    """Build one bounded, file-based Hermes worker session.
+
+    Task text is written to a 0600 prompt file inside the private round
+    directory and referenced with ``--query-file``; it never enters argv, the
+    environment or a shell. Readiness and operator configuration are
+    re-validated here, immediately before launch, so a stale probe or a mutated
+    environment cannot start an unverified session. The role is fixed to
+    worker: a planner configuration can never be reused for coding.
+    """
+    config = config or hermes_runtime.load_config(
+        hermes_runtime.Role.WORKER, status=status,
+        timeout_seconds=ai_session_timeout())
+    # Re-probe at the launch boundary. A readiness record captured when the
+    # worker started (or an "available" string) is not proof that the binary
+    # and required flags still exist; worker rounds can run for hours.
+    if status is None or not hermes_runtime.fresh(status):
+        status = hermes_runtime.probe(config.executable)
+    ready = hermes_runtime.assert_ready(status, role=config.role)
+    prompt_path = hermes_runtime.materialise_prompt(aux_dir, prompt)
+    return hermes_runtime.build_invocation(
+        ready, role=config.role, prompt_path=prompt_path, cwd=str(work),
+        provider=config.provider, model=config.model, budget=config.budget)
 
 
 def allowed_from_issue(body):
@@ -662,12 +688,20 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                 log=private_round_log(work,k)
                 # Bounded agent/profile files live beside the private log only.
                 aux_dir=log.parent/'provider-aux'
-                provider_runtime.prepare_aux_files(provider,aux_dir)
-                cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
+                provider_env_extra={}
+                if provider == 'hermes':
+                    # File-based adapter: prompt stays in a private 0600 file.
+                    invocation=hermes_command(prompt,work,aux_dir,provider_status)
+                    cmd=list(invocation.argv)
+                    provider_env_extra=dict(invocation.env)
+                else:
+                    provider_runtime.prepare_aux_files(provider,aux_dir)
+                    cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
                 note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
                 structured=provider == 'codex' and '--json' in cmd[2:-1]
                 activity=activity_feed.ActivityFeed(log, structured=structured)
-                provider_env={**os.environ, **provider_runtime.build_environment(provider)}
+                provider_env={**os.environ, **provider_runtime.build_environment(provider),
+                              **provider_env_extra}
                 cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
                                 env=provider_env)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
@@ -1724,7 +1758,8 @@ def main():
                     'install':spec.install_url,
                     'permission_profile':spec.permission_profile,
                     'unsupported':bool(spec.unsupported_reason),
-                    'login_guidance':spec.login_guidance}
+                    'login_guidance':spec.login_guidance,
+                    'readiness':provider_runtime.readiness(provider_id,status=status)}
             if args.check_auth:
                 auth=provider_runtime.check_auth(provider_id)
                 report['auth']={'state':auth.state.value,'reason':auth.reason}
@@ -1748,6 +1783,15 @@ def main():
                      'The probe is advisory for pre-registry providers.')
             else:
                 p.error(ready.reason)
+        if args.provider=='hermes':
+            # Fail closed before any task is claimed: unverified CLI, missing
+            # capability tokens, bad provider/model/role or an interactive TTY
+            # must deny here rather than degrade at launch time.
+            try:
+                hermes_runtime.load_config(hermes_runtime.Role.WORKER, status=ready,
+                                           tty=lambda: sys.stdin.isatty())
+            except hermes_runtime.HermesError as exc:
+                p.error(f'Hermes backend denied: {exc}')
         if not shutil.which('gh'):p.error('GitHub CLI is required separately; install gh and run gh auth login locally.')
     upstream=get_repo(args.repo)
     gh=GitHub(upstream);user=gh.me()
