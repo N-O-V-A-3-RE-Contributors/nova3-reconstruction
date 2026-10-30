@@ -233,3 +233,28 @@ launched.
 * **No live verification.** Reviewer must observe one denied claim, one approved
   claim, one revoked-role denial and one quarantined priority task in a test
   repository before declaring the control plane protected.
+
+## GitHub Actions installation readers
+
+The coordinator separates the evidence transport from the human approver.
+User credentials prove `/user`; installation credentials prove access to the
+exact pinned repository through authenticated, bounded
+`GET /installation/repositories` pages. `/app` is not an installation-token
+identity endpoint and is no longer used.
+
+An installation reader is a typed repository/owner-scoped transport context,
+with a random collector channel that contains no credential. It never becomes
+a user ID, executor, contributor or approver. Standing-approval verification
+still re-reads the actual human author, effective permissions, task binding,
+revocation and replay evidence. Generic human-action authorization rejects
+installation readers. Missing or mismatched repository evidence denies access.
+
+`python -m nova3_team.coordinator --preflight-only` exercises authenticated
+reads without processing an event, claiming a task or changing a lease. CI
+runs it with its repository-scoped read-only Actions token. Diagnostics expose
+only fixed endpoints, HTTP status codes, reader kind and public numeric IDs.
+
+Protocol references:
+- https://docs.github.com/en/actions/concepts/security/github_token
+- https://docs.github.com/en/rest/apps/installations#list-repositories-accessible-to-the-app-installation
+- https://docs.github.com/en/rest/apps/apps#get-the-authenticated-app

@@ -92,16 +92,35 @@ class Request:
 
 
 @dataclass(frozen=True)
+class InstallationReader:
+    """Transport context proved by authenticated installation repository reads.
+
+    This is NOT a user/App ID or permission grant. Only the trusted collector
+    constructs it after proving access to the pinned repository. The random
+    channel binds receipts to one collector without retaining token material.
+    It is valid only for checking somebody else's standing human approval.
+    """
+
+    repository_id: int
+    owner_id: int
+    channel: str
+
+
+EvidenceReader = int | InstallationReader
+
+
+@dataclass(frozen=True)
 class GitHubRead:
-    """Trusted transport receipt, scoped to /user identity and this boundary.
+    """Trusted transport receipt, scoped to a reader and this boundary.
 
     `reader_id` is the numeric /user ID of the authenticated credential used
-    for the request, never the subject of a permission/membership lookup.
+    for a human credential, or a proved InstallationReader transport context.
+    It is never the subject of a permission/membership lookup.
     Headers, tokens, raw errors and transport clients must NOT be stored here.
     """
 
     path: str
-    reader_id: int | None
+    reader_id: EvidenceReader | None
     boundary: str
     fetched_at: int
     status: int
@@ -280,15 +299,39 @@ def _operation_arguments(request: Request) -> dict[str, object]:
     return json.loads(wire)
 
 
+def _reader(reader: EvidenceReader, repository: Repository) -> None:
+    if type(reader) is int:
+        _positive(reader)
+    elif type(reader) is InstallationReader:
+        _positive(reader.repository_id)
+        _positive(reader.owner_id)
+        _digest(reader.channel)
+        if reader.repository_id != repository.id or reader.owner_id != repository.owner_id:
+            raise _Denied()
+    else:
+        raise _Denied()
+
+
+def verify_reader(reader: EvidenceReader, repository: Repository) -> None:
+    """Validate a trusted reader context; never authorize a human action."""
+    try:
+        repository.path
+        _reader(reader, repository)
+    except (_Denied, ValueError, TypeError, AttributeError):
+        raise ValueError("invalid authenticated reader context") from None
+
+
 def _read(receipt: GitHubRead | None, path: str, request: Request,
-          reader_id: int | None, now: int) -> Mapping[str, object]:
+          reader_id: EvidenceReader | None, now: int) -> Mapping[str, object]:
     if not isinstance(receipt, GitHubRead):
         raise _Denied()
     if (receipt.origin != API_ORIGIN or receipt.path != path or receipt.status != 200
             or type(receipt.status) is not int or receipt.reader_id != reader_id
-            or (reader_id is not None and type(receipt.reader_id) is not int)
+            or type(receipt.reader_id) is not type(reader_id)
             or receipt.boundary != request.nonce or not isinstance(receipt.payload, Mapping)):
         raise _Denied()
+    if reader_id is not None:
+        _reader(reader_id, request.repository)
     _fresh(receipt.fetched_at, now)
     return receipt.payload
 
@@ -301,7 +344,7 @@ def _person(user: Mapping[str, object]) -> tuple[int, str]:
     return ident, login
 
 
-def _role(access: AccessReads, request: Request, reader_id: int,
+def _role(access: AccessReads, request: Request, reader_id: EvidenceReader,
           now: int, *, viewer: bool, organization: bool) -> tuple[Role, int, str]:
     if not isinstance(access, AccessReads):
         raise _Denied()
@@ -394,7 +437,7 @@ def _validate_request(request: Request) -> None:
         raise _Denied()
 
 
-def _record(comment: GitHubRead, request: Request, reader: int, now: int,
+def _record(comment: GitHubRead, request: Request, reader: EvidenceReader, now: int,
             binding: dict[str, object], *, kind: str) -> tuple[Mapping[str, object], dict[str, object]]:
     # Comment endpoint ID is authenticated by transport, not parsed from a URL
     # supplied in the comment's text.
@@ -595,7 +638,7 @@ def _validate_binding(binding: object) -> None:
 
 
 def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvidence,
-                           request: Request, *, reader: int, now: int,
+                           request: Request, *, reader: EvidenceReader, now: int,
                            organization: bool, replay: ReplayState) -> Decision:
     """Re-verify one owner/admin approval against a previously checked binding.
 
@@ -626,7 +669,10 @@ def verify_approval_record(binding: Mapping[str, object], approval: ApprovalEvid
                 or binding["nonce"] != request.nonce
                 or binding["executor_user_id"] != request.executor_user_id):
             raise _Denied()
-        _positive(reader)
+        _reader(reader, request.repository)
+        if type(reader) is InstallationReader and (request.executor_user_id is not None
+                                                   or request.action not in STEERING_ACTIONS):
+            raise _Denied()
         if type(now) is not int or now < 0:
             raise _Denied()
         comment, record = _record(approval.comment, request, reader, now, dict(binding), kind="nova3.approval")
@@ -702,7 +748,7 @@ def verify_owner_approval(request: Request, evidence: Evidence, *, now: int) -> 
         if not isinstance(evidence.repository, GitHubRead):
             raise _Denied()
         reader = evidence.repository.reader_id
-        _positive(reader)
+        _reader(reader, request.repository)
         repo = _read(evidence.repository, base, request, reader, now)
         _repository_matches(repo, request.repository)
         organization = repo["owner"]["type"] == "Organization"
