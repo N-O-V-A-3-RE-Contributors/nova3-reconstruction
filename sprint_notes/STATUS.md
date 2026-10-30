@@ -1,142 +1,119 @@
-# Sprint STATUS — Pass 3 of 12
+# Sprint STATUS — Pass 5 of 12
 
 Sprint: 20261030-163856
 Pass completed: 2026-10-30 (AEDT)
 
 ## Summary
 
-This pass repaired the host source-only regression that had been failing since
-pass 1 (two environment/guard defects), then recovered the
-`glitch::video::pixel_format::computeMipmapSizeInBytes` family (five- and
-six-argument overloads) from Premium `libNOVA3_neon.so`, cross-checked against
-the Freemium edition.
-
-## Regression repair (gate A — prerequisite before new source)
-
-The run.log carried "Host regression exit: 1, Failure count: 2" from passes 1-2.
-Root causes and fixes (committed as 1cbc682):
-
-1. `tools/extract/test_archive_inspection.py::test_zip_valid_and_truncated`
-   used `tempfile.TemporaryDirectory(dir=.../research/assets)` without first
-   creating that private (gitignored) directory, so it failed in this isolated
-   worktree. Fix: `mkdir(parents=True, exist_ok=True)` immediately before use.
-2. `tools/verify_source_only.py` failed on two counts:
-   a. `--denylist` default `research/elf/executable_denylist.json` was absent
-      (private tree not materialized). Materialized a local gitignored copy
-      (SHA-256 of file 55f3f9ed...); it is a hash list, not binary.
-   b. `FORBIDDEN_PARTS` was checked against *every* path component, so the
-      tracked source files under `reconstruction/research/` (e.g.
-      arm32_cpu_query_candidate.cpp) were falsely rejected as "forbidden".
-      Fix: restrict the check to the top-level component, matching the intent
-      (the private trees `originals/ analysis/ generated/ research/ Archive/`
-      are all repo-root directories).
-
-`tools/check_all.sh` now exits 0: 16/16 CTest, 13/13 pytest, all 14
-`verify_source_only` artifacts `ok: true`.
+This pass recovered two additional virtual texture size-computation functions from Premium `libNOVA3_neon.so`, extending the pixfmt descriptor/mipmap infrastructure.
 
 ## Recovered functions (this pass)
 
 | Function | ELF VA | Size | A32 | Status |
 |----------|--------|------|-----|--------|
-| computeMipmapSizeInBytes (5-arg) | 0x0077d450 | 32 B | yes | BEHAVIORAL (host) |
-| computeMipmapSizeInBytes (6-arg, slices/depth) | 0x0077d470 | 56 B | yes | BEHAVIORAL (host) |
+| CVirtualTexture::getSizeInBytes() no-arg | 0x007863e4 | 680 B | yes | BEHAVIORAL (host) |
+| ITexture::computeSizeInBytes() const | 0x0077d99c | 128 B | yes | BEHAVIORAL (host) |
 
 Mangled symbols:
-- `_ZN6glitch5video12pixel_format24computeMipmapSizeInBytesENS0_14E_PIXEL_FORMATEjjhb`
-- `_ZN6glitch5video12pixel_format24computeMipmapSizeInBytesENS0_14E_PIXEL_FORMATEjjjhb`
+- `_ZNK6glitch5video15CVirtualTexture14getSizeInBytesEv`
+- `_ZNK6glitch5video8ITexture18computeSizeInBytesEv`
 
 ## Recovered behaviour
 
-  mip(v, lvl) = max(v >> lvl, 1)          ; lsrs + moveq; lvl >= 32 => 1
-  5-arg(format, width, height, mipLevel, skipWidthShift):
-      if (!skipWidthShift) width = mip(width, mipLevel)
-      height = mip(height, mipLevel)
-      return computeSizeInBytes(format, width, height)   ; tail-call 0x77d3cc
-  6-arg(format, width, height, depth, mipLevel, skipWidthShift):
-      as above, plus depth = mip(depth, mipLevel)
-      return depth * computeSizeInBytes(format, width, height)  ; bl + mul
+**CVirtualTexture::getSizeInBytes() const (no-arg):**
+Sums mipmap chain sizes across all levels.
+- Fast path (descriptor[0x2c] & 2): returns vtable[0x14](this, 0) * cubemap_factor
+- Slow path: getMipmapCount() determines level count, then for each level computes computeSizeInBytes(fmt, w>>lvl, h>>lvl) * max(1, depth>>lvl), sums, multiplies by cubemap_factor
+- Cubemap factor: (descriptor[0x24] & 7) == 3 ? 6 : 1
+- Four inner-loop variants match the original: both dims compressed (bpb*ceil(w/bw)*ceil(h/bh)), one compressed (bpb or bpp paths), both uncompressed (bpp>>3 path)
 
-The trailing bool gates ONLY the width shift (height and depth are always
-shifted). Its original source name is UNKNOWN (INFERRED); callers derive it
-from a format-descriptor comparison. We name it `skip_width_shift` by observed
-effect. Callers of the 6-arg: `CVirtualTexture::getSizeInBytes` (0x77d4fc,
-bool=false), `util::atlasTextures` (0x6ad628, bool=(field_0x24>>3)&7==1),
-`IImageLoader::ITextureDataLoading::getSourceStep` (0x7c80d4, bool=field_0x8==1).
-The 5-arg has no direct .text caller (dead/indirect).
+**ITexture::computeSizeInBytes() const:**
+128-byte alignment + cubemap weight dispatch.
+- Path A (descriptor[0x2c] & 2 == 0): inner table lookup, raw value rounded up to 128, formula: weight*aligned + raw
+- Path B: two vtable[0x14] calls (A, B), formula: weight*align_up(B,128) + A
+- Cubemap weight: (descriptor[0x24] & 7) == 3 ? 5 : 0
 
-## Cross-edition independent confirmation
-
-Freemium `libGloftNAHM.so` (SHA e88ccdaa...) exports the same two symbols:
-- 5-arg at 0x005d2b48, 32 B — instruction-identical to Premium apart from the
-  tail-call target.
-- 6-arg at 0x005d2b68, 52 B — same three shifts, then tail-calls the
-  four-argument slices overload instead of call-and-multiply (structural,
-  behaviourally equivalent).
-
-This is independent cross-edition evidence for the recovered semantics.
+Descriptor struct fields observed:
+- +0x10: pointer to inner uint32_t array (Path A)
+- +0x24: uint32_t — bits [2:0] = cubemap flag
+- +0x2c: uint8_t — bit 1 = fast path selector
+- +0x2f: uint8_t — index into inner array (Path A)
 
 ## Evidence manifest
 
-| Step | Status | Detail |
-|------|--------|--------|
-| DISCOVERED | DONE | Symbols from Premium `.symtab` (nm -C); cross-checked in Freemium dynsym. |
-| ANALYZED | DONE | llvm-objdump A32 traces; three callers located; bool semantics traced. |
-| SOURCE | DONE | pixel_format.h (mip_shift + 2 inline funcs); block_0077d450/0077d470.cpp wrappers. |
-| ARM_COMPILES | DONE | NDK Clang 21.0.0 armv7a ET_REL. 5-arg 192 B, 6-arg 232 B. |
-| COMPARISON_CHECKED | DONE | compiler_matrix → FUNCTION_SIZE_MISMATCH (192/32, 232/56). Expected: header-inline design inlines the sibling computePitch/computeSizeInBytes; original keeps them out-of-line and tail-calls. |
-| BEHAVIOR_TESTED | DONE | 16/16 CTest. Independent reference + explicit hand-computed values over all 40 formats × 17×17 dims × 9 mip levels × {skip,no-skip} × 5 depths. UBSan (no-recover) clean. |
-| VERIFIED_AT_SCOPED_LEVEL | BEHAVIORAL (host) | Arithmetic verified against the 40-entry table from the original ELF and Freemium-confirmed semantics. ARM instruction match NOT VERIFIED. |
+| Step | CVirtualTexture no-arg | ITexture::computeSizeInBytes |
+|------|----------------------|---------------------------|
+| DISCOVERED | Symbol from .symtab; 0x7863e4, 680B | Symbol from .symtab; 0x77d99c, 128B |
+| ANALYZED | Capstone A32; 4 loop variants traced; control flow mapped | Capstone A32; two-path dispatch, align/cubemap traced |
+| SOURCE | block_007863e4.cpp (needs pixel_format.h headers) | block_0077d99c.cpp (standalone inline helpers) |
+| ARM_COMPILES | Not done (time constraint) | Not done (time constraint) |
+| COMPARISON_CHECKED | Not done | Not done |
+| BEHAVIOR_TESTED | Hand-computed values + table-driven cross-check (40 fmts, 11 dims, 5 cnts, 8 flags) | Hand-computed + table-driven (raw/A/B vals, all flags) |
+| VERIFIED_AT_SCOPED_LEVEL | BEHAVIORAL (host) | BEHAVIORAL (host) |
 
 ## Original ELF reference
 
 - Path: /home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so
 - SHA-256: 84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf
-- Descriptor table: .rodata VA 0x00c7ff50, 40-byte entries, 40 formats (unchanged).
-
-## ARM compiler profile
-
-- Compiler: /opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21 (NDK r29, Clang 21.0.0)
-- Flags: --target=armv7a-linux-androideabi21 -marm -O2 -fPIC -std=c++17
-- Matrices: .cache/matrix-mip5-v1, .cache/matrix-mip6-v1 (private, gitignored)
 
 ## Files changed (this pass)
 
-1. `tools/extract/test_archive_inspection.py` — create research/assets before use
-2. `tools/verify_source_only.py` — top-level-only forbidden-path check
-3. `reconstruction/recovered/libNOVA3_neon/pixel_format.h` — +mip_shift, +2 mipmap funcs, updated header comment
-4. `reconstruction/recovered/libNOVA3_neon/block_0077d450.cpp` — NEW 5-arg wrapper
-5. `reconstruction/recovered/libNOVA3_neon/block_0077d470.cpp` — NEW 6-arg wrapper
-6. `reconstruction/tests/compute_mipmap_size_in_bytes_test.cpp` — NEW
-7. `CMakeLists.txt` — add compute_mipmap_size_in_bytes_test target
+1. `reconstruction/recovered/libNOVA3_neon/block_007863e4.cpp` — NEW (CVirtualTexture no-arg getSizeInBytes)
+2. `reconstruction/recovered/libNOVA3_neon/block_0077d99c.cpp` — NEW (ITexture computeSizeInBytes)
+3. `reconstruction/tests/virtual_texture_get_size_in_bytes_noarg_test.cpp` — NEW
+4. `reconstruction/tests/itexture_compute_size_test.cpp` — NEW
+5. `CMakeLists.txt` — +2 test targets (virtual_texture_get_size_in_bytes_noarg, itexture_compute_size)
 
 ## Host test results
 
-CTest 16/16 passed; pytest 13/13 passed; verify_source_only 14/14 ok.
-UBSan (no-recover) clean on the mipmap test.
+CTest 19/19 passed. No regressions. Python tests unchanged (13/13 verified in prior passes).
+
+## Cumulative recovered functions
+
+| Function | ELF VA | Bytes | Pass |
+|----------|--------|-------|------|
+| computePitch | 0x0077d37c | 80 | 2 |
+| computeSizeInBytes | 0x0077d3cc | 112 | 2 |
+| computeSizeInBytes_slices | 0x0077d43c | 20 | 2 |
+| computeMipmapSizeInBytes | 0x0077d450 | 32 | 3 |
+| computeMipmapSizeInBytes_slices | 0x0077d470 | 56 | 3 |
+| getMipmapCount | 0x007b84e0 | 108 | 4 |
+| CVirtualTexture::getSizeInBytes(tgt) | 0x0077d4a8 | 96 | 4 |
+| CVirtualTexture::getSizeInBytes() no-arg | 0x007863e4 | 680 | 5 |
+| ITexture::computeSizeInBytes() const | 0x0077d99c | 128 | 5 |
+
+Total: 9 functions, all BEHAVIORAL (host), 0 MATCHED_ARM.
 
 ## Next functions (priority order)
 
-1. `CVirtualTexture::getSizeInBytes(unsigned char)` at 0x0077d4a8 — the primary
-   6-arg caller; needs CVirtualTexture field layout (+0x10 format, +0x14 width,
-   +0x18 height, +0x1c mip count). Bounded, single caller chain mapped.
-2. `CImageLoaderPVR::CDataInfo::getFileDataSize` at 0x007b8974 — `ldr r0,[r0,#0xc]` accessor.
-3. `CColladaDatabase::getVersion` at 0x0071017c — 4-level pointer chain.
+1. CVirtualTexture::getSizeInBytes(unsigned int) — the overload at 0x0078668c (2484 B).
+   Directly follows the no-arg overload; likely the same loop + offset/stride computation.
+   Large but approachable since all dependencies (descriptor layout, compute helpers,
+   cubemap factors) are now established.
+
+2. CImageLoaderPVR::CDataInfo::getFileDataSize (0x007b8974, 8 B) — trivial accessor,
+   `ldr r0,[r0,#0xc]; bx lr`.  Too simple to merit a standalone test, but useful
+   for completeness.
+
+3. CColladaDatabase::getVersion (0x0071017c, 20 B) — 4-level pointer chain,
+   `ldr r3,[r0]; ldr r3,[r3,#0x10]; ldr r3,[r3,#0x20]; ldr r0,[r3]; bx lr`.
+   Also trivial accessor.
+
+4. Additional glitch::video functions in 0x0077d500–0x0077da00 range,
+   several in 16–196 byte range (descendant accessors, format queries).
 
 ## Current blockers
 
-1. No historical GCC 4.4.3 ARM cross-compiler; NDK Clang 21 is the only ARMv7
-   compiler available. Byte-level ARM instruction match remains impossible
-   without the historical toolchain (unchanged from passes 1-2).
-2. The `research/` private tree is only partially materialized in this isolated
-   worktree; only `research/elf/executable_denylist.json` was copied (needed by
-   the source-only guard). Oracle compare scripts require `NOVA3_RESEARCH_ORACLES=1`.
+1. No historical GCC 4.4.3 ARM cross-compiler (unchanged).
+2. Byte-level ARM instruction match remains impossible without historical toolchain.
+3. CVirtualTexture vtable layout beyond slot 0x14 is UNKNOWN.
+4. Descriptor struct layout beyond +0x2f is UNKNOWN.
 
 ## Limitations
 
-- Deliberate source-only ABI choice: explicit table pointer instead of the
-  original's embedded global descriptor address (unchanged from prior passes).
-- Header-inline design inlines computePitch/computeSizeInBytes into the mipmap
-  wrappers, so ARM candidates (192/232 B) are far larger than the originals
-  (32/56 B) which keep the siblings out-of-line and tail-call. This is a
-  structural difference, not a behavioural one.
-- The trailing bool's original source name is UNKNOWN; recorded as INFERRED.
+- CVirtualTexture no-arg function uses compute_size_in_bytes inline (header design),
+  so generated ARM will be structurally different from original's 4-path loop unrolling.
+- ITexture function requires vtable[0x14] mock for testing; its real implementation
+  is not independently recovered.
+- All recovered functions are behavioral (host); 0 MATCHED_ARM.
+- Field names are INFERRED (descriptor, width, height, mipCount); original names UNKNOWN.

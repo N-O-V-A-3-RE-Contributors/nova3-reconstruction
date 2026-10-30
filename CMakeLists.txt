@@ -141,6 +141,16 @@ if(BUILD_TESTING)
     add_test(NAME compute_size_in_bytes_arithmetic COMMAND compute_size_in_bytes_test)
 endif()
 
+# Recovered function: CVirtualTexture::getSizeInBytes(unsigned char) (0x0077d4a8)
+if(BUILD_TESTING)
+    add_executable(virtual_texture_get_size_in_bytes_test
+        reconstruction/tests/virtual_texture_get_size_in_bytes_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d4a8.cpp)
+    target_include_directories(virtual_texture_get_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(virtual_texture_get_size_in_bytes_test PRIVATE -UNDEBUG)
+    add_test(NAME virtual_texture_get_size_in_bytes COMMAND virtual_texture_get_size_in_bytes_test)
+endif()
+
 # Recovered functions: computeMipmapSizeInBytes (0x0077d450) + slices overload (0x0077d470)
 if(BUILD_TESTING)
     add_executable(compute_mipmap_size_in_bytes_test
@@ -150,4 +160,23 @@ if(BUILD_TESTING)
     target_include_directories(compute_mipmap_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
     target_compile_options(compute_mipmap_size_in_bytes_test PRIVATE -UNDEBUG)
     add_test(NAME compute_mipmap_size_in_bytes_arithmetic COMMAND compute_mipmap_size_in_bytes_test)
+endif()
+
+# Recovered function: CVirtualTexture::getSizeInBytes() no-arg (0x007863e4)
+if(BUILD_TESTING)
+    add_executable(virtual_texture_get_size_in_bytes_noarg_test
+        reconstruction/tests/virtual_texture_get_size_in_bytes_noarg_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_007863e4.cpp)
+    target_include_directories(virtual_texture_get_size_in_bytes_noarg_test PRIVATE reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(virtual_texture_get_size_in_bytes_noarg_test PRIVATE -UNDEBUG)
+    add_test(NAME virtual_texture_get_size_in_bytes_noarg COMMAND virtual_texture_get_size_in_bytes_noarg_test)
+endif()
+
+# Recovered function: ITexture::computeSizeInBytes() const (0x0077d99c)
+if(BUILD_TESTING)
+    add_executable(itexture_compute_size_test
+        reconstruction/tests/itexture_compute_size_test.cpp
+        reconstruction/recovered/libNOVA3_neon/block_0077d99c.cpp)
+    target_compile_options(itexture_compute_size_test PRIVATE -UNDEBUG)
+    add_test(NAME itexture_compute_size COMMAND itexture_compute_size_test)
 endif()
