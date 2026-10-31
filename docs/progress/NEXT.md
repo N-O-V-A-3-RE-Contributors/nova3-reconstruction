@@ -1,5 +1,32 @@
 # Next tasks
 
+## Init is closed; the Collada NEON gate is the next slice (2026-11-01)
+
+`vox::DriverCallbackInterface::Init(void*)` (`0x009d53f4`, 48 B) is IMPLEMENTED +
+TESTED and measured shape-equal modulo the two relocation words and one constant
+anchor offset. The next real dependency is the other cpu-features consumer.
+
+1. **Bounded next step: recover the NEON gate in
+   `glitch::collada::detail::CSoftwareSkinTechnique::init`** (`0x00739630`,
+   1028 B), bounded by the single direct `android_getCpuFeatures` call at
+   `0x00739764` and the branch that consumes it — not the whole 1028 B function.
+   Same pattern: decode → source with observed/INFERRED labels → pilot → CTest.
+   If the gate turns out to be a one-line feature test with no separable
+   behaviour, record that and stop rather than reconstructing 1 KB blind.
+2. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+3. **Do not chase the `0x34` anchor delta.** It is explained by the original
+   TU's static anchor start, measured constant on every access, and would only
+   close by inventing statics that the reference does not have in this function.
+4. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
 ## Toolset: done; publish needs a credential; source work is the next step (2026-11-01)
 
 `./nova3` (`doctor|index|decompile|status|show|search|build|test|verify|push`) is

@@ -305,3 +305,32 @@ instead of retried.
 - Committed `4d7a1b0` (lock + index UX) and this docs/tooling commit on
   `automation/paperclip-worker`. Exports stay under gitignored
   `generated/`/`.cache/`; no APK/ELF/OBB bytes or decompiler output committed.
+
+## 2026-11-01 — DriverCallbackInterface::Init recovered and tested
+
+- Decoded `_ZN3vox23DriverCallbackInterface4InitEPv` (ELF VA 0x009d53f4, 48 B,
+  A32): 11 instructions + literal. PIC addend 0x003e4988 + `add` PC resolves to
+  0x00db9d90 = `DriverCallbackSourceInterface::s_listenerParameters`; the four
+  32-bit zero stores hit `m_sWorkBuffer`/`m_sMixingBuffer` (+0/+4) and the
+  `strb` hits the 1-byte `enableNeon`. r0 (`this`) and r1 (`void*`) are never
+  read before the BL to DetectNeon at 0x009dad14.
+- Field shape for the two 8-byte buffers INFERRED from
+  `DriverCallbackInterface::GetWorkBuffer` (0x009d4828): +0 compares signed
+  against the requested count and receives it, +4 goes to `VoxFree(void*)` and
+  is replaced by `VoxAlloc(unsigned)`.
+- New shared `driver_callback.h` (both classes, DetectNeon static on caller-side
+  evidence), new `driver_callback_init.cpp`, new
+  `driver_callback_init_behaviour` CTest, new
+  `tools/compare/driver_callback_init_pilot.py`.
+- Pilot (12 configs): `-fvisibility=hidden` 6/6 → 48 B, 5 EQUAL + 2
+  RELOCATION_FIELD + 5 encoding (store displacements), instruction shape and
+  store order equal, anchor delta constant 0x34. `-fvisibility=default` 6/6 →
+  72 B `FUNCTION_SIZE_MISMATCH` (per-symbol GOT-style loads for preemptible
+  statics), which is the negative control that the addressing choice matters.
+  `code_window_equal=False`, `source_matching_verified=False`.
+- DetectNeon re-measured after moving its declaration into the header: 6/6
+  `ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION`, 32 B, 6 EQUAL + 2 RELOC.
+- Tests: `cmake --build build/host` clean; `ctest` 17/17; negative control
+  (one store deleted from the source) aborts with "Init did not clear both
+  buffer references"; `bash tools/check_all.sh` exit 0, 18 audited artifacts,
+  tooling pytest 30 passed.

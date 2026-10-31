@@ -1,5 +1,68 @@
 # Status — source resource, mesh and texture reconstruction
 
+## DriverCallbackInterface::Init is source; the statics it writes are named from the symtab (2026-11-01)
+
+`reconstruction/recovered/libNOVA3_neon/driver_callback_init.cpp` is
+`vox::DriverCallbackInterface::Init(void*)`, ELF VA `0x009d53f4`, 48 B, A32,
+`STT_FUNC`. It is the only in-binary caller of the recovered NEON probe, so the
+driver-callback chain now has two source-owned links.
+
+**What the reference actually does, re-derived from bytes + `.symtab`.** The PIC
+base addend `0x003e4988` resolves to `0x00db9d90`, exactly
+`DriverCallbackSourceInterface::s_listenerParameters`, and every store lands on a
+named static: base+0x34 and +0x38 are `DriverCallbackInterface::m_sWorkBuffer`
+(+0, +4), +0x3c and +0x40 are `m_sMixingBuffer` (+0, +4), and the single byte
+store at +0x44 is `DriverCallbackSourceInterface::enableNeon` (1 byte in the
+symtab). So Init clears two 8-byte buffer references and then stores
+`DetectNeon()` into the NEON flag. The `BufferRef` shape (`int size; void*
+data;`) is INFERRED from `DriverCallbackInterface::GetWorkBuffer` (`0x009d4828`):
+the word at +0 is compared, signed, against the requested element count and
+afterwards receives it, while the word at +4 is passed to `VoxFree(void*)` and
+replaced by the result of `VoxAlloc(unsigned)`. `this` (r0) and the `void*`
+argument (r1) are never read, so the parameter stays opaque.
+
+**Window, measured** (`tools/compare/driver_callback_init_pilot.py`, NDK r8e
+GCC 4.4.3, `-O2`/`-O3`/`-Os` × stack protector on/off × symbol visibility):
+
+| configs | size | result |
+|---|---|---|
+| `-fvisibility=hidden` (6/6) | 48 B | 5 EQUAL / 2 RELOCATION_FIELD / 5 ENC, instruction shape and store order equal, one constant anchor delta `0x34` |
+| `-fvisibility=default` (6/6) | 72 B | `FUNCTION_SIZE_MISMATCH` — preemptible statics force per-symbol GOT-style address loads |
+
+The 5 encoding differences are the store displacements, and the delta is the
+same `0x34` on every one: the original translation unit's static anchor began
+`0x34` bytes before the two buffer objects, i.e. at `s_listenerParameters`
+(0x30) plus `s_enable3dSimulation` (4). A module holding only the objects this
+function touches cannot reproduce that anchor start, and closes it only by
+inventing statics. `code_window_equal=False`, `source_matching_verified=False`;
+no byte, compiler or flag claim.
+
+**Negative control that the matrix is real:** default visibility changes the
+addressing scheme and the size (72 B), so the hidden-visibility rows are not an
+artefact of tuning one dial to fit.
+
+New behaviour test `driver_callback_init_behaviour` (CTest) compiles the
+recovered TU unchanged and stubs only `DetectNeon`: both flags, three argument
+values including a garbage pointer, two distinct receivers, `s_listenerParameters`
+and `s_enable3dSimulation` unchanged (the write set is exactly the two buffers
+plus the 1-byte flag), and a second Init re-clearing refilled buffers. Deleting
+one store makes it abort (`FAIL: Init did not clear both buffer references`), so
+it is not vacuous.
+
+`DetectNeon`'s declaration moved into the shared
+`reconstruction/recovered/libNOVA3_neon/driver_callback.h` and is now `static`:
+the call site supplies no receiver in r0. Its window re-measured unchanged — 6/6
+configs, 32/32 B, 6 EQUAL + 2 RELOCATION_FIELD, 0 encoding differences.
+
+**Verification actually run:** `cmake --build build/host` clean; `ctest` **17/17
+pass**; `bash tools/check_all.sh` **exit 0** with **18** audited artifacts and
+tooling pytest **30 passed**; `detect_neon_pilot.py` still 6/6
+`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION`.
+
+**Disposition:** Init = IMPLEMENTED + TESTED; NOT MATCHED (shape and store order
+agree modulo relocation words and one constant anchor offset). Still NOT
+RECONSTRUCTED: `android_cpuInit`, `CSoftwareSkinTechnique::init`.
+
 ## Unattended decompilation is now safe to leave running (2026-11-01)
 
 `./nova3` was already the front door; this run closed the two remaining ways an

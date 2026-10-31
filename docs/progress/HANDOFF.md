@@ -2,6 +2,17 @@
 
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
+## Source-recovered native chain (2026-11-01)
+
+Four source-owned units in `reconstruction/recovered/libNOVA3_neon/`, all
+IMPLEMENTED + TESTED, none byte-matched: the `cpu-features.c` TU
+(`cpu_features.c`), its no-argument query thunks (`cpufeatures_queries.cpp`),
+`DriverCallbackSourceInterface::DetectNeon` (0x009dad14), and
+`DriverCallbackInterface::Init` (0x009d53f4). Machine-code evidence per unit
+is in `tools/compare/{cpufeatures,detect_neon,driver_callback_init}_pilot.py`;
+`ctest` is 17/17. Next slice: the `CSoftwareSkinTechnique::init` NEON gate,
+bounded to the `android_getCpuFeatures` call at 0x00739764.
+
 ## Front door for everything analysis-related (2026-11-01)
 
 `./nova3` (thin shell wrapper) → `tools/workbench.py` (tested). Guide:

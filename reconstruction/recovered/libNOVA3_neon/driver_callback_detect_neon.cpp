@@ -26,10 +26,11 @@
 //     the `cmp` on android_getCpuFamily's *return* value — so the probe reads no
 //     object state.  Under the Itanium C++ ABI a static member function mangles
 //     identically to a non-static one, and both spellings compile to this exact
-//     body, so "static" vs "non-static" is NOT recoverable from the function:
-//     it is underdetermined, not inferred.  The non-static declaration below is
-//     an ABI-only placeholder for the exported name, and nothing about the
-//     class layout is recovered or used.
+//     body, so the probe's own bytes underdetermine "static".  The declaration in
+//     driver_callback.h is static on caller-side evidence: Init (0x009d53f4)
+//     calls this function with a single `bl` and never sets up r0, which a
+//     non-static call would have to do.  Nothing about the class layout is
+//     recovered or used.
 //
 // Matching caveat, measured not assumed: the two BL words differ from the
 // reference because an ET_REL object cannot contain the link-time branch
@@ -38,17 +39,9 @@
 // `code_window_equal` stays false.  No byte-match, compiler, flag or
 // whole-`.so` claim follows from that.
 #include "cpu_features.h"
+#include "driver_callback.h"
 
 namespace vox {
-
-// ABI-only declaration: only the exported member name and its no-argument,
-// bool-returning signature are recovered.  The class body, base classes and
-// data members are NOT reconstructed; this declaration must be replaced by the
-// real recovered interface if one is ever established.
-class DriverCallbackSourceInterface {
-public:
-    bool DetectNeon();
-};
 
 // vox::DriverCallbackSourceInterface::DetectNeon, ELF VA 0x009dad14, 32 bytes.
 // Returns true only for the ARM family with the NEON feature bit set.

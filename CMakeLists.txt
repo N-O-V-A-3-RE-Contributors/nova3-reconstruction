@@ -159,4 +159,20 @@ if(BUILD_TESTING)
         reconstruction/recovered/libNOVA3_neon)
     target_compile_options(detect_neon_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME detect_neon_behaviour COMMAND detect_neon_behaviour_test)
+
+    # Behaviour of the recovered initializer
+    # (vox::DriverCallbackInterface::Init, ELF VA 0x009d53f4).  The test includes
+    # the recovered TU unchanged and stubs only DetectNeon, so the statics Init
+    # clears, the 1-byte NEON flag it writes, and the fact that it reads neither
+    # `this` nor its void* argument are asserted on the host.  Instruction-shape
+    # and anchor-offset agreement with the reference is measured by
+    # tools/compare/driver_callback_init_pilot.py, not here.
+    add_executable(driver_callback_init_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/driver_callback_init_test.cpp)
+    set_property(TARGET driver_callback_init_behaviour_test PROPERTY CXX_STANDARD 17)
+    target_include_directories(driver_callback_init_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(driver_callback_init_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME driver_callback_init_behaviour
+             COMMAND driver_callback_init_behaviour_test)
 endif()
