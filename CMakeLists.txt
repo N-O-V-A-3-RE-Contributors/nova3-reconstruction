@@ -232,4 +232,22 @@ if(BUILD_TESTING)
     target_compile_options(collada_matrix_multiply_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME collada_matrix_multiply_behaviour
              COMMAND collada_matrix_multiply_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::CMatrix4(
+    # eConstructor) (ELF VA 0x00108c54, 56 B, A32).  The test includes the
+    # recovered TU unchanged and stubs nothing.  Asserted: values 0 and 1 write
+    # no byte at all; every value >= 2 zeroes the 64-byte object and sets floats
+    # 0/5/10/15 to 1.0f (the 4x4 identity, with off-diagonals exactly +0.0f); no
+    # store lands outside the object; reconstruction is idempotent and a later
+    # value <= 1 does not disturb an already-built identity.
+    # Instruction agreement is measured by tools/compare/collada_matrix4_ctor_pilot.py.
+    add_executable(collada_matrix4_ctor_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_ctor_test.cpp)
+    set_property(TARGET collada_matrix4_ctor_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_ctor_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_ctor_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_ctor_behaviour
+             COMMAND collada_matrix4_ctor_behaviour_test)
 endif()

@@ -64,11 +64,16 @@ template <typename T>
 class CMatrix4 {
 public:
     enum eConstructor {
-        kObservedConstructorValue0 = 0,  // value 0; see collada_matrix_multiply.cpp
-        kObservedConstructorValue2 = 2,  // value 2; the other enumerators are unknown
+        kObservedConstructorValue0 = 0,  // observed: writes nothing
+        kObservedConstructorValue1 = 1,  // observed: writes nothing
+        kObservedConstructorValue2 = 2,  // observed: writes the 4x4 identity
+        // Values >= 2 all take the identity path in the 56-byte constructor.
+        // The enumerator NAMES are not recoverable from the reference (no
+        // symbol or string names them); only these values are observed.
     };
 
-    CMatrix4(eConstructor);  // 0x00108c54, NOT RECONSTRUCTED
+    // 0x00108c54, 56 B -- RECOVERED in collada_matrix4_ctor.cpp.
+    CMatrix4(eConstructor);
 
     T m_observedValues[16];
 };

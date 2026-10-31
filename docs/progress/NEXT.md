@@ -1,5 +1,41 @@
 # Next tasks
 
+## The shared matrix constructor is done; the next slice is its copy-construct sibling (2026-11-01)
+
+`glitch::core::CMatrix4<float>::CMatrix4(eConstructor)` (`0x00108c54`, 56 B) is
+IMPLEMENTED + TESTED and instruction-window MATCHED modulo its one `bl memset`
+relocation word (56/56 B, 4/4 configurations, `code_window_equal=False`).
+Measured call-site distribution: 74 calls, 54 with `r1 = 2`, 6 with `r1 = 0`.
+
+1. **Bounded next step: recover `glitch::core::CMatrix4<float>::CMatrix4(
+   CMatrix4<float> const&, CMatrix4<float>::eConstructor)`** at `0x00108c8c`
+   (240 B, `.symtab` exact, the immediate neighbour of the function just
+   recovered). It is the only place in the reference that can pin what the
+   remaining enumerator values (3, 4, 5, …) mean, because the plain constructor
+   maps *everything* >= 2 to the identity. Same pattern: decode → source with
+   observed/INFERRED labels → `tools/compare/collada_matrix4_copy_ctor_pilot.py`
+   → CTest. Record-and-stop if 240 B cannot separate the cases; do not invent a
+   "transposed"/"inverse" branch that the bytes do not show.
+2. **Do not re-open the settled residuals**: `operator*`'s 6-load gap
+   (`0x006e7e60`, 540 vs 564 B), `prepareCache`'s 4-byte gap and
+   `android_cpuInit`'s 2648-vs-2632 B. Every semantic fact in each matches; only
+   a different GCC 4.4.3 patchlevel would move them.
+3. **Full oracle chain, once, when a session has the time:** the
+   `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` run exceeded the foreground
+   limit; `collada_matrix4_ctor_pilot.py` is wired in at
+   `.cache/cpufeat/collada_ctor/check_all.json` and is unverified *inside* that
+   chain until it completes.
+4. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+5. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
 ## The matrix product is recovered; the next slice is its constructor (2026-11-01)
 
 `glitch::core::operator*<float, SMatrix>` (`0x006e7e60`, 564 B) is IMPLEMENTED +

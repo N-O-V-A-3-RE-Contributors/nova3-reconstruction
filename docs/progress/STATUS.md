@@ -1,5 +1,76 @@
 # Status — source resource, mesh and texture reconstruction
 
+## The shared matrix constructor is recovered and byte-equal modulo its one relocation (2026-11-01, fifth run)
+
+**`glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float>::eConstructor)`**
+(`_ZN6glitch4core8CMatrix4IfEC1ENS2_12eConstructorE`, ELF VA `0x00108c54`, 56 B,
+A32, exact `.symtab` bounds) is source. It is the one dependency both recovered
+Collada units call, so the 64-byte product vector `prepareCache` builds now has a
+constructed fill value instead of an opaque one. New files:
+`reconstruction/recovered/libNOVA3_neon/collada_matrix4_ctor.cpp`,
+`reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_ctor_test.cpp`
+(CTest `collada_matrix4_ctor_behaviour`) and
+`tools/compare/collada_matrix4_ctor_pilot.py` (all structure checks re-derived
+from the reference bytes, exit 0).
+
+**The whole 56-byte body, in order.** `cmp r1,#1` / `push {r4,lr}` / `mov r4,r0` /
+`bls <epilogue>` — so the enumerator is compared **unsigned** and values 0 and 1
+reach the epilogue with **no store at all**; then `mov r1,#0` / `mov r2,#0x40` /
+`bl 0xd2610`; then `vmov.f32 s15,#1.0` and four `vstr` at byte offsets `0x3c`,
+`0x00`, `0x14`, `0x28`; then `mov r0,r4` / `pop {r4,pc}` (the C1 complete-object
+constructor returns `this`).
+
+**The `bl` is `memset`, resolved rather than guessed.** `0xd2610` is not a local
+function: it is the ARM PLT stub at `.plt + 0x14 + 12*137`, `.rel.plt` entry 137,
+whose `.dynsym` symbol is `memset`. So the body is: zero the whole 64-byte object
+and set the four row-major diagonal floats to `1.0f` — the 4x4 identity — for
+every enumerator value >= 2.
+
+**Call-site distribution, measured.** 74 in-binary direct calls to `0x00108c54`.
+54 pass a literal `r1 = 2`, 6 pass `r1 = 0` (including the recovered `operator*`
+itself), and 14 have no local literal (argument loaded earlier). That is the
+evidence behind naming value 2 "identity"; the reference contains no symbol or
+string naming the enumerator, so the name stays INFERRED while the body is
+observed. Values 3, 4, 5… take the same identity path in *this* constructor,
+which is why nothing here claims a transposed/inverse case exists.
+
+**Window, measured** (NDK r8e GCC 4.4.3, `-march=armv7-a`, softfp, `-mfpu=vfpv3-d16`):
+
+| config | ref | candidate | words |
+|---|---|---|---|
+| `-O2` hidden | 56 B | 56 B | 13 EQUAL / 1 RELOCATION_FIELD / 0 encoding |
+| `-O3` hidden | 56 B | 56 B | 13 / 1 / 0 |
+| `-Os` hidden | 56 B | 56 B | 13 / 1 / 0 |
+| `-O2` default | 56 B | 56 B | 13 / 1 / 0 |
+
+`instruction_stream_equal=True` in 4/4; `code_window_equal=False` because that
+one word is the `bl memset` displacement, a link-time value an ET_REL object
+cannot contain. No byte-equality, compiler or flag claim beyond these four row
+configurations, no whole-`.so` SHA claim.
+
+**Behaviour test, stubbing nothing.** The test includes the recovered TU
+unchanged, so the shipped body runs. Asserted: values 0 and 1 write **no byte**
+(sentinel-filled object plus 16 guard bytes on each side stay untouched); every
+value >= 2 including `0x7fffffff` produces the identity with off-diagonals
+exactly `+0.0f` (not merely small, and not negative zero); construction is
+idempotent in the same storage; a later value <= 1 leaves an existing identity
+intact; the object is 64 B and its 16 floats start at offset 0. Three mutants
+actually run and killed — predicate `> 1u` -> `> 0u` (`FAIL: constructor value
+0/1 wrote the object`), diagonal store `[10]` deleted and `[15]` retargeted to
+`[14]` (both `FAIL: value N did not produce the identity`); restored source
+passes.
+
+**Verification actually run:** `cmake --build build/host` clean; `ctest`
+**21/21 pass**; `bash tools/check_all.sh` **rc=0** with **21** audited artifacts
+(the new test binary plus its provenance entry, the new pilot added to the oracle
+block).
+
+**Disposition:** `CMatrix4<float>::CMatrix4(eConstructor)` = IMPLEMENTED +
+TESTED + instruction-window MATCHED modulo the single relocation word. Still NOT
+RECONSTRUCTED: `CMatrix4(CMatrix4 const&, eConstructor)` (`0x00108c8c`, 240 B),
+the `std::vector` helpers, `android_cpuInit` (2648 vs 2632 B, not chased),
+`CSoftwareSkinTechnique::init`/`skin`.
+
 ## The matrix product behind prepareCache is now real arithmetic (2026-11-01, fourth run)
 
 **`glitch::core::operator*<float, glitch::collada::SMatrix>(CMatrix4<float>

@@ -1,5 +1,47 @@
 # Sprint status — NOV-3 heartbeats
 
+## 2026-11-01 (fifth run) — CMatrix4<float>(eConstructor) recovered, window matched modulo relocation
+
+### Function under reconstruction
+- `_ZN6glitch4core8CMatrix4IfEC1ENS2_12eConstructorE`
+  ELF VA 0x00108c54, 56 B, A32, STT_FUNC (exact `.symtab` bounds)
+- Reference: `analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`,
+  SHA-256 `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+  (checked by the pilot before it reads anything)
+
+### Evidence summary
+`cmp r1,#1` + unsigned `bls` to the epilogue => enumerator values 0 and 1 write
+nothing; every value >= 2 runs `memset(this,0,0x40)` (`0xd2610` = `.plt` stub 137
+-> `.rel.plt` -> `.dynsym` `memset`) and four `1.0f` stores at byte offsets 0x3c,
+0x00, 0x14, 0x28, i.e. a row-major 4x4 identity; `this` is returned in r0.
+74 in-binary call sites: 54 x `r1=2`, 6 x `r1=0`, 14 without a local literal.
+
+### Files changed
+- `reconstruction/recovered/libNOVA3_neon/collada_matrix4_ctor.cpp` — new
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_ctor_test.cpp` — new
+- `tools/compare/collada_matrix4_ctor_pilot.py` — new
+- `CMakeLists.txt`, `tools/check_all.sh`, `tools/setup/record_build_provenance.py`
+- `docs/progress/{STATUS,NEXT,SESSION_LOG,HANDOFF}.md`
+
+### Commands
+```
+.venv/bin/python tools/compare/collada_matrix4_ctor_pilot.py \
+  --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so \
+  --out .cache/cm4/pilot.json
+cmake --build build/host && ctest --test-dir build/host
+bash tools/check_all.sh
+```
+
+### Result
+- Status: IMPLEMENTED + TESTED; instruction window MATCHED modulo the one
+  relocation word (`code_window_equal=False`, `source_matching_verified=False`).
+- ctest 21/21; `tools/check_all.sh` rc=0 with 21 audited artifacts.
+
+### Next ONE source-recovery step
+`CMatrix4<float>::CMatrix4(CMatrix4<float> const&, eConstructor)` at
+`0x00108c8c` (240 B) — the only place that can pin enumerator values 3+; the
+plain constructor maps everything >= 2 to the identity.
+
 ## 2026-11-01 (third run) — prepareCache recovered, tested, measured not-matched
 
 ### Function under reconstruction

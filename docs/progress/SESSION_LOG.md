@@ -432,3 +432,34 @@ instead of retried.
 - No APK/ELF/OBB bytes, assembly or pseudocode committed; all scratch objects
   lived outside the repository.
 
+## 2026-11-01 (fifth run) — CMatrix4<float>(eConstructor) recovered, 56/56 B modulo its memset relocation
+
+- Read `git status`, `docs/progress/NEXT.md` and the two recovered Collada units;
+  NEXT.md step 1 was the constructor at `0x00108c54`.
+- Decoded the 56-byte window with Capstone (A32): `cmp r1,#1` / `push {r4,lr}` /
+  `mov r4,r0` / `bls 0x108c84` / `mov r1,#0` / `mov r2,#0x40` / `bl 0xd2610` /
+  `vmov.f32 s15,#1.0` / `vstr` 0x3c,0x00,0x14,0x28 / `mov r0,r4` / `pop {r4,pc}`.
+- Resolved `bl 0xd2610` rather than guessing: `.plt` is a 20-byte PLT0 plus
+  12-byte stubs, so stub index = (0xd2610-(0xd21f90+0x14))/12 = 137;
+  `.rel.plt[137]` -> `.dynsym` = `memset`. (First decode attempt started mid-stub
+  and produced a nonsense helper; the corrected index and the stub shape
+  `add ip,pc,#12 / add ip,ip,#got / ldr pc,[ip,#slot]` are both asserted by the
+  pilot.)
+- Wrote `collada_matrix4_ctor.cpp`: `if ((unsigned)e > 1u) { memset(this,0,64);
+  diag = 1; }`, with `__builtin_memset` because this toolchain has no `--sysroot`
+  and therefore no `<string.h>` — the spelling that still emits the reference's
+  `bl memset` instead of inline stores.
+- `collada_matrix4_ctor_pilot.py`: structure facts re-derived (predicate, unsigned
+  `bls`, saved `this`, single call -> `memset`, args 0/0x40, four diagonal stores
+  of one `vmov #1.0` register, no other store), plus a whole-library call-site
+  sweep: 74 direct calls, `r1 = 2` in 54, `r1 = 0` in 6, 14 with no local literal.
+- Measured window: 4/4 configs (-O2/-O3/-Os hidden, -O2 default) give 56 B and
+  13 EQUAL / 1 RELOCATION_FIELD / 0 encoding, `instruction_stream_equal=True`,
+  `code_window_equal=False` (the one word is the `bl memset` displacement).
+- New CTest `collada_matrix4_ctor_behaviour`, including the TU unchanged, stub-free.
+  Negative controls actually run: predicate `> 1u` -> `> 0u`, diagonal `[10]`
+  deleted, `[15]` -> `[14]`; each mutant fails, restored source passes.
+- Verification: `cmake --build build/host` clean; `ctest` 21/21;
+  `bash tools/check_all.sh` rc=0 with 21 audited artifacts.
+- Scratch objects under `.cache/cm4/` only; no reference bytes or disassembly
+  committed.
