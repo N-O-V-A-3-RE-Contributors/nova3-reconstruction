@@ -374,3 +374,40 @@ instead of retried.
   passed, and — unlike the previous run's note — `NOVA3_RESEARCH_ORACLES=1 bash
   tools/check_all.sh` now completes with exit 0 because this worktree's
   `research/assets/` is populated.
+
+## 2026-11-01 (third run) — CSoftwareSkinTechnique::prepareCache recovered, tested, measured
+
+- Decoded `_ZN6glitch7collada6detail22CSoftwareSkinTechnique12prepareCacheEv`
+  (ELF VA 0x0073f0a4, 228 B, A32, STT_FUNC) with Capstone; resolved all five `bl`
+  targets by address against `.symtab` (0x731c58 ISkinTechnique::preparePtrCache,
+  0x108c54 CMatrix4<float>::CMatrix4(eConstructor), 0x775520 vector<CMatrix4>
+  ::resize, 0x752470 vector<CMatrix4 const*>::size, 0x6e7e60
+  operator*<float,SMatrix>). No guessing: each was matched as the enclosing
+  symbol of the branch target.
+- Wrote `reconstruction/recovered/libNOVA3_neon/collada_skin_technique.cpp`
+  (+prepareCache) and the new `collada_skin_cache_deps.h` (layout views + five
+  extern declarations carrying the reference mangled names). Named the class
+  layout at +0x04/+0x08/+0x0c; the three 8-byte leaves stayed byte-equal.
+- Measured codegen experiments (NDK r8e GCC 4.4.3, scratch under
+  `.cache`/TMPDIR, nothing committed): a by-value `CMatrix4` parameter always
+  produces a 64-byte copy and a 0xbc frame (268 B function), at -O2/-O3/-Os and
+  with a visible inline constructor alike, so the reference's in-place fill is
+  reproduced by declaring the parameter by const reference (ABI-identical on
+  ARM32: pointer in r2). Hoisting the loop's member reads into locals was also
+  measured and rejected (it changed nothing) — keeping the accesses in the loop
+  body is what reproduces the reference's per-iteration reloads.
+- New `tools/compare/collada_skin_prepare_cache_pilot.py`: 12/12 structure facts
+  re-derived from the reference, exit 0; window diff 17 EQUAL / 5 RELOCATION_FIELD
+  / 34 encoding at -O2 and -O3, 224 B vs 228 B, `source_matching_verified=False`.
+- New CTest `collada_skin_prepare_cache_behaviour` (20 scenarios) plus
+  `collada_skin_cache_stubs.cpp` abort-on-call stand-ins for the older leaf test.
+- Negative controls actually run: guard deleted -> mutant crashes inside a
+  dependency stub; `&= ~2u` -> "FAIL: only bit 0 should have been cleared";
+  stride `i` instead of `i*0x40` -> "FAIL: multiply did not receive the SMatrix at
+  i*0x40". Restored source passes.
+- Verification: `cmake --build build/host` clean; `ctest` 19/19; 
+  `bash tools/check_all.sh` rc=0 with 20 audited artifacts, pytest 30 passed;
+  `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` rc=0 (full private chain).
+- No APK/ELF/OBB bytes, assembly or pseudocode committed; all scratch objects
+  lived outside the repository.
+

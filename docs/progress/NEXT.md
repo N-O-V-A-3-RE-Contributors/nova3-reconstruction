@@ -1,5 +1,36 @@
 # Next tasks
 
+## prepareCache is done; the next slice is its SMatrix consumer (2026-11-01)
+
+`CSoftwareSkinTechnique::prepareCache` (`0x0073f0a4`, 228 B) is IMPLEMENTED +
+TESTED and measured NOT MATCHED (224 B candidate, 4 words of scheduling
+difference). The class layout at `+0x04`/`+0x08`/`+0x0c` is now declared, and the
+three 8-byte leaves re-measured byte-equal in all four configurations afterwards.
+
+1. **Bounded next step: recover `glitch::core::operator*<float,
+   collada::SMatrix>(CMatrix4<float> const&, SMatrix const&)`** at `0x006e7e60`
+   (564 B, `.symtab` exact). It is the only semantic dependency prepareCache
+   calls that is small enough to finish in one heartbeat, and reconstructing it
+   turns "the product is opaque" into real arithmetic. Constraints: the
+   `CMatrix4`/`SMatrix` element layouts are *not* established, so read them out of
+   this function's own addressing before writing any arithmetic — if the layout
+   cannot be pinned from 564 bytes, record that and stop rather than inventing a
+   matrix convention. Same pattern: decode → source with observed/INFERRED labels
+   → pilot (`tools/compare/`, `window_diff.diff_window`) → CTest.
+2. **Do not chase `prepareCache`'s 4-byte gap.** It is one `add` scheduled before
+   the call versus after it; every semantic fact matches. A different GCC 4.4.3
+   patchlevel would be the only lever, and that is not this queue's business.
+3. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+4. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
 ## The cpu-features surface is closed; the next slice is prepareCache (2026-11-01)
 
 The logger question "where does `android_getCpuFeatures()` gate NEON paths" is

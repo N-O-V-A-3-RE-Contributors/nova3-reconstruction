@@ -184,7 +184,8 @@ if(BUILD_TESTING)
     # reference is measured by tools/compare/collada_skin_trivial_pilot.py, not
     # here.
     add_executable(collada_skin_technique_behaviour_test
-        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_technique_test.cpp)
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_technique_test.cpp
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_cache_stubs.cpp)
     set_property(TARGET collada_skin_technique_behaviour_test
                  PROPERTY CXX_STANDARD 17)
     target_include_directories(collada_skin_technique_behaviour_test PRIVATE
@@ -192,4 +193,23 @@ if(BUILD_TESTING)
     target_compile_options(collada_skin_technique_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME collada_skin_technique_behaviour
              COMMAND collada_skin_technique_behaviour_test)
+
+    # Behaviour of the recovered CSoftwareSkinTechnique::prepareCache
+    # (ELF VA 0x0073f0a4, 228 B, A32).  The test includes the recovered TU
+    # unchanged and defines the five dependencies it calls with the reference's
+    # mangled names, so the real call sites are exercised: the flag-bit guard,
+    # the prepare -> resize -> size -> multiply order, the resize count from the
+    # bind object's +0x4c field, the in-place fill value, one 64-byte product per
+    # collected pointer at stride 0x40, and the bit-0 clear.  Instruction
+    # agreement is measured by tools/compare/collada_skin_prepare_cache_pilot.py
+    # (228 B reference vs 224 B candidate), not here.
+    add_executable(collada_skin_prepare_cache_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_prepare_cache_test.cpp)
+    set_property(TARGET collada_skin_prepare_cache_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_skin_prepare_cache_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_skin_prepare_cache_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_skin_prepare_cache_behaviour
+             COMMAND collada_skin_prepare_cache_behaviour_test)
 endif()

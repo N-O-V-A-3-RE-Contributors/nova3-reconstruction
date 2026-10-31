@@ -2,9 +2,9 @@
 
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
-## Source-recovered native chain (2026-11-01, second run)
+## Source-recovered native chain (2026-11-01, third run)
 
-Six source-owned functions across five files in
+Seven source-owned functions across six files in
 `reconstruction/recovered/libNOVA3_neon/`, all IMPLEMENTED + TESTED:
 
 - the `cpu-features.c` TU (`cpu_features.c`) and its no-argument query thunks
@@ -14,7 +14,12 @@ Six source-owned functions across five files in
 - `CSoftwareSkinTechnique::{checkAvailability,needOutputBuffer,attach}`
   (0x00710b50 / 0x00710b48 / 0x00710b58) — these three are also **byte-equal**
   per function (no relocation in the windows), measured by
-  `tools/compare/collada_skin_trivial_pilot.py`.
+  `tools/compare/collada_skin_trivial_pilot.py`;
+- `CSoftwareSkinTechnique::prepareCache` (0x0073f0a4, 228 B) — IMPLEMENTED +
+  TESTED, **NOT MATCHED**: 224 B candidate, 17 words equal, 5 relocation words,
+  the rest register scheduling. Its five dependencies are declared with the
+  reference mangled names in `collada_skin_cache_deps.h` and are NOT
+  reconstructed; the class layout at +0x04/+0x08/+0x0c is declared there.
 
 The cpu-features consumer surface is closed: `CSoftwareSkinTechnique::init`
 (0x00739630) only lazily fills the TU-local 8-byte `cpuFeatures` static
@@ -26,7 +31,8 @@ Reproduce with `tools/compare/skin_cpu_cache.py`. Both call sites live inside
 Machine-code evidence per unit: `tools/compare/{cpufeatures,detect_neon,
 driver_callback_init,skin_cpu_cache,collada_skin_trivial}_pilot.py` (the last two
 are named `skin_cpu_cache.py` and `collada_skin_trivial_pilot.py`). `ctest` is
-18/18. Next slice: `CSoftwareSkinTechnique::prepareCache` (0x0073f0a4, 228 B).
+19/19. Next slice: `glitch::core::operator*<float, SMatrix>` at 0x006e7e60
+(564 B), the only semantic dependency prepareCache calls.
 
 ## Front door for everything analysis-related (2026-11-01)
 

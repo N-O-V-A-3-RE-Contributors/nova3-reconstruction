@@ -1,5 +1,62 @@
 # Sprint status — NOV-3 heartbeats
 
+## 2026-11-01 (third run) — prepareCache recovered, tested, measured not-matched
+
+### Function under reconstruction
+- `_ZN6glitch7collada6detail22CSoftwareSkinTechnique12prepareCacheEv`
+  ELF VA 0x0073f0a4, 228 B, A32, STT_FUNC, STB_LOCAL
+- Reference: `analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`,
+  SHA-256 `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+  (both new tools refuse a mismatched reference)
+
+### Evidence summary
+Guard on bit 0 of `*(this+0x08)`; direct call to
+`ISkinTechnique::preparePtrCache()`; `CMatrix4<float>(2)` built in place and
+passed to `vector<CMatrix4<float>>::resize(*(this+0x04)+0x4c, value)`;
+`vector<CMatrix4<float> const*>::size()` as the loop bound; per iterate
+`destination[i] = *ptrs[i] * smat[i]` via `operator*<float,SMatrix>` with the
+SMatrix at stride 0x40; bit 0 cleared at the end. All five call targets resolved
+by address from `.symtab`; 12/12 structure checks re-derived by the pilot.
+
+### Files changed
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_technique.cpp` —
+  prepareCache body with instruction evidence
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_technique.h` — observed
+  layout (+0x04 bind inputs, +0x08 matrix cache, +0x0c node) and test-only
+  friend hook
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_cache_deps.h` — new:
+  layout views, CMatrix4/SMatrix declarations, five extern declarations with the
+  reference mangled names
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_skin_prepare_cache_test.cpp`
+  — new CTest (guard, call order, counts, operands, destinations, idempotence)
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_skin_cache_stubs.cpp` —
+  new: abort-on-call stand-ins so the leaf test links the same TU
+- `tools/compare/collada_skin_prepare_cache_pilot.py` — new pilot
+- `CMakeLists.txt`, `tools/check_all.sh`, `tools/setup/record_build_provenance.py`
+
+### Commands and results
+- `cmake --build build/host` — clean; `ctest --test-dir build/host` — **19/19**
+- `bash tools/check_all.sh` — **rc=0**, 20 audited artifacts, pytest 30 passed
+- `.venv/bin/python tools/compare/collada_skin_prepare_cache_pilot.py ...` —
+  exit 0, `structure_agrees_with_source=True`, trivial leaves byte-equal 4/4
+- window: 228 B reference vs 224 B candidate at -O2/-O3 (216 B at -Os);
+  17 EQUAL / 5 RELOCATION_FIELD / 34 encoding; `source_matching_verified=False`
+- negative controls: guard removed -> mutant crashes in a dependency stub;
+  `&= ~2u` -> "only bit 0 should have been cleared"; stride `i` ->
+  "multiply did not receive the SMatrix at i*0x40"; restored passes
+
+### Result
+prepareCache = IMPLEMENTED + TESTED, **NOT MATCHED**. The 4-byte gap is one
+`add` (destination + i*64) scheduled before the call in the reference and after
+it here; no semantic difference found, not chased. The class layout change did
+not disturb the three byte-equal leaves.
+
+### Next ONE step
+Recover `glitch::core::operator*<float, collada::SMatrix>` at 0x006e7e60
+(564 B), reading the `CMatrix4`/`SMatrix` element layouts out of its own
+addressing first; record and stop if the layout cannot be pinned. See
+`docs/progress/NEXT.md` step 1.
+
 ## 2026-11-01 (second run) — the "NEON gate in init()" question is answered NO, and three CSoftwareSkinTechnique leaves are byte-equal source
 
 ### Action taken

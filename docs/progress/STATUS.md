@@ -1,5 +1,104 @@
 # Status — source resource, mesh and texture reconstruction
 
+## prepareCache is recovered and tested; its 4-byte gap is scheduling, not semantics (2026-11-01, third run)
+
+**`glitch::collada::detail::CSoftwareSkinTechnique::prepareCache`
+(`_ZN...12prepareCacheEv`, ELF VA `0x0073f0a4`, 228 B, A32) is now source.**
+The previous NEXT.md item, so this run did it rather than re-describing the
+queue.
+
+What the 228-byte window does, each fact re-derived by
+`tools/compare/collada_skin_prepare_cache_pilot.py` from the reference bytes plus
+`.symtab` (12/12 structure checks true, exit 0):
+
+- `ldr r3,[r0,#8]` / `ldr r3,[r3]` / `tst r3,#1` / conditional branch, with no
+  call and no store before it: bit 0 of the word at `*(this+0x08)` gates the
+  whole body and the false path is a bare epilogue;
+- `bl 0x000731c58` = `ISkinTechnique::preparePtrCache()` — a direct call that
+  fills the pointer vector this function then walks;
+- `bl 0x00108c54` = `CMatrix4<float>::CMatrix4(eConstructor)` with **r1 = 2**,
+  and `bl 0x00775520` = `vector<CMatrix4<float>>::resize(count, value)` receives
+  **the same register** the constructor wrote — the fill value is built in place,
+  there is no 64-byte copy anywhere between the two calls;
+- the resize count comes from `*(this+0x04)+0x4c`, which is independent of the
+  pointer-vector size (`bl 0x00752470` = `vector<CMatrix4<float> const*>::size()`);
+- per iterate: `bl 0x006e7e60` = `operator*<float, SMatrix>(CMatrix4<float>
+  const&, SMatrix const&)`, sret, 64-byte result copied by four `ldm`/`stm` pairs
+  to `destination[i]`, with source `ptrs[i]` and `SMatrix` at stride `0x40`
+  (`add r2,r2,r5,lsl #6`);
+- `ldr`/`bic #1`/`str` on the same flag word at the end: bit 0 is cleared.
+
+Source lives in `reconstruction/recovered/libNOVA3_neon/collada_skin_technique.cpp`
+with the layout views and the five unresolved dependencies in
+`collada_skin_cache_deps.h`. **The class layout is now named** at the offsets the
+slices address: `+0x00` untouched, `+0x04` bind inputs (`+0x04` SMatrix base,
+`+0x4c` count), `+0x08` matrix cache (`+0x00` flags, `+0x04` and `+0x10` two
+`std::vector` objects), `+0x0c` `attach`'s pointer. The three 8-byte leaves
+re-measured **byte-equal in all four configurations after that layout change**.
+
+**One measured declaration finding, recorded rather than papered over.** The
+reference symbol mangles as `resize(unsigned, CMatrix4<float>)` — by value — yet
+the reference passes a pointer to a constructor-built object and emits no copy.
+A by-value declaration cannot reproduce that: measured with NDK r8e GCC 4.4.3, a
+by-value parameter always builds the temporary and then copies all 64 bytes into
+the outgoing argument slot (stack frame `0xbc`, function 268 B, plus an inlined
+copy block). `collada_skin_cache_deps.h` therefore declares it by const reference
+and says so in the header: on ARM32 both forms pass a pointer in `r2`, so the
+call ABI is reproduced while the C++ type stays a modelling choice.
+
+**Window, measured** (NDK r8e GCC 4.4.3, `-O2`/`-O3`/`-Os` × `-fvisibility`):
+
+| config | ref | candidate | words |
+|---|---|---|---|
+| `-O2 -fvisibility=hidden` | 228 B | 224 B | 17 EQUAL / 5 RELOCATION_FIELD / 34 encoding |
+| `-O3 -fvisibility=hidden` | 228 B | 224 B | 17 / 5 / 34 |
+| `-Os -fvisibility=hidden` | 228 B | 216 B | 3 / 5 / 46 |
+| `-O2 -fvisibility=default` | 228 B | 224 B | 17 / 5 / 34 |
+
+`code_window_equal=False`, `source_matching_verified=False` everywhere. The 4-byte
+gap at `-O2`/`-O3` is **register scheduling, not a missing construct**: the
+reference computes `destination + i*64` into a callee-saved register *before* the
+`operator*` call (one extra `add r8,r8,r3`), this compiler recomputes it after the
+call from the retained base pointer and saves one instruction. The 5
+`RELOCATION_FIELD` words are exactly the five `bl` displacements an ET_REL object
+cannot contain. Prologue register allocation otherwise matches the reference
+(`push {r4,r5,r6,r7,r8,sl,lr}`, `r6 = this`), and the guard, call order, store
+order and stride all agree. Not chased further, on the same reasoning as the
+`cpuInit` residual.
+
+New CTest `collada_skin_prepare_cache_behaviour` includes the TU unchanged and
+defines the five dependencies with the reference's mangled names, checking:
+guard-clear runs nothing and leaves the other 31 flag bits; guard-set with zero
+pointers still constructs value 2, resizes with the `+0x4c` count, queries the
+size once, runs no multiply and clears only bit 0; three sources produce three
+multiplies in ascending index order with `sources[i]` as left operand, the
+`SMatrix` at `i*0x40` as right operand, and each 64-byte product at
+`destination[i]` — where the destination is proved to be re-read *after* the
+resize because the stub replaces it; a second call is a no-op. Negative controls,
+actually run: deleting the guard crashes the mutant in a dependency stub, `&= ~2u`
+aborts with "only bit 0 should have been cleared", dropping the `i*0x40` stride
+aborts with "multiply did not receive the SMatrix at i*0x40"; restored source
+passes.
+
+`reconstruction/tests/recovered/libNOVA3_neon/collada_skin_cache_stubs.cpp` holds
+abort-on-call stand-ins so the older leaf test still links the same TU without
+silently pretending the dependencies exist.
+
+**Verification actually run:** `cmake --build build/host` clean; `ctest` **19/19
+pass**; `bash tools/check_all.sh` **rc=0** with **20** source-only audited
+artifacts and tooling pytest 30 passed; pilot exit 0 with
+`structure_agrees_with_source=True` and the three leaves still byte-equal.
+
+**Disposition:** prepareCache = IMPLEMENTED + TESTED; **NOT MATCHED** (224 vs
+228 B, scheduling). Still NOT RECONSTRUCTED: `android_cpuInit` (2648 vs 2632 B,
+not chased), `CSoftwareSkinTechnique::init` and `skin` (1 KB / 4 KB, only their
+cpu-features interaction is established), and every dependency this function
+calls.
+
+Totals unchanged and unexaggerated: 39,123 indexed functions, 9 DECOMPILED
+exports (never a completion state), 5 source-recovered units IMPLEMENTED +
+TESTED, 0 VERIFIED against original runtime behaviour, no end-to-end gameplay.
+
 ## Three CSoftwareSkinTechnique leaves are byte-equal source; the init() "gate" is a cache fill (2026-11-01, second run)
 
 **The open question is answered: `CSoftwareSkinTechnique::init` contains no NEON
