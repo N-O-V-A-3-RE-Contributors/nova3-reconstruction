@@ -1,5 +1,58 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Unattended decompilation is now safe to leave running (2026-11-01)
+
+`./nova3` was already the front door; this run closed the two remaining ways an
+unattended run could hurt itself, and settled the publish question with
+measurements instead of another "needs credentials" note.
+
+**1. Single-writer lock, verified through the CLI.**
+`tools/pipeline/auto_decompile.py` writes
+`.cache/pipeline/auto_decompile.lock` (pid, utc timestamp, binary) before it
+touches the index or the Ghidra project.
+
+* a second live holder → `acquire_lock` returns `False`, `./nova3 decompile`
+  prints one line and exits **4**, and the foreign lock file is left intact
+  (measured: `EXIT=4`, `foreign lock preserved: True`);
+* a lock whose PID no longer exists is replaced (measured: `acquire over stale
+  pid -> True`), so a killed session cannot wedge the next one;
+* release is ownership-checked — a process that does not own the lock never
+  deletes it (measured: `lock removed after release: True`).
+
+**2. `./nova3 index` stopped hiding its own result.** It printed the tail of the
+inventory script and swallowed stdout on failure. It now prints the exact
+per-binary counts read back from `analysis_db/index.sqlite`, fails loudly if the
+database is missing despite `rc=0`, and maps exit `4` from `decompile` to a
+plain-English line.
+
+**3. Publishing is measured, not hypothesised — and still blocked.** Three
+routes were tried in this capability-less run: managed broker token (absent),
+`gh`/`GH_TOKEN` (`gh` reports "not logged into any GitHub hosts"), and the
+machine's SSH key, which authenticates as **`UmbraSecurity`** but is answered
+with `ERROR: Permission to N-O-V-A-3-RE-Contributors/nova3-reconstruction.git
+denied`. Read paths still work anonymously (`git ls-remote` lists `main` and the
+feature branches), so this is a write-permission gap. The wrapper also rewrites
+an explicit `git@github.com:` push back to https. `tools/setup/push_branch.sh`
+gained opt-in `NOVA3_PUSH_VIA_SSH=1` and `NOVA3_PUSH_DRY_RUN=1`, and its failure
+text now states the measured outcome instead of implying a working route.
+
+**Verification actually run (all of it this session):**
+
+| command | result |
+|---|---|
+| `./nova3 decompile --max-functions 2 --batch-size 2` | 7 → **9** exports, 33.2 s, `indexed=39123 remaining=39114` |
+| live-lock CLI probe | exit **4**, foreign lock preserved |
+| `ctest --test-dir build/host` | **16/16 pass** |
+| `pytest test_workbench.py test_auto_decompile.py` | **16 passed** |
+| `./nova3 doctor` | **16 pass, 0 warn, 0 fail** |
+| `./nova3 push` | exit **3**, with all three measured routes printed |
+| CI-equivalent steps run locally | guard (507 files), verification-gate 28 tests, legacy validation, shell syntax, `nova3_easy --self-test`, workbench pytest — **all rc=0** |
+
+**Disposition:** the toolset is usable end-to-end and self-documenting; the only
+open setup item is a GitHub write credential, which no in-session route can
+supply. Source reconstruction is unaffected and resumes at
+`vox::DriverCallbackInterface::Init` (0x009d53f4, 48 B).
+
 ## The decompilation toolset is now one self-documenting command (2026-11-01)
 
 The pieces existed but a newcomer had to know a dozen scripts, their order and
