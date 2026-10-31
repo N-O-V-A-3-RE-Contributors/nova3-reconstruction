@@ -1,5 +1,107 @@
 # Sprint status — NOV-3 heartbeats
 
+## 2026-11-01 (second run) — the "NEON gate in init()" question is answered NO, and three CSoftwareSkinTechnique leaves are byte-equal source
+
+### Action taken
+Two bounded actions, both evidence-first:
+
+1. **Answered the open NEXT.md question about the NEON gate in
+   `CSoftwareSkinTechnique::init`** — and the answer is that there is no gate
+   there. `init` only lazily fills a TU-local 8-byte `cpuFeatures` cache; the
+   engine's actual NEON gate on that cache lives in `CSoftwareSkinTechnique::skin`
+   and is a `(cpuFeatures & 4) != 0` test. Both call sites sit inside
+   unreconstructed functions (1028 B and 4256 B), so per the queue's own
+   contingency the slice is recorded and not chased.
+2. **Recovered, tested and byte-matched three 8-byte methods** of the same class
+   (`checkAvailability`, `needOutputBuffer`, `attach`). These are the project's
+   first *unmasked* per-function byte equalities: no relocation word differs,
+   because the windows contain none.
+
+### Function(s) under reconstruction
+- `_ZN6glitch7collada6detail22CSoftwareSkinTechnique17checkAvailabilityERKNS_5video10STechniqueEj`
+  ELF VA 0x00710b50, 8 B, A32, STT_FUNC, STB_LOCAL
+- `_ZNK...16needOutputBufferEv` ELF VA 0x00710b48, 8 B
+- `_ZN...6attachEPNS_5scene10ISceneNodeE` ELF VA 0x00710b58, 8 B
+- Analysed, NOT reconstructed: `init` 0x00739630 (1028 B), `skin` 0x0072ad90
+  (4256 B)
+- Reference: `analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`,
+  SHA-256 `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+  (re-verified by both new tools, which refuse a mismatched reference)
+
+### Files read
+- `docs/progress/{STATUS,NEXT}.md`, `sprint_notes/STATUS.md`, `CMakeLists.txt`
+- the reference ELF's `.text` / `.bss` / `.symtab` (read only, unchanged)
+- `tools/compare/{window_diff.py,driver_callback_init_pilot.py}`,
+  `tools/check_all.sh`, `tools/setup/record_build_provenance.py`
+
+### Files changed
+- `tools/compare/skin_cpu_cache.py` — new: re-derives the init() lazy-fill
+  structure (9 checks), the cache's consumer set (2) and the skin() mask test
+  (4 checks) from the reference bytes; metadata only.
+- `tools/compare/collada_skin_trivial_pilot.py` — new: compiles the recovered TU
+  with NDK r8e GCC 4.4.3 at `-O2`/`-O3`/`-Os` and compares each of the three
+  symbol windows byte-for-byte.
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_technique.{h,cpp}` — new
+  recovered leaves + minimal class declarations; every unobserved member and the
+  whole vtable are explicitly not reconstructed.
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_skin_technique_test.cpp`
+  — new CTest `collada_skin_technique_behaviour`.
+- `CMakeLists.txt`, `tools/check_all.sh`,
+  `tools/setup/record_build_provenance.py` — target, audit entry, provenance.
+- `docs/progress/{STATUS,NEXT,SESSION_LOG}.md`, `sprint_notes/STATUS.md`.
+
+### Commands and actual results
+```
+cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Debug   -> exit 0
+cmake --build build/host                                     -> 85/85, clean
+ctest --test-dir build/host                                  -> 18/18 pass
+.venv/bin/python tools/compare/skin_cpu_cache.py --reference ...
+  -> exit 0; 13/13 checks reproduce
+     anchor 0x00da2950 = `cpuFeatures`, STB_LOCAL, 8 B
+     pair load 8 B; orrs zero-test; beq -> 0x00739764 == getter 0x000d2f3c
+     strd back at 0x00739768; rejoins fall-through 0x00739664
+     pair_not_read_after_join: r2 written @0x739674, r3 written @0x73966c
+     consumers: 2 (init 0x739630, skin 0x72ad90)
+     gate: 0x72b280 ldrd; 0x72b288 and hi,sb (sb=#0 @0x72b268); 0x72b29c
+           and lo,#4; 0x72b2a0 orrs; 0x72b2b4 bne 0x72bcd4
+.venv/bin/python tools/compare/collada_skin_trivial_pilot.py --reference ...
+  -> exit 0; 3/3 configs, 3/3 symbols, 8/8 bytes equal each
+     code_window_equal=True (no relocation in any window)
+ctest negative controls (source mutated, then restored)
+  -> return false      => "FAIL: needOutputBuffer returned false" (abort 134)
+     store to wrong field => "FAIL: attach changed the wrong number of bytes"
+     restored            => passes
+bash tools/check_all.sh                                      -> exit 0
+  19 audited artifacts source-only clean; tooling pytest 30 passed
+NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh             -> exit 0 (full chain)
+```
+
+### Evidence summary
+- init() is not a gate: the loaded pair feeds only an `orrs` zero test, is
+  overwritten before any read after the join, and is written back only on the
+  first call. The object it caches is named `cpuFeatures` in `.symtab`.
+- The only other consumer is `skin`, which reads the same static with `ldrd` and
+  tests bit 2 (mask `#4`, high half masked with a register set to `#0`) before
+  branching to 0x72bcd4. Bit 2 = NEON is the same bit `DetectNeon` extracts.
+- Both consumers are inside functions far larger than the slice; no separable
+  unit exists at either call site, so no source was invented for them.
+- The three 8-byte methods are instruction-for-instruction equal to the
+  reference under the identified toolchain; the equalities are scoped to those
+  three windows and say nothing about the other ~39k functions or the `.so` SHA.
+
+### Disposition
+`checkAvailability`, `needOutputBuffer`, `attach` = IMPLEMENTED + TESTED +
+instruction-window MATCHED (exact bytes, 3 configs).
+`init` and `skin` cpu-features call sites = UNDERSTOOD, still NOT RECONSTRUCTED.
+`android_cpuInit` remains 2648 B vs 2632 B, unexplained, not chased.
+
+### Next ONE source-recovery step
+`CSoftwareSkinTechnique::prepareCache` (ELF VA 0x0073f0a4, 228 B) — small enough
+to decode and recover whole, same class, and reachable from the recovered
+`init` evidence; decode → source → pilot → CTest.
+
+---
+
 ## 2026-11-01 — DriverCallbackInterface::Init recovered, tested and measured
 
 ### Action taken

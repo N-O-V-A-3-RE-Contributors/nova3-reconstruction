@@ -1,5 +1,69 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Three CSoftwareSkinTechnique leaves are byte-equal source; the init() "gate" is a cache fill (2026-11-01, second run)
+
+**The open question is answered: `CSoftwareSkinTechnique::init` contains no NEON
+gate.** Its single `android_getCpuFeatures` call (`0x00739764`) exists only to
+fill a TU-local 8-byte object that `.symtab` names `cpuFeatures` (`.bss`
+`0x00da2950`, `STB_LOCAL`, 8 B). The shape is a lazy cache, re-derived from the
+instructions: `ldm` of the 8-byte pair, one `orrs` against zero, `beq` to the
+`bl 0x000d2f3c` / `strd r0,r1` / `b` back sequence, and both loaded words
+overwritten (r3 @`0x73966c`, r2 @`0x739674`) before any read after the join. A
+second consumer sweep over all 39,108 bounded A32 `STT_FUNC`s finds exactly two
+resolutions of that anchor: `init` (`0x739630`) and `skin` (`0x0072ad90`,
+4256 B). `skin` is where the real gate is — `ldrd` of the same static
+(`0x72b280`), high half masked with a register set to `#0` (`0x72b288`), low half
+masked with `#4` (`0x72b29c`), `orrs` (`0x72b2a0`), `bne 0x72bcd4`: i.e.
+`(cpuFeatures & 4) != 0`. Bit 2 is the same NEON bit `DetectNeon` extracts.
+
+New `tools/compare/skin_cpu_cache.py` re-derives all thirteen facts from the
+reference bytes (structure 9, gate 4) and exits 0; both call sites sit inside
+1028 B / 4256 B functions, so no separable unit exists and none was invented.
+
+**Three 8-byte methods of the same class are now source, and byte-equal:**
+
+| function | ELF VA | ref | candidate | result |
+|---|---|---|---|---|
+| `checkAvailability(STechnique const&, unsigned) const` | `0x00710b50` | 8 B | 8 B | 8/8 bytes equal |
+| `needOutputBuffer() const` | `0x00710b48` | 8 B | 8 B | 8/8 bytes equal |
+| `attach(ISceneNode*)` | `0x00710b58` | 8 B | 8 B | 8/8 bytes equal |
+
+`tools/compare/collada_skin_trivial_pilot.py` (NDK r8e GCC 4.4.3, `-O2`/`-O3`/
+`-Os`, `-fvisibility=hidden`) reports 3/3 symbols equal in 3/3 configs with
+`code_window_equal=True` — the windows contain no relocation word, so this is the
+project's first **unmasked** per-function byte equality. Scope carried in the
+report and here: those three windows only. It is not compiler identification, not
+a flag claim and not a whole-`.so` SHA-256 match.
+
+Signatures come from the Itanium mangled names; `checkAvailability` and
+`needOutputBuffer` write only `r0 = 1` and read no argument, and `attach` writes
+nothing to `r0`, so its `void` return is INFERRED from the absence of a
+return-value write. The class body, its vtable (`0x00d68ce0`) and every member
+other than the `+0x0c` pointer are explicitly NOT reconstructed; the declared
+`+0x00..+0x0b` storage is opaque padding, not a member list.
+
+New CTest `collada_skin_technique_behaviour` includes the TU unchanged and checks
+the constant predicates over sentinel receivers, then that `attach` changes
+exactly one pointer-sized slot holding its argument, handles several pointer
+values including null, and overwrites on a second call. Because `+0x0c` is an
+ARM32 ABI fact, the host (64-bit) run asserts the one-slot property rather than
+the absolute offset, which is asserted only when `sizeof(void*) == 4`. Negative
+controls measured both ways: `return false` aborts on
+`FAIL: needOutputBuffer returned false`; a wrong-field store aborts with
+`FAIL: attach changed the wrong number of bytes`.
+
+**Verification actually run:** clean configure + `cmake --build build/host`
+85/85; `ctest` **18/18 pass**; `bash tools/check_all.sh` **exit 0** with **19**
+audited artifacts and tooling pytest 30 passed; `NOVA3_RESEARCH_ORACLES=1 bash
+tools/check_all.sh` **exit 0** (the full private-oracle chain, including both new
+tools, now completes in this worktree).
+
+**Disposition:** the three leaves are IMPLEMENTED + TESTED + instruction-window
+MATCHED. The `init`/`skin` cpu-features call sites are UNDERSTOOD and remain NOT
+RECONSTRUCTED. `android_cpuInit` is unchanged at 2648 B vs 2632 B and is not
+being chased. No end-to-end gameplay; totalled as before, 39,123 indexed
+functions and 9 DECOMPILED exports, which are never a completion state.
+
 ## DriverCallbackInterface::Init is source; the statics it writes are named from the symtab (2026-11-01)
 
 `reconstruction/recovered/libNOVA3_neon/driver_callback_init.cpp` is

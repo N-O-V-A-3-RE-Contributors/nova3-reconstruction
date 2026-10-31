@@ -1,6 +1,37 @@
 # Next tasks
 
-## Init is closed; the Collada NEON gate is the next slice (2026-11-01)
+## The cpu-features surface is closed; the next slice is prepareCache (2026-11-01)
+
+The logger question "where does `android_getCpuFeatures()` gate NEON paths" is
+answered and closed: `CSoftwareSkinTechnique::init` (`0x00739630`) only *lazily
+fills* a TU-local 8-byte `cpuFeatures` cache (`.bss` `0x00da2950`), and the gate
+is the `(cpuFeatures & 4) != 0` test in `CSoftwareSkinTechnique::skin`
+(`0x0072ad90`, at `0x72b280`/`0x72b288`/`0x72b29c`/`0x72b2a0`/`0x72b2b4`).
+Both call sites live inside 1028 B and 4256 B functions, so neither is a
+separable unit and neither was turned into invented source.
+Reproduce with
+`.venv/bin/python tools/compare/skin_cpu_cache.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`.
+
+1. **Bounded next step: recover `CSoftwareSkinTechnique::prepareCache`**
+   (`_ZN6glitch7collada6detail22CSoftwareSkinTechnique12prepareCacheEv`,
+   ELF VA `0x0073f0a4`, 228 B). Same pattern: decode → source with
+   observed/INFERRED labels → pilot → CTest. It is the smallest remaining
+   function of this class that is not a 1–2 instruction leaf.
+2. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+3. **Do not re-open the `init`/`skin` cpu-features slices.** Their behaviour is
+   established; reconstructing 1 KB and 4 KB blind to "own" two instructions is
+   the wrong trade. Revisit only with a real caller chain.
+4. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
+## Init is closed; the Collada NEON gate was the next slice (2026-11-01)
 
 `vox::DriverCallbackInterface::Init(void*)` (`0x009d53f4`, 48 B) is IMPLEMENTED +
 TESTED and measured shape-equal modulo the two relocation words and one constant

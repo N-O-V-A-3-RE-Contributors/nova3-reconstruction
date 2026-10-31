@@ -175,4 +175,21 @@ if(BUILD_TESTING)
     target_compile_options(driver_callback_init_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME driver_callback_init_behaviour
              COMMAND driver_callback_init_behaviour_test)
+
+    # Behaviour of three recovered CSoftwareSkinTechnique leaves
+    # (checkAvailability 0x00710b50, needOutputBuffer 0x00710b48, attach
+    # 0x00710b58; 8 B each, A32, no relocation).  The test includes the recovered
+    # TU unchanged and asserts the constant predicates and the single +0x0c
+    # pointer store over sentinel-filled objects.  Byte equality with the
+    # reference is measured by tools/compare/collada_skin_trivial_pilot.py, not
+    # here.
+    add_executable(collada_skin_technique_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_technique_test.cpp)
+    set_property(TARGET collada_skin_technique_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_skin_technique_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_skin_technique_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_skin_technique_behaviour
+             COMMAND collada_skin_technique_behaviour_test)
 endif()

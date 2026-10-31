@@ -334,3 +334,43 @@ instead of retried.
   (one store deleted from the source) aborts with "Init did not clear both
   buffer references"; `bash tools/check_all.sh` exit 0, 18 audited artifacts,
   tooling pytest 30 passed.
+
+## 2026-11-01 (second run) — cpu-features consumer surface closed; three byte-equal leaves
+
+- Decoded the init() window and resolved the PIC anchor to `0x00da2950`, which
+  `.symtab` names `cpuFeatures` (STB_LOCAL, 8 B). The pair load is followed by one
+  `orrs` whose only consumer is `beq 0x00739764` → `bl 0x000d2f3c`
+  (`android_getCpuFeatures`) → `strd r0,r1,[anchor]` @0x00739768 → `b 0x00739664`.
+  The loaded pair is overwritten (r3 @0x73966c, r2 @0x739674) before any read
+  after the join, so init() lazily fills a cache and does not gate anything.
+- Consumer sweep over all bounded A32 STT_FUNCs: exactly two resolutions of that
+  anchor — `init` (0x739640) and `skin` (0x72b278, `0x0072ad90`, 4256 B). In
+  `skin` the cache is tested as `(cpuFeatures & 4) != 0`: `ldrd` @0x72b280,
+  `mov sb,#0` @0x72b268 + `and r1,r7,sb` @0x72b288, `mov r8,#4` @0x72b294 +
+  `and r0,r6,r8` @0x72b29c, `orrs sb,r0,r1` @0x72b2a0, `bne 0x72bcd4` @0x72b2b4.
+  New tool `tools/compare/skin_cpu_cache.py` re-derives all of it, 13/13 checks,
+  exit 0.
+- Two tool defects found and fixed during the run: reading a literal through
+  `index = va - text_vaddr` against whole-file bytes (wrong base) and a
+  linear sweep across `.text` that desynchronised on literal pools and also
+  captured the wrong `bl`. Final version decodes per symbol and follows the
+  branch target out of line.
+- Recovered three 8-byte methods of the same class from their exact bytes:
+  `checkAvailability` 0x00710b50 (`mov r0,#1; bx lr`), `needOutputBuffer`
+  0x00710b48 (same), `attach(ISceneNode*)` 0x00710b58 (`str r1,[r0,#0xc]; bx lr`).
+  New pilot `tools/compare/collada_skin_trivial_pilot.py` compiles the TU with
+  NDK r8e GCC 4.4.3 at `-O2`/`-O3`/`-Os`: 3/3 symbols × 3/3 configs, 8/8 bytes
+  equal, no relocation in any window → `code_window_equal=True`. Scope stated in
+  the report: per-function windows only, not compiler identification, not a
+  whole-`.so` SHA match.
+- New CTest `collada_skin_technique_behaviour`. The +0x0c offset is an ARM32 ABI
+  fact, so on the 64-bit host the test asserts instead that `attach` changes
+  exactly one pointer-sized slot holding its argument and nothing else; the
+  absolute offset is asserted only when `sizeof(void*) == 4`. Negative controls
+  run both ways: `return false` aborts on the predicate assertion, a wrong-field
+  store aborts with "attach changed the wrong number of bytes".
+- Verification: clean configure + build 85/85, `ctest` 18/18, `bash
+  tools/check_all.sh` exit 0 with 19 audited artifacts and tooling pytest 30
+  passed, and — unlike the previous run's note — `NOVA3_RESEARCH_ORACLES=1 bash
+  tools/check_all.sh` now completes with exit 0 because this worktree's
+  `research/assets/` is populated.
