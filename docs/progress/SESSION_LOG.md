@@ -273,3 +273,35 @@ instead of retried.
   exit 0. No APK/ELF/OBB bytes, assembly or pseudocode committed; docs carry
   metadata and source facts only. Branch still unpublished (no GitHub capability
   in this harness; `./nova3 push` exits 3 with the two supported routes).
+
+## 2026-11-01 — unattended decompilation hardened; publish routes measured
+
+- `tools/pipeline/auto_decompile.py`: added a single-writer lock
+  (`.cache/pipeline/auto_decompile.lock`, JSON `{pid, started_at, binary}`)
+  acquired before the index/Ghidra project are touched, released in a `finally`
+  with an ownership check. Live holder → exit `4` with one line and the foreign
+  lock untouched; dead-PID lock → replaced. `tools/workbench.py` maps that to
+  "another decompilation run owns the lock; this one did nothing".
+- `./nova3 index` no longer hides its result: prints per-binary counts read back
+  from `analysis_db/index.sqlite`, returns 1 if the DB is missing despite rc=0,
+  and no longer discards stdout on failure.
+- Live probes (not unit tests only): `./nova3 decompile --max-functions 2
+  --batch-size 2` → exports 7 → 9, 33.2 s, `indexed=39123 remaining=39114`;
+  lock probe through the CLI → exit 4 + `foreign lock preserved: True`;
+  stale-PID acquire → True; release → lock removed.
+- `tools/setup/push_branch.sh`: added opt-in `NOVA3_PUSH_VIA_SSH=1` (derives the
+  ssh URL from the https remote, never rewrites the configured remote) and
+  `NOVA3_PUSH_DRY_RUN=1`; remediation text now carries measured facts.
+- Publish routes measured in this run: broker token absent; `gh` "not logged into
+  any GitHub hosts"; host SSH key authenticates as `UmbraSecurity` but a
+  `git push --dry-run` to the SSH URL returns `Permission ... denied`. Anonymous
+  `git ls-remote` works, so this is a write-credential gap only. No push was
+  attempted from the wrapper and no credential was configured.
+- Verification: `ctest --test-dir build/host` 16/16; `pytest
+  reconstruction/tests/test_workbench.py reconstruction/tests/test_auto_decompile.py`
+  16 passed; `./nova3 doctor` 16 pass/0 warn/0 fail; CI-equivalent local run
+  (guard 507 files, verification-gate 28 tests, legacy validation, `bash -n`
+  checks, `nova3_easy --self-test`) all rc=0; `bash tools/check_all.sh` exit 0.
+- Committed `4d7a1b0` (lock + index UX) and this docs/tooling commit on
+  `automation/paperclip-worker`. Exports stay under gitignored
+  `generated/`/`.cache/`; no APK/ELF/OBB bytes or decompiler output committed.

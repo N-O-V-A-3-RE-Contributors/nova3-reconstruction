@@ -20,9 +20,14 @@ Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and do
 Ghidra/JDK discovery lives in `tools/pipeline/ghidra_env.py` (no hardcoded
 `/opt/ghidra`/`java-21-openjdk` any more); the exporter and `doctor` share it.
 Exports: `generated/ghidra/exports/<sha256>/<addr>.json`, private and gitignored.
-Measured 2026-11-01: doctor 16 pass / 0 warn / 0 fail; exports 4 → 7;
-CTest 16/16; tooling pytest 14 passed. `show` subtracts the Ghidra image base
+Measured 2026-11-01: doctor 16 pass / 0 warn / 0 fail; exports 4 → 7 → 9;
+CTest 16/16; tooling pytest 16 passed. `show` subtracts the Ghidra image base
 (0x10000) when resolving call targets — that is deliberate, not a fudge.
+
+The decompile driver holds a single-writer lock
+(`.cache/pipeline/auto_decompile.lock`): a second live run exits `4` doing
+nothing, a lock whose PID is gone is replaced, so `nohup ./nova3 decompile --all`
+can be left running (`docs/DECOMPILE.md` §2) and restarted safely.
 
 ## Two setup facts to know before touching Ghidra or Git (2026-10-31)
 

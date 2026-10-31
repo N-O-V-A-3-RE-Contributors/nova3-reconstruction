@@ -1,6 +1,33 @@
 # Next tasks
 
-## Tooling is set up; two things remain (2026-11-01)
+## Toolset: done; publish needs a credential; source work is the next step (2026-11-01)
+
+`./nova3` (`doctor|index|decompile|status|show|search|build|test|verify|push`) is
+finished and verified this session: single-writer lock on the decompile driver
+(second run exits `4`, stale lock replaced, ownership-checked release), `index`
+reports real per-binary counts, `docs/DECOMPILE.md` documents the unattended
+`nohup ./nova3 decompile --all` recipe. Measured: CTest 16/16, tooling pytest 16
+passed, `doctor` 16/0/0, a real batch advanced coverage 7 → 9 exports in 33 s,
+and every CI step that can run without the private tree returns rc=0.
+
+1. **Publish is a credential grant, and nothing else.** All three routes were
+   measured from this run: managed broker token absent; `gh` not logged in; the
+   machine SSH key authenticates as `UmbraSecurity` but the remote answers
+   `Permission ... denied`. Either (a) grant this agent/run GitHub capability in
+   Paperclip and re-run `./nova3 push`, or (b) from the maintainer's terminal
+   (where `git` is not wrapped) run `GH_TOKEN=<repo-scoped token> bash
+   tools/setup/push_branch.sh`. `NOVA3_PUSH_DRY_RUN=1` rehearses without
+   publishing. Do not copy a personal token into an automated run's env.
+2. **Resume source work** with `vox::DriverCallbackInterface::Init(void*)`
+   (`0x009d53f4`, 48 B) — unchanged below. `./nova3 decompile --address
+   0x9d53f4`, then `./nova3 show 0x9d53f4`.
+3. **When the early-development codebase is supplied**: treat it as candidate
+   source under `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; see
+   "When the early-development source arrives" in `docs/DECOMPILE.md`. It does
+   not upgrade any completion state by itself.
+
+## Tooling was set up; two things remained (2026-11-01)
 
 The decompilation toolset is finished as a usable product: `./nova3` with
 `doctor|index|decompile|status|show|search|build|test|verify|push`, documented in
