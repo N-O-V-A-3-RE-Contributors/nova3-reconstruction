@@ -13,16 +13,22 @@
 // shipped bodies run.  The only definitions supplied here are the two
 // dependencies the reference keeps out of line:
 //
-//   getTransposed(CMatrix4&) const   (0x000eba84, 132 B, NOT RECONSTRUCTED)
+//   getTransposed(CMatrix4&) const   (0x000eba84, 132 B, RECOVERED in
+//                                     collada_matrix4_transpose.cpp)
 //   getInverse(CMatrix4&) const      (0x000ebb08, 776 B, NOT RECONSTRUCTED)
 //
-// They are instrumented stand-ins: each records how often and with which
-// `this`/destination it was called and writes a recognisable 64-byte pattern,
-// which is what lets the assertions below distinguish the five enumerator
-// paths.  Instruction agreement is a separate measurement
-// (tools/compare/collada_matrix4_copy_ctor_pilot.py); this file claims
-// behaviour only, and nothing about the two unrecovered dependencies' own
-// semantics.
+// getTransposed is deliberately still substituted here: this test asserts WHICH
+// object is transposed, which needs an instrumented body.  The recovered body is
+// exercised by the sibling tests collada_matrix4_transpose_behaviour (its own
+// slot mapping) and collada_matrix4_transpose_link_path (the recovered
+// constructor and the recovered transpose linked together, with only getInverse
+// stubbed).
+//
+// The stand-ins record how often and with which `this`/destination each was
+// called and write a recognisable 64-byte pattern, which is what lets the
+// assertions below distinguish the five enumerator paths.  Instruction agreement
+// is a separate measurement (tools/compare/collada_matrix4_copy_ctor_pilot.py);
+// this file claims behaviour only.
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>

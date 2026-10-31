@@ -2,9 +2,9 @@
 
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
-## Source-recovered native chain (2026-11-01, sixth run)
+## Source-recovered native chain (2026-11-01, seventh run)
 
-Ten source-owned units across nine files in
+Eleven source-owned units across ten files in
 `reconstruction/recovered/libNOVA3_neon/`, all IMPLEMENTED + TESTED:
 
 - the `cpu-features.c` TU (`cpu_features.c`) and its no-argument query thunks
@@ -39,8 +39,18 @@ Ten source-owned units across nine files in
   paths: 1 copy, 2 identity, 3 `getTransposed(source,this)`, 4
   `getInverse(source,this)` with zero-on-failure, 5 `transpose(inverse(source))`
   in place; 0 and >= 6 write nothing. Call sites: 10, 8 x `r2=1`, 2 x `r2=4`.
-  `getTransposed` (0x000eba84) and `getInverse` (0x000ebb08) are declared in
-  `collada_skin_cache_deps.h` and NOT reconstructed.
+- `glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const`
+  (0x000eba84, 132 B, `collada_matrix4_transpose.cpp`) — IMPLEMENTED + TESTED and
+  instruction-window **MATCHED unmasked**: 33/33 words equal, no relocation or
+  encoding word, at `-O3 -fvisibility=hidden`. Destination slot k <- source slot
+  `(k%4)*4 + k/4`, self-inverse, source never written, no frame and no call.
+  CTest `collada_matrix4_transpose_behaviour` (stub-free) and
+  `collada_matrix4_transpose_link_path` (all three matrix TUs, only getInverse
+  stubbed). 27 call sites in 4 functions. Row-major storage is INFERRED; the
+  offset pairing and the arithmetic are observed.
+
+`getInverse` (0x000ebb08, 776 B) is declared in `collada_skin_cache_deps.h` and
+NOT reconstructed — the only remaining dangling dependency of this group.
 
 The cpu-features consumer surface is closed: `CSoftwareSkinTechnique::init`
 (0x00739630) only lazily fills the TU-local 8-byte `cpuFeatures` static
@@ -49,17 +59,16 @@ The cpu-features consumer surface is closed: `CSoftwareSkinTechnique::init`
 Reproduce with `tools/compare/skin_cpu_cache.py`. Both call sites live inside
 1 KB / 4 KB functions and are NOT reconstructed.
 
-Next ONE step: `glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&)
-const` at `0x000eba84` (132 B) — the smallest dependency of the copy-with-mode
-constructor, already declared, and the one that turns its values 3 and 5 from an
-instrumented stand-in into real arithmetic.
+Next ONE step: `glitch::core::CMatrix4<float>::getInverse(CMatrix4<float>&) const`
+at `0x000ebb08` (776 B) — the last dependency this group declares and does not
+own; bound it by the determinant path and record-and-stop if 776 B cannot pin the
+algorithm.
 
 Machine-code evidence per unit: `tools/compare/{cpufeatures,detect_neon,
 driver_callback_init,skin_cpu_cache,collada_skin_trivial,collada_skin_prepare_cache,
-collada_matrix_multiply,collada_matrix4_ctor}_pilot.py` (also `skin_cpu_cache.py`).
-`ctest` is 21/21; `bash tools/check_all.sh` is rc=0. Next slice:
-`CMatrix4<float>::CMatrix4(CMatrix4<float> const&, eConstructor)` at 0x00108c8c
-(240 B, the sibling that can pin enumerator values 3+).
+collada_matrix_multiply,collada_matrix4_ctor,collada_matrix4_copy_ctor,
+collada_matrix4_transpose}_pilot.py` (also `skin_cpu_cache.py`).
+`ctest` is 24/24; `bash tools/check_all.sh` is rc=0.
 
 ## Front door for everything analysis-related (2026-11-01)
 

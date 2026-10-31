@@ -272,4 +272,42 @@ if(BUILD_TESTING)
     target_compile_options(collada_matrix4_copy_ctor_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME collada_matrix4_copy_ctor_behaviour
              COMMAND collada_matrix4_copy_ctor_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::getTransposed(
+    # CMatrix4<float>&) const (ELF VA 0x000eba84, 132 B, A32).  The recovered TU
+    # is included unchanged and nothing is stubbed: the reference window calls
+    # nothing and reads no global.  Asserted: the exact slot mapping
+    # destination k <- source (k % 4) * 4 + k / 4, the source never modified, the
+    # four diagonal slots fixed and every other slot moved, the mapping an
+    # involution, a junk destination fully overwritten, bit patterns moved
+    # unchanged (no arithmetic), and the observed element-wise in-place behaviour
+    # when out == *this.
+    # Instruction agreement is measured by
+    # tools/compare/collada_matrix4_transpose_pilot.py.
+    add_executable(collada_matrix4_transpose_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_test.cpp)
+    set_property(TARGET collada_matrix4_transpose_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_transpose_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_transpose_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_transpose_behaviour
+             COMMAND collada_matrix4_transpose_behaviour_test)
+
+    # Link path: the three recovered Collada matrix TUs together (plain
+    # constructor, copy-with-mode constructor, getTransposed), with only the
+    # still-unrecovered getInverse stubbed.  This is what turns the copy
+    # constructor's value-3 and value-5 paths from an instrumented stand-in into
+    # the recovered transpose arithmetic, so it asserts those two results slot by
+    # slot against an independently written transpose and checks that the
+    # inverse path is unchanged.
+    add_executable(collada_matrix4_transpose_link_path_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_link_path_test.cpp)
+    set_property(TARGET collada_matrix4_transpose_link_path_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_transpose_link_path_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_transpose_link_path_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_transpose_link_path
+             COMMAND collada_matrix4_transpose_link_path_test)
 endif()

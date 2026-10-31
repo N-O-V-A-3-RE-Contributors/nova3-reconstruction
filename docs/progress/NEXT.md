@@ -1,5 +1,46 @@
 # Next tasks
 
+## The transpose is byte-equal; the last dangling dependency is its inverse sibling (2026-11-01)
+
+`glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const`
+(`0x000eba84`, 132 B) is IMPLEMENTED + TESTED and instruction-window **MATCHED**
+with no mask: 33/33 words, 0 relocation/encoding differences at
+`-O3 -fvisibility=hidden`, `code_window_equal=True`. Its 16-slot mapping, the
+involution property and the element-wise in-place behaviour are re-derived from
+the bytes by `tools/compare/collada_matrix4_transpose_pilot.py`, and the copy
+constructor's value-3/value-5 paths now run the real arithmetic (CTest
+`collada_matrix4_transpose_link_path`).
+
+1. **Bounded next step: recover `glitch::core::CMatrix4<float>::getInverse(
+   CMatrix4<float>&) const`** at `0x000ebb08` (776 B, `.symtab` exact). It is the
+   only dependency the recovered Collada matrix group still declares and does not
+   own, and the copy-with-mode constructor's values 4 and 5 test its result for
+   zero (`subs r1,r0,#0` then a conditional branch), so its success/failure
+   contract matters as much as its arithmetic. Same pattern: decode → source with
+   observed/INFERRED labels → `tools/compare/collada_matrix4_inverse_pilot.py`
+   → CTest, and replace the instrumented stand-in in
+   `collada_matrix4_transpose_link_path_test.cpp` with the real body. Bound the
+   slice: read the element addressing and the determinant path first; if 776 B
+   cannot pin the algorithm in one heartbeat, record what was established and
+   stop rather than writing a textbook inverse that the bytes do not show.
+2. **Do not chase the `-O2`/`-Os` rolled form.** Those rows are the measured
+   negative control: GCC 4.4.3 unrolls the nested loop only at `-O3`. Nothing
+   about the source needs changing to "fix" them.
+3. **Do not re-open the settled residuals**: `operator*`'s 6-load gap
+   (`0x006e7e60`, 540 vs 564 B), `prepareCache`'s 4-byte gap,
+   `android_cpuInit`'s 2648-vs-2632 B and the copy constructor's case-block order
+   (identical 41/41 non-branch multiset, permuted by bb-reorder).
+4. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+5. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
 ## The copy-with-mode constructor is done; the next slice is its transpose dependency (2026-11-01)
 
 `glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float> const&, eConstructor)`

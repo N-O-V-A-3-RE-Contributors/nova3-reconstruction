@@ -1,5 +1,88 @@
 # Status — source resource, mesh and texture reconstruction
 
+## The matrix transpose is recovered and its whole 132-byte window is byte-equal (2026-11-01, seventh run)
+
+**`glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const`**
+(`_ZNK6glitch4core8CMatrix4IfE13getTransposedERS2_`, ELF VA `0x000eba84`,
+132 B, A32, `STB_LOCAL`, exact `.symtab` bounds) is source. It is the smallest
+dependency the copy-with-mode constructor calls, and recovering it turns that
+constructor's value-3 and value-5 paths from an instrumented stand-in into real
+arithmetic. New files:
+`reconstruction/recovered/libNOVA3_neon/collada_matrix4_transpose.cpp`,
+`reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_test.cpp`
+(CTest `collada_matrix4_transpose_behaviour`),
+`reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_link_path_test.cpp`
+(CTest `collada_matrix4_transpose_link_path`) and
+`tools/compare/collada_matrix4_transpose_pilot.py` (structure pass re-derives
+every claim from the reference, exit 0).
+
+**What the 132 bytes are.** 33 instructions and no frame: no `push`/`pop`, no
+stack adjustment, no callee-saved register, no call, no global read — 16 `vldr`
+from r0, 16 `vstr` to r1, one `bx lr`. The destination offsets are exactly the 16
+distinct slots `0x00..0x3c`, each written once, in ascending order; destination
+slot `k` reads source slot `(k % 4) * 4 + k / 4`:
+
+| destination | 0x00 | 0x04 | 0x08 | 0x0c | 0x10 | 0x14 | 0x18 | 0x1c | 0x20 | 0x24 | 0x28 | 0x2c | 0x30 | 0x34 | 0x38 | 0x3c |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| source slot | 0 | 4 | 8 | 12 | 1 | 5 | 9 | 13 | 2 | 6 | 10 | 14 | 3 | 7 | 11 | 15 |
+| source byte | 0x00 | 0x10 | 0x20 | 0x30 | 0x04 | 0x14 | 0x24 | 0x34 | 0x08 | 0x18 | 0x28 | 0x38 | 0x0c | 0x1c | 0x2c | 0x3c |
+
+The pilot re-derives that pairing from the decoded offsets, proves the mapping
+is self-inverse (so it is a transpose and not a rotation or an arbitrary
+permutation), proves the four diagonal slots are the only fixed points, proves
+the source is never written, and proves the two argument registers are never
+reassigned (so `out == *this` is read-before-write element by element — pinned as
+observed behaviour, not recommended).
+
+**Row-major is INFERRED, the arithmetic is not.** A column-major reading of the
+same 16 offset pairs is equally consistent with the instructions, so the
+recovered loops use `outer`/`inner` and never claim "row"/"column". The only
+external evidence for row-major storage is the diagonal offsets
+`0x00/0x14/0x28/0x3c` used by both recovered constructors.
+
+**Window, measured** (NDK r8e GCC 4.4.3, `-march=armv7-a -mfloat-abi=softfp
+-mfpu=vfpv3-d16 -fno-pic`):
+
+| config | ref | candidate | words |
+|---|---|---|---|
+| `-O2` hidden | 132 B | 68 B | `FUNCTION_SIZE_MISMATCH` — rolled loop |
+| `-O3` hidden | 132 B | **132 B** | **33 EQUAL / 0 relocation / 0 encoding, `code_window_equal=True`** |
+| `-Os` hidden | 132 B | 68 B | `FUNCTION_SIZE_MISMATCH` — rolled loop |
+| `-O2` default | 132 B | 68 B | `FUNCTION_SIZE_MISMATCH` — negative control |
+
+This is the project's first **multi-instruction, unmasked, byte-equal** function
+window: 33/33 words with no relocation, literal-pool or encoding difference.
+`source_matching_verified` stays `False` and the report states the scope — a
+byte-equal 132-byte window is not compiler identification, not a flag claim, not
+a recovered translation unit and not a whole-`.so` SHA-256 match.
+
+**One source-form finding, measured.** A single flattened loop over `0..15`
+compiles to 44 B at every `-O` (GCC 4.4.3 does not unroll it); the nested
+`for (outer) for (inner)` form is what this compiler unrolls into the reference's
+16 pairs at `-O3`. The reason is in the file, not just in the report.
+
+**Call surface, measured.** 27 direct call sites to `0x000eba84` in four
+distinct functions: `CProgrammableGLDriver<...>::getMatrixForShader(...)` and its
+`.clone.76` (12 each), the recovered copy-with-mode constructor (2, its value-3
+and value-5 paths), and
+`glitch::core::absoluteCameraPositionFromViewMatrix<float>` (1).
+
+**Tests, with negative controls actually run.** `collada_matrix4_transpose_behaviour`
+includes the TU unchanged and stubs nothing (the reference calls nothing). It
+asserts the slot mapping, the fixed diagonal, the involution, a junk destination
+fully overwritten, bit patterns moved unchanged (including `-0.0f` and a NaN, so
+no arithmetic is possible), argument order, the source never modified, and the
+element-wise in-place result. `collada_matrix4_transpose_link_path` links the
+three recovered Collada matrix TUs and stubs only `getInverse`, so the
+constructor's value 3 and value 5 are checked slot by slot against an
+independently written transpose. Mutants actually run and killed: mapping
+replaced by a copy (6 assertions fail in the behaviour test, 2 in the link path),
+mapping replaced by a rotation (7 and 2). Restored source passes.
+
+**Disposition:** IMPLEMENTED + TESTED + instruction-window **MATCHED** (unmasked).
+`getInverse` (0x000ebb08, 776 B) remains NOT RECONSTRUCTED and is the only
+dangling dependency of the recovered constructor.
+
 ## The copy-with-mode matrix constructor is recovered, and its five enumerator paths are named from the bytes (2026-11-01, sixth run)
 
 **`glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float> const&,

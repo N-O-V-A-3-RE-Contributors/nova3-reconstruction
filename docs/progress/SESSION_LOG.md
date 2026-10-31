@@ -503,3 +503,41 @@ instead of retried.
   `bash tools/check_all.sh` rc=0 with 21 audited artifacts.
 - Scratch objects under `.cache/cm4/` only; no reference bytes or disassembly
   committed.
+
+## 2026-11-01 (seventh run) — getTransposed 0x000eba84 recovered, byte-equal 33/33
+
+- Decoded the 132-byte window with a scratch Capstone script under
+  `.cache/transpose/decode.py` (scratch only, not committed): 33 instructions,
+  16 `vldr` from r0 / 16 `vstr` to r1 / `bx lr`, no frame, no call, no global.
+- Read the mapping out of the store offsets rather than assuming a convention:
+  destination slots `0x00..0x3c` ascending, slot k <- source slot `(k%4)*4+k/4`.
+- Source-form measurement: a flattened `for (k=0;k<16;++k)` loop emits 44 B at
+  every `-O` (not unrolled); the nested `for (outer) for (inner)` form is what
+  NDK r8e GCC 4.4.3 unrolls at `-O3` into the reference's 16 pairs. Shipped the
+  nested form, with `outer`/`inner` names because row-major is INFERRED.
+- `tools/compare/collada_matrix4_transpose_pilot.py` (new): structure pass proves
+  the layout, the self-inverse property, the four fixed diagonal slots, the
+  source never written, the argument registers never reassigned, and the
+  27 direct call sites in 4 functions; window pass diffs -O2/-O3/-Os hidden plus
+  -O2 default. Result: `-O3 -fvisibility=hidden` 132 B,
+  `ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION` with 33/33 EQUAL and
+  `code_window_equal=True` (first multi-instruction unmasked byte equality);
+  -O2/-Os/default are 68 B rolled loops (`FUNCTION_SIZE_MISMATCH`), kept as the
+  measured negative control. `source_matching_verified=False` (scope stated).
+- New CTests `collada_matrix4_transpose_behaviour` (stub-free, includes the TU
+  unchanged) and `collada_matrix4_transpose_link_path` (three matrix TUs linked,
+  only `getInverse` stubbed, so values 3 and 5 run the recovered arithmetic).
+- Negative controls actually run: mapping -> copy (6 failures in the behaviour
+  test, 2 in the link path), mapping -> rotation (7 and 2). Restored source passes.
+- Wired into `CMakeLists.txt`, `tools/check_all.sh` (audit list + oracle block),
+  `tools/setup/record_build_provenance.py` `link_inputs`, and
+  `collada_skin_cache_deps.h` (getTransposed marked RECOVERED; getInverse stays
+  NOT RECONSTRUCTED).
+- Regression pilots re-run individually, all rc=0 after the header edit: skin
+  trivial `all_configs_exact=True`, prepareCache 224 B, multiply 540 B, ctor
+  56 B, copy ctor 240 B (`ENCODING_DIVERGENCE`, block order as before).
+- Verification: `bash tools/check_all.sh` rc=0 — CTest **24/24**, tooling pytest
+  **30 passed**, 25 source-only audited artifacts. The full
+  `NOVA3_RESEARCH_ORACLES=1` chain was not run to completion this session (it
+  exceeded the foreground limit before and now carries one more 38 s pilot);
+  every Collada pilot it contains was run individually instead, all rc=0.

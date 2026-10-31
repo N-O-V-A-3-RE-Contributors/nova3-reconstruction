@@ -98,15 +98,17 @@ public:
     // 0x00108c8c, 240 B -- RECOVERED in collada_matrix4_copy_ctor.cpp.
     CMatrix4(CMatrix4<T> const& other, eConstructor);
 
-    // 0x000eba84, 132 B; 0x000ebb08, 776 B -- NOT RECONSTRUCTED.  Declared so
-    // the recovered copy-with-mode constructor can call them; the bodies stay
-    // external dependencies.  `getTransposed` returns void in the reference (the
-    // call sites never read r0 after it).  `getInverse`'s return TYPE is not in
-    // the Itanium mangling: the copy-with-mode constructor tests r0 for zero
-    // (`subs r1,r0,#0` then a conditional branch), so a scalar is observed while
-    // `bool` is INFERRED.  Both write their result through the reference
-    // argument, never into `*this`.
+    // 0x000eba84, 132 B -- RECOVERED in collada_matrix4_transpose.cpp.  Writes
+    // out slot k from slot (k % 4) * 4 + k / 4 of `*this`; the caller-facing
+    // return type is void (the reference's call sites never read r0 after it).
     void getTransposed(CMatrix4<T>& out) const;
+
+    // 0x000ebb08, 776 B -- NOT RECONSTRUCTED.  Declared so the recovered
+    // copy-with-mode constructor can call it; the body stays an external
+    // dependency.  `getInverse`'s return TYPE is not in the Itanium mangling:
+    // the copy-with-mode constructor tests r0 for zero (`subs r1,r0,#0` then a
+    // conditional branch), so a scalar is observed while `bool` is INFERRED.
+    // It writes its result through the reference argument, never into `*this`.
     bool getInverse(CMatrix4<T>& out) const;
 
     T m_observedValues[16];

@@ -1,5 +1,55 @@
 # Sprint status — NOV-3 heartbeats
 
+## 2026-11-01 (seventh run) — CMatrix4<float>::getTransposed recovered, window byte-equal
+
+### Function under reconstruction
+- `_ZNK6glitch4core8CMatrix4IfE13getTransposedERS2_`
+  ELF VA 0x000eba84, 132 B, A32, STT_FUNC, STB_LOCAL (exact `.symtab` bounds)
+- Reference: `analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`,
+  SHA-256 `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+  (the pilot refuses a mismatched reference)
+
+### Evidence summary
+33 instructions, no frame, no call, no global: 16 `vldr` from r0, 16 `vstr` to
+r1, `bx lr`. Destination slots `0x00..0x3c` each written once in ascending order;
+destination slot k reads source slot `(k%4)*4+k/4`. The pilot proves the mapping
+is self-inverse, the four diagonal slots are the only fixed points, the source is
+never written, and r0/r1 are never reassigned. Row-major storage is INFERRED (a
+column-major reading fits the same offsets). 27 call sites in 4 functions.
+
+### Result (measured, not assumed)
+- NDK r8e GCC 4.4.3 `-O3 -fvisibility=hidden`: candidate 132 B,
+  33 EQUAL / 0 RELOCATION_FIELD / 0 encoding, `code_window_equal=True` — the
+  project's first multi-instruction unmasked byte-equal window.
+- `-O2`/`-Os`/`-O2 default`: 68 B rolled loops (`FUNCTION_SIZE_MISMATCH`), kept
+  as the measured negative control; GCC 4.4.3 unrolls only at `-O3`.
+- `source_matching_verified=False`: a byte-equal 132-byte window is not compiler
+  identification, not a flag claim, not a TU recovery, not a whole-`.so` SHA.
+- Behaviour: CTest `collada_matrix4_transpose_behaviour` (stub-free) and
+  `collada_matrix4_transpose_link_path` (three matrix TUs, only getInverse
+  stubbed) both pass; mutants (copy mapping, rotation mapping) both killed.
+
+### Files changed
+- `reconstruction/recovered/libNOVA3_neon/collada_matrix4_transpose.cpp` — new
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_test.cpp` — new
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_link_path_test.cpp` — new
+- `tools/compare/collada_matrix4_transpose_pilot.py` — new
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_cache_deps.h` — getTransposed
+  marked RECOVERED, getInverse still NOT RECONSTRUCTED
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_copy_ctor_test.cpp` — comment
+- `CMakeLists.txt`, `tools/check_all.sh`, `tools/setup/record_build_provenance.py`
+- `docs/progress/{STATUS,NEXT,SESSION_LOG,HANDOFF}.md`, this file
+
+### Commands actually run
+- `.venv/bin/python tools/compare/collada_matrix4_transpose_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so` → rc=0
+- `cmake --build build/host` → rc=0; `ctest --test-dir build/host` → 24/24 pass
+- `bash tools/check_all.sh` → rc=0, 25 source-only audited artifacts, pytest 30 passed
+- regression pilots re-run individually (trivial/prepareCache/multiply/ctor/copy ctor) → all rc=0
+
+### Next ONE step
+`glitch::core::CMatrix4<float>::getInverse(CMatrix4<float>&) const`
+(0x000ebb08, 776 B) — the last dependency this group declares and does not own.
+
 ## 2026-11-01 (sixth run) — CMatrix4<float>(CMatrix4 const&, eConstructor) recovered
 
 ### Function under reconstruction
