@@ -2,6 +2,26 @@
 
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
+## Two setup facts to know before touching Ghidra or Git (2026-10-31)
+
+- **Unattended decompilation is now one command**:
+  `.venv/bin/python tools/pipeline/auto_decompile.py [--max-functions N --batch-size M]`,
+  `--status` for coverage only. It bootstraps `analysis_db/index.sqlite`
+  (gitignored, absent from a clean checkout), then drives
+  `tools/ghidra/export_batch.py --all-symbols` in bounded, checkpointed batches.
+  The Ghidra project must NOT live under a `.`-prefixed path (`~/nova3-analysis/ghidra`
+  by default); Ghidra's `ProjectLocator` rejects those outright, which is what
+  used to make every worktree import fail. Measured on Premium
+  `84075223…baaf`: 39,123 indexed functions, cold batch 68.7 s (+2 exports),
+  warm batch 22.9 s (+2), checkpoint `.cache/pipeline/auto_decompile_state.json`.
+- **Push is a capability grant, not a repo problem.**
+  `bash tools/setup/push_branch.sh` publishes and verifies the branch; it exits
+  `3` when no credential source exists. The Paperclip `git` wrapper strips
+  `GH_TOKEN`/`GITHUB_TOKEN`/`SSH_AUTH_SOCK` and brokers credentials only with
+  `PAPERCLIP_GITHUB_BROKER_TOKEN`; that is absent in automated runs today, and
+  `origin/main` was at `43f3502` when last read. Do not bypass the wrapper with
+  the host's personal credentials.
+
 ## Current source and exact limits
 
 Newest (2026-10-31): the caller side of the cpu-features work now exists.

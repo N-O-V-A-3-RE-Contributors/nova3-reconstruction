@@ -1,5 +1,68 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Unattended decompilation works; two real setup defects fixed (2026-10-31)
+
+The pipeline that was missing between "index the ELF" and "export decompiled
+functions in batches" now exists and has been run: `tools/pipeline/auto_decompile.py`.
+
+**Two defects were reproduced, fixed, and re-run — both previously blocked a
+clean checkout, not just this worktree:**
+
+1. `tools/index/inventory.py` died on any fresh tree with
+   `sqlite3.OperationalError: unable to open database file`, because
+   `analysis_db/` is gitignored. It now creates `analysis_db/` and
+   `research/elf/`. Verified: exit 0 in 43.3 s, 4 binaries, 76,344 function rows,
+   39,123 for the Premium engine ELF.
+2. `tools/ghidra/export_batch.py` wrote its Ghidra project inside the repository,
+   which Ghidra's `ProjectLocator` rejects whenever a path element starts with
+   `.` — so every isolated worktree under `.local/` or `.cache/` failed at import
+   with `Path element starting with '.' is not permitted`. It now takes
+   `--project-dir` (default `~/nova3-analysis/ghidra`, env
+   `NOVA3_GHIDRA_PROJECT_DIR`).
+
+**Measured run** (Premium ELF SHA-256 `84075223…baaf`): cold batch 68.7 s
+(+2 exports, import dominates), warm batch 22.9 s (+2 exports), coverage
+`indexed=39123 exported=4 remaining=39119`. Exports carry
+`byte_mapping_validated=true`; they include `_Z10ComputeCRCPhi` (0x000de2cc,
+20 instructions, 5 basic blocks) and the two cpu-features getters
+`0x000d2f10`/`0x000d2f3c`, i.e. the pipeline reproduces hand-recovered
+functions. `--status` and the checkpoint at
+`.cache/pipeline/auto_decompile_state.json` make the run resumable; a re-run
+after the first two batches exported the *next* two, not the same two.
+
+**GitHub publication is still not granted to this session, and it is a runtime
+scope matter, not a repository one.** The Paperclip `git` wrapper deletes
+`GH_TOKEN`/`GITHUB_TOKEN`/`SSH_AUTH_SOCK`, disables prompts, and only brokers a
+credential when `PAPERCLIP_GITHUB_BROKER_TOKEN` is in the environment; that
+variable is absent for this run, so the wrapper prints
+`GitHub capability_missing` and push fails at authentication. Remote read access
+is fine (`git ls-remote` returns main `43f3502`), the repo already has
+`user.name`/`user.email`, and the branch is `automation/paperclip-worker`
+(3 commits ahead of `origin/main`, no upstream yet).
+`tools/setup/push_branch.sh` now performs the push, classifies the exact failure
+(`3` no credential source, `5` rejected credential, `7` remote SHA mismatch) and
+verifies the remote head equals local HEAD. Run here it exits 3 with the two
+supported remediations printed. Nothing was pushed.
+
+**The full oracle suite now runs green inside a worker worktree**, which it could
+not do before (it aborted at `tools/compare/zip_headers.py`). Root cause was
+missing private data, not code: `research/assets/` (OBB indices) and
+`.cache/assets/premium-main.obb` (the 2.2 GiB materialized cache used by
+`texture_path_source.py`) are gitignored and absent from an isolated worktree.
+New `tools/setup/link_private_references.sh` links them read-only from the
+primary checkout. Measured: `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh`
+→ **exit 0**, CTest **16/16**, 9 oracle PASS lines (CRC, scramble, ZIP headers,
+ZIP payload, BRES, lookup, ETC1, texture filename policy, texture
+path/inflate/pixel integration) and `tools/index/check_index.py` clean.
+
+**The repository's own automation is healthy on `main`** (read from the public
+API, no credentials used): `nova-ci.yml` run 227 `success` on the last main push,
+`nova-autofeed.yml` run 102 `success` at 2026-10-31T08:24Z, `nova-status.yml` run
+175 `success` at 08:44Z; `main` is at `43f3502`, repo public, 5 open issues. So
+the missing piece is not CI config or the task feeder — it is that this branch's
+4 commits are unpublished.
+
+
 ## DetectNeon probe recovered, tested, and its caller chain mapped (2026-10-31)
 
 The first caller-side slice of the Premium cpu-features work is now source and

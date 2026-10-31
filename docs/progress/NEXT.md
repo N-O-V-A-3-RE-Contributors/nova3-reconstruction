@@ -1,5 +1,22 @@
 # Next tasks
 
+## Immediate: publish the branch, then resume the caller slice (2026-10-31)
+
+1. **Publish `automation/paperclip-worker`** once a GitHub credential source
+   exists. `bash tools/setup/push_branch.sh` now does the whole action and
+   verifies the remote head; without capability it exits `3` and prints the two
+   supported routes (grant the GitHub connection to the run so the wrapper can
+   broker a token, or run it from the maintainer's own terminal with `GH_TOKEN`).
+   Nothing else about the repo is missing: remote, `user.name`, `user.email` and
+   the 3-commit branch are all in place.
+2. **Continue the caller slice** with `vox::DriverCallbackInterface::Init(void*)`
+   (0x009d53f4, 48 B) — unchanged from the previous queue entry below.
+3. **Use the new pipeline for the next slice's evidence**, bounded:
+   `.venv/bin/python tools/pipeline/auto_decompile.py --max-functions 8 --batch-size 4`
+   then read the exports under `generated/ghidra/exports/<sha>/`. Do not run it to
+   completion: at the measured ~11 s per function warm rate the full 39,123 would
+   be ~100 hours, and an export is `DECOMPILED`, never a completion state.
+
 ## Immediate: DetectNeon is closed; the probe's single caller is the next slice (2026-10-31)
 
 `reconstruction/recovered/libNOVA3_neon/driver_callback_detect_neon.cpp` is

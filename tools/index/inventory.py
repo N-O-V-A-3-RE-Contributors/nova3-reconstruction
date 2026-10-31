@@ -9,6 +9,12 @@ def sha(p):
   for b in iter(lambda:f.read(4<<20),b''): h.update(b)
  return h.hexdigest()
 def main():
+ # A fresh clone/worktree has neither directory: analysis_db/ is an ignored
+ # cache, research/ only carries tracked notes. Bootstrap both so the index
+ # command works from a clean checkout instead of raising
+ # "unable to open database file".
+ (ROOT/'analysis_db').mkdir(parents=True,exist_ok=True)
+ (ROOT/'research/elf').mkdir(parents=True,exist_ok=True)
  db=sqlite3.connect(ROOT/'analysis_db/index.sqlite'); db.executescript('''
  PRAGMA user_version=1;
  CREATE TABLE IF NOT EXISTS binaries(hash TEXT PRIMARY KEY,path TEXT,architecture TEXT,size INTEGER,metadata TEXT);

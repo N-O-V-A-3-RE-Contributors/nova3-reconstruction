@@ -184,3 +184,55 @@ and two compare tools were uncommitted; nothing was discarded).
   (pre-existing environment gap, not a regression).
 - No APK/ELF/OBB bytes, assembly or pseudocode written outside ignored
   `.cache/`; docs carry addresses, sizes, symbol names and counts only.
+
+## 2026-10-31 — unattended decompilation pipeline; two clean-checkout defects fixed
+
+Reported blocker: `git push` "no GitHub credentials" (fourth consecutive run) and
+no way to start decompilation unattended. Both were investigated to root cause
+instead of retried.
+
+- `tools/index/inventory.py` → `sqlite3.OperationalError: unable to open
+  database file`; cause: `analysis_db/` is gitignored, so a clean worktree has no
+  such directory. Fixed by creating `analysis_db/` and `research/elf/` at start.
+  Re-ran: exit 0, 43.3 s, 4 binaries / 76,344 function rows / 39,123 rows for
+  Premium `libNOVA3_neon.so` (SHA-256 `84075223…baaf`).
+- `tools/ghidra/export_batch.py` → Ghidra rejected the project path:
+  `java.lang.IllegalArgumentException: Path element starting with '.' is not
+  permitted`, because the project lived under the repo (this worktree is under
+  `.local/automation/worktrees/worker`). Fixed with `--project-dir` (default
+  `~/nova3-analysis/ghidra`, env `NOVA3_GHIDRA_PROJECT_DIR`).
+- New `tools/pipeline/auto_decompile.py`: hash verification → index bootstrap →
+  repeated bounded `export_batch` runs (`--all-symbols`) → JSON checkpoint after
+  every batch → coverage summary; `--status` for a cheap read-only report.
+- Measured: batch 1 `+2 exports in 68.7 s` (cold import), batch 2 `+2 exports in
+  22.9 s`; `indexed=39123 exported=4 remaining=39119`. Exports:
+  `_Z10ComputeCRCPhi` 0x000de2cc (20 instructions, 5 basic blocks),
+  `_ZN3glf10CrcChecker5CRC32EPKvij` 0x008d890c, `android_getCpuCount` 0x000d2f10,
+  `android_getCpuFeatures` 0x000d2f3c — all `byte_mapping_validated=true`.
+- First attempt exported the *default two addresses* again and gained nothing:
+  `export_batch.py` defaults to `--addresses 0xde2cc,0x8d890c`, so the driver must
+  pass `--all-symbols`. After the fix a re-run advanced to the next two
+  functions, which is the resumability proof.
+- New hermetic test `reconstruction/tests/test_auto_decompile.py` (4 cases:
+  missing reference exits 2, hash mismatch exits 2, status schema/coverage
+  invariant, exporter arguments still wired). Passes in 0.71 s.
+- GitHub: `git ls-remote origin HEAD` → `43f3502` unauthenticated, so the remote
+  is fine; the Paperclip `git` wrapper deletes `GH_TOKEN`/`GITHUB_TOKEN`/
+  `SSH_AUTH_SOCK` and only brokers credentials when
+  `PAPERCLIP_GITHUB_BROKER_TOKEN` is set, which it is not in this run. New
+  `tools/setup/push_branch.sh` performs and verifies the push when capability
+  exists; run here it exits `3` with the two supported remediations. Nothing was
+  pushed; `automation/paperclip-worker` stays 3 commits ahead of `origin/main`.
+- `research/assets` symlinked to the maintainer tree locally (gitignored) so
+  `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` can run the whole oracle
+  block in this worktree; previously it aborted at `tools/compare/zip_headers.py`.
+- Full suite re-run after linking private references:
+  `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` → EXIT=0, CTest 16/16,
+  9 oracle PASS lines, `tools/index/check_index.py` clean. The earlier run of the
+  same command failed at `tools/compare/texture_path_source.py` (exit 3 from
+  `build/host/nova3_texture`) purely because `.cache/assets/premium-main.obb`
+  was absent from the worktree; new `tools/setup/link_private_references.sh`
+  links `research/assets`, `.cache/assets` and (when missing) `analysis/`.
+- `tools/check_all.sh` oracle block now prints
+  `tools/pipeline/auto_decompile.py --status` before the first oracle, so index
+  coverage is recorded in every full run (this run: `indexed: 39123`).

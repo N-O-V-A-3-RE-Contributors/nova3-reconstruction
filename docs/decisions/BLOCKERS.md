@@ -1,5 +1,52 @@
 # Outstanding blockers — 2026-10-25
 
+## Publication blocked on run capability, not on repository setup (2026-10-31)
+
+`git push` from an automated session fails at authentication with the runtime
+message `GitHub capability_missing`. This is not a broken remote or a missing
+identity:
+
+- `git ls-remote origin HEAD` succeeds unauthenticated → `43f3502` (main), so
+  network, URL and visibility are fine.
+- The repository already has `user.name=jason`, `user.email=jason@umbrasec.one`;
+  commits succeed (`82febf9` and earlier are on `automation/paperclip-worker`,
+  3 ahead of `origin/main`, no upstream branch yet).
+- The Paperclip `git` wrapper (`$PATH`-injected) deletes `GH_TOKEN`,
+  `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN`, `GIT_ASKPASS`, `SSH_AUTH_SOCK`, sets
+  `GIT_TERMINAL_PROMPT=0`, and requests a brokered credential from
+  `POST /runtime-tools/github/credentials` **only when
+  `PAPERCLIP_GITHUB_BROKER_TOKEN` is set**. In this run it is unset, which is the
+  single reason every push fails.
+
+Remedies, both verified to be the only two the wrapper supports:
+1. Grant the GitHub connection to this agent/run in Paperclip so the wrapper can
+   broker credentials, then run `bash tools/setup/push_branch.sh`.
+2. Maintainer runs the same script from a normal terminal with `GH_TOKEN`
+   exported (or after `gh auth login`), where no wrapper strips it.
+
+The script classifies outcomes so this is never diagnosed by guesswork again:
+`3` no credential source, `5` credential rejected, `6` other push failure,
+`7` remote head != local head. Do not work around the wrapper by invoking
+`/usr/bin/git` with the host's personal credentials: that is outside the
+capability this session was granted.
+
+## Resolved 2026-10-31 (recorded so they are not rediscovered)
+
+- **Ghidra project path.** `export_batch.py` placed the project under the repo;
+  Ghidra's `ProjectLocator` rejects any path element beginning with `.`, so every
+  worktree under `.local/`/`.cache/` failed to import. Now `--project-dir`
+  (default `~/nova3-analysis/ghidra`).
+- **Index bootstrap.** `tools/index/inventory.py` raised
+  `unable to open database file` on a clean checkout because `analysis_db/` is
+  gitignored. It now creates the directory; verified 76,344 rows in 43.3 s.
+- **Oracle suite in a worker worktree.** `NOVA3_RESEARCH_ORACLES=1` used to abort
+  at `tools/compare/zip_headers.py` because `research/assets/` is private and
+  absent here. `tools/setup/link_private_references.sh` now links
+  `research/assets`, `.cache/assets` (the 2.2 GiB materialized OBB cache, needed by
+  `texture_path_source.py`) and `analysis/` from the primary checkout, so the full
+  oracle suite runs in a worker worktree without copying any reference data.
+
+
 ## Compiler-aware matching and AI-queue blockers (2026-10-28)
 
 - CPU-query thunk byte equality is blocked on link-time values, not on source

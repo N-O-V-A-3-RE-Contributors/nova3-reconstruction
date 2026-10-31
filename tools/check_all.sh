@@ -11,6 +11,7 @@ for artifact in nova3_crc nova3_scramble nova3_zip_header nova3_zip_index nova3_
     .venv/bin/python tools/verify_source_only.py "build/host/$artifact" --manifest build/host/provenance.json
 done
 if test "${NOVA3_RESEARCH_ORACLES:-0}" = 1; then
+    .venv/bin/python tools/pipeline/auto_decompile.py --status
     .venv/bin/python tools/compare/crc_oracle.py
     .venv/bin/python tools/compare/cpufeatures_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/pilot/check_all.json
     .venv/bin/python tools/compare/detect_neon_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/detectneon/check_all.json
