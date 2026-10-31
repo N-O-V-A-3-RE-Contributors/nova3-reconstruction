@@ -2,6 +2,28 @@
 
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
+## Front door for everything analysis-related (2026-11-01)
+
+`./nova3` (thin shell wrapper) → `tools/workbench.py` (tested). Guide:
+`docs/DECOMPILE.md`.
+
+```sh
+./nova3 doctor     # PASS/WARN/FAIL per dependency + the fix; exit 1 on FAIL
+./nova3 index      # analysis_db/index.sqlite (once, ~45 s)
+./nova3 decompile  # bounded resumable Ghidra batch (default 8 fns)
+./nova3 decompile --address 0x9dad14
+./nova3 status | show 0x9dad14 | search DetectNeon
+./nova3 build | test | verify
+./nova3 push       # wraps tools/setup/push_branch.sh (needs credentials)
+```
+
+Ghidra/JDK discovery lives in `tools/pipeline/ghidra_env.py` (no hardcoded
+`/opt/ghidra`/`java-21-openjdk` any more); the exporter and `doctor` share it.
+Exports: `generated/ghidra/exports/<sha256>/<addr>.json`, private and gitignored.
+Measured 2026-11-01: doctor 16 pass / 0 warn / 0 fail; exports 4 → 7;
+CTest 16/16; tooling pytest 14 passed. `show` subtracts the Ghidra image base
+(0x10000) when resolving call targets — that is deliberate, not a fudge.
+
 ## Two setup facts to know before touching Ghidra or Git (2026-10-31)
 
 - **Unattended decompilation is now one command**:

@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Debug
 cmake --build build/host
 ctest --test-dir build/host --output-on-failure
-.venv/bin/python -m pytest -q reconstruction/tests/test_source_only.py tools/extract/test_archive_inspection.py
+.venv/bin/python -m pytest -q reconstruction/tests/test_source_only.py tools/extract/test_archive_inspection.py reconstruction/tests/test_workbench.py reconstruction/tests/test_auto_decompile.py
 .venv/bin/python tools/setup/record_build_provenance.py
 for artifact in nova3_crc nova3_scramble nova3_zip_header nova3_zip_index nova3_zip_extract nova3_resource nova3_bres_relocate nova3_package_probe nova3_mesh nova3_texture nova3_etc1 nova3_texture_path nova3_scrambled_zip libnova3_core.a cpu_features_behaviour_test cpu_features_init_test detect_neon_behaviour_test; do
     .venv/bin/python tools/verify_source_only.py "build/host/$artifact" --manifest build/host/provenance.json

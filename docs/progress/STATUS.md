@@ -1,5 +1,53 @@
 # Status — source resource, mesh and texture reconstruction
 
+## The decompilation toolset is now one self-documenting command (2026-11-01)
+
+The pieces existed but a newcomer had to know a dozen scripts, their order and
+their interpreter. `./nova3` (`tools/workbench.py`) is now the documented front
+door, and `docs/DECOMPILE.md` is the single guide: doctor → index → decompile →
+status → show → build/test/verify.
+
+**What is new and actually exercised this run:**
+
+1. `./nova3 doctor` — one `PASS`/`WARN`/`FAIL` line per dependency with the exact
+   fix under every non-passing line, exit 1 on any `FAIL`. Measured on this host:
+   **16 pass, 0 warn, 0 fail** (reference hash, venv, pyelftools/capstone,
+   Ghidra 12.1.2 at `/opt/ghidra`, JDK 27, pyghidra 3.2.0, project dir,
+   17.7 GiB free, 39,123 indexed rows, cmake/ninja, jadx/apktool/7z, NDK r8e).
+2. `./nova3 decompile --address 0x9dad14` — exported the recovered
+   `DetectNeon` function through the new Ghidra discovery path.
+   `./nova3 decompile --max-functions 2 --batch-size 2` — advanced the bounded
+   driver from 4 to **7 exports** (indexed 39,123, remaining 39,116), which is a
+   second, independent resumability proof through the wrapper.
+3. `./nova3 status` / `show` / `search` — coverage per binary, one function with
+   its call edges resolved to symbol names, and symbol search over the real
+   107,418-symbol table. `show` subtracts the Ghidra image base (0x10000) before
+   resolving call targets; without that every callee lookup misses by exactly
+   the image base.
+4. **Portability defect fixed**: `tools/ghidra/export_batch.py` hardcoded
+   `install_dir='/opt/ghidra'` and `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`, so
+   the documented "just run it" command worked only on this laptop. Discovery is
+   now `tools/pipeline/ghidra_env.py` (explicit arg, `NOVA3_GHIDRA_HOME`,
+   `GHIDRA_INSTALL_DIR`, system locations, then versioned `ghidra*` dirs) and the
+   resolver requires `support/analyzeHeadless`, so a typo fails loudly instead of
+   silently selecting another install.
+5. `reconstruction/tests/test_workbench.py` — 10 hermetic cases (help surface,
+   doctor JSON contract and fix-field completeness, hash rejection of a
+   fabricated ELF, status counts, image-base call resolution, missing-export hint,
+   unknown-symbol failure, search totals, Ghidra resolver semantics). Plus the 4
+   pre-existing driver cases: **14 passed**. Both files are now in
+   `tools/check_all.sh` and in a new `nova-ci.yml` step, so tooling can no longer
+   rot silently.
+
+**Verification actually run:** `./nova3 verify` → build + CTest **16/16** +
+source-only audit exit 0. `pytest` on the two tooling files: 14 passed.
+
+**Still not done, and it is a runtime permission matter, not a repo one:** the
+branch is not published. `git push` has no credential source in this harness
+(`GitHub capability_missing`; the wrapper strips `GH_TOKEN`/`GITHUB_TOKEN` and
+needs `PAPERCLIP_GITHUB_BROKER_TOKEN`), and `tools/setup/push_branch.sh` exits 3
+with the two supported remediations. `./nova3 push` is the wrapper for it.
+
 ## Unattended decompilation works; two real setup defects fixed (2026-10-31)
 
 The pipeline that was missing between "index the ELF" and "export decompiled

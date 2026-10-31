@@ -1,7 +1,22 @@
 # Unattended decompilation pipeline
 
 Status: working and exercised on the Premium engine ELF (2026-10-31).
-Owner path: `tools/pipeline/auto_decompile.py`.
+Owner path: `tools/pipeline/auto_decompile.py`. Front door: `./nova3`
+(`tools/workbench.py`, guide in `docs/DECOMPILE.md`).
+
+## Front door (2026-11-01)
+
+`./nova3` wraps this driver so the workflow is discoverable rather than
+remembered: `doctor` (dependency PASS/WARN/FAIL with the fix), `index`,
+`decompile` (bounded by default), `decompile --address 0x...` (single function),
+`status`, `show`, `search`, `build`, `test`, `verify`, `push`. Ghidra and JDK
+discovery moved into `tools/pipeline/ghidra_env.py`, so the exporter no longer
+requires this host's `/opt/ghidra` and `java-21-openjdk` paths: it honours
+`NOVA3_GHIDRA_HOME`/`GHIDRA_INSTALL_DIR`, then `/opt|/usr/share|/usr/local`,
+then versioned `ghidra*` directories, and fails with the exact fix if none is
+usable. Verified this run: `decompile --address 0x9dad14` exported
+`DetectNeon` through the resolved install, and the bounded driver advanced
+4 -> 7 exports.
 
 ## Why it exists
 

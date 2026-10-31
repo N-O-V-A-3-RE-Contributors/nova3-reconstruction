@@ -1,4 +1,20 @@
 
+<!-- NOVA3-WORKBENCH -->
+## Decompile NOVA 3 — one command
+
+```sh
+./nova3 doctor        # PASS/WARN/FAIL per dependency, with the fix for each
+./nova3 index         # build analysis_db/index.sqlite (once)
+./nova3 decompile     # bounded, resumable Ghidra batch
+./nova3 show 0x009dad14
+./nova3 status
+```
+
+Full guide: [docs/DECOMPILE.md](docs/DECOMPILE.md) (workflow, evidence states,
+troubleshooting, and how incoming third-party source will be audited).
+The workbench only orchestrates existing scripts; it never modifies the
+reference inputs and never commits decompiler output.
+
 <!-- NOVA3-EASY-LAUNCHER -->
 ## Join or start the reconstruction worker
 

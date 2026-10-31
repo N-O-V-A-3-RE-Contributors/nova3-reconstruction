@@ -236,3 +236,40 @@ instead of retried.
 - `tools/check_all.sh` oracle block now prints
   `tools/pipeline/auto_decompile.py --status` before the first oracle, so index
   coverage is recorded in every full run (this run: `indexed: 39123`).
+
+## 2026-11-01 — the toolset becomes one documented command (`./nova3`)
+
+- Added `./nova3` (shell wrapper) → `tools/workbench.py`: `doctor`, `index`,
+  `decompile` (bounded, `--address`, `--all`), `status`, `show`, `search`,
+  `build`, `test`, `verify`, `push`. `docs/DECOMPILE.md` is the single guide and
+  `README.md` points at it from the top.
+- `doctor` measured on this host: **16 pass, 0 warn, 0 fail** — reference SHA,
+  venv, pyelftools/capstone, Ghidra 12.1.2 (`/opt/ghidra`), JDK 27, pyghidra
+  3.2.0, project dir, 17.7 GiB free, 39,123 indexed rows, cmake/ninja,
+  jadx/apktool/7z, NDK r8e. Exit 1 when anything FAILs.
+- Fixed a portability defect that made the documented "start it and walk away"
+  command host-specific: `tools/ghidra/export_batch.py` hardcoded
+  `install_dir='/opt/ghidra'` and `JAVA_HOME=/usr/lib/jvm/java-21-openjdk`. New
+  `tools/pipeline/ghidra_env.py` resolves Ghidra (explicit arg →
+  `NOVA3_GHIDRA_HOME` → `GHIDRA_INSTALL_DIR` → system dirs → versioned `ghidra*`
+  dirs, requiring `support/analyzeHeadless`) and the JDK; an explicit bad path is
+  an error, not a silent substitution.
+- Exercised end to end: `./nova3 decompile --address 0x9dad14` exported
+  `DetectNeon` (found Ghidra/JDK itself, printed both); `./nova3 decompile
+  --max-functions 2 --batch-size 2` advanced coverage 4 → **7** exports
+  (`indexed=39123`, `remaining=39116`); `./nova3 status` per-binary table;
+  `./nova3 show 0x9dad14` resolved both call edges to
+  `android_getCpuFamily`/`android_getCpuFeatures` (needed the image-base
+  subtraction, 0x10000) and printed the body; `./nova3 search DetectNeon` hit.
+- `reconstruction/tests/test_workbench.py` — 10 hermetic cases (help surface,
+  doctor JSON + "every non-PASS check has a fix", fabricated ELF rejected by
+  hash, status counts, image-base call resolution, missing-export hint,
+  unknown-symbol exit 1, search totals, resolver semantics). One test caught a
+  real gap (optional WARN lines had no fix text) which is now fixed.
+  `pytest` on `test_workbench.py` + `test_auto_decompile.py`: **14 passed**.
+- Wiring: both tooling test files added to `tools/check_all.sh`; new
+  `nova-ci.yml` step runs them on every PR/push.
+- Verification: `./nova3 verify` → build + CTest **16/16** + source-only audit
+  exit 0. No APK/ELF/OBB bytes, assembly or pseudocode committed; docs carry
+  metadata and source facts only. Branch still unpublished (no GitHub capability
+  in this harness; `./nova3 push` exits 3 with the two supported routes).

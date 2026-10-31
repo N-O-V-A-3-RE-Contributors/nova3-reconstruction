@@ -73,6 +73,15 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk JAVA_TOOL_OPTIONS=-Xmx1400m \
 .venv/bin/python -m pytest -q reconstruction/tests/test_auto_decompile.py
 ```
 
+`./nova3 decompile` (front door: `./nova3`, see `docs/DECOMPILE.md`) resolves
+Ghidra through `tools/pipeline/ghidra_env.py`: `--ghidra-home`, then
+`NOVA3_GHIDRA_HOME`, `GHIDRA_INSTALL_DIR`, `/opt/ghidra`, `/usr/share/ghidra`,
+`/usr/local/ghidra`, then versioned `ghidra*` directories. A directory only
+counts when it contains `support/analyzeHeadless`, so a wrong explicit path is an
+error instead of a silent fallback. The JDK is resolved the same way
+(`JAVA_HOME`, then the newest JDK under `/usr/lib/jvm`). This host: Ghidra
+12.1.2 at `/opt/ghidra`, JDK 27. The same resolver feeds `./nova3 doctor`.
+
 Ghidra project path is `~/nova3-analysis/ghidra` by default (override
 `--project-dir` or `NOVA3_GHIDRA_PROJECT_DIR`): it must not contain a
 `.`-prefixed path element, because Ghidra's `ProjectLocator` rejects those and

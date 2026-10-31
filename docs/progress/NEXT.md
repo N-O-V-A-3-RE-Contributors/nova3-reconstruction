@@ -1,5 +1,27 @@
 # Next tasks
 
+## Tooling is set up; two things remain (2026-11-01)
+
+The decompilation toolset is finished as a usable product: `./nova3` with
+`doctor|index|decompile|status|show|search|build|test|verify|push`, documented in
+`docs/DECOMPILE.md`, tested by `reconstruction/tests/test_workbench.py` (10
+hermetic cases) and wired into `tools/check_all.sh` + `nova-ci.yml`. Ghidra/JDK
+discovery no longer hardcodes this laptop's paths.
+
+1. **Publish the branch** — the only outstanding setup item, and it is a
+   credential grant, not code. `./nova3 push` (= `bash tools/setup/push_branch.sh`)
+   does the push and verifies the remote head; it exits `3` and prints the two
+   supported routes when the run has no GitHub capability. Nothing else is
+   missing: remote, identity and the branch are in place.
+2. **Resume source work** with `vox::DriverCallbackInterface::Init(void*)`
+   (`0x009d53f4`, 48 B), unchanged below. Use `./nova3 decompile --address
+   0x9d53f4` then `./nova3 show 0x9d53f4` for the first pass.
+3. **When the early-development codebase is supplied**: treat it as candidate
+   source under `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; see
+   "When the early-development source arrives" in `docs/DECOMPILE.md`. It does
+   not upgrade any completion state by itself.
+
 ## Immediate: publish the branch, then resume the caller slice (2026-10-31)
 
 1. **Publish `automation/paperclip-worker`** once a GitHub credential source
