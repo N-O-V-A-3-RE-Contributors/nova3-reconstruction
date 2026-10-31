@@ -143,3 +143,44 @@ Final verification exit0: tools/check_all.sh(host13/13,Python13/13,source-only a
   `bash tools/check_all.sh` exit 0 (16 audited artifacts). Local scratch objects
   and listings stay under `.cache/cpufeat/`; nothing proprietary was written
   outside `.cache` or committed.
+
+## 2026-10-31 — DetectNeon recovered, tested; caller map resolved
+
+Resumed the interrupted DetectNeon slice from the worktree (partial TU, test,
+and two compare tools were uncommitted; nothing was discarded).
+
+- Restored reference identity first: `sha256sum analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`
+  = `84075223…baaf`, NDK r8e GCC 4.4.3 present at
+  `/home/jason/.local/opt/android-ndk-r8e`.
+- `cmake -S . -B build/host` + `cmake --build build/host -j4`: 81/81 targets,
+  including the new `detect_neon_behaviour_test`.
+- `ctest --test-dir build/host --output-on-failure`: **16/16 pass**, including
+  `detect_neon_behaviour`.
+- `tools/compare/detect_neon_pilot.py` first failed with
+  `nova3_team.object_compare.CompareError: reference SHA-256 mismatch`. Cause
+  was the draft's own caller bug: it passed the extracted 32-byte window to
+  `window_diff.diff_window`, which bounds the reference function itself from
+  the whole ELF and therefore hashes the whole file. Fixed to pass the full
+  ELF bytes after the SHA check (`load_reference` now returns both). This is a
+  tool defect, not a matching result.
+- Re-run: `structure agrees with recovered source: True`; calls
+  `0x000d2f6c → 0x000d2f3c`, `cmp [1]`, `ubfx (2,1)`, short-circuit return
+  between calls = True, incoming `this` read = False. Window: 6/6 configs
+  `ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION`, 32 B, 6 EQUAL + 2 RELOC + 0
+  ENC, `code_window_equal=False`, `source_matching_verified=False`.
+- `tools/compare/cpuquery_callsites.py --also 0x9dad14:DetectNeon`: 39,108
+  functions decoded, 0 undecodable, **4 direct hits, no PLT route** —
+  `0x00739764` in `CSoftwareSkinTechnique::init` (0x00739630, 1028 B),
+  `0x009d5414` in `DriverCallbackInterface::Init` (0x009d53f4, 48 B), and the
+  two getter calls inside DetectNeon itself. Naming the caller side was the
+  open NEXT.md item; it is now closed with addresses.
+- Wired the new target into `tools/check_all.sh` (audited artifacts) and
+  `tools/setup/record_build_provenance.py` (own `link_inputs`); added both
+  compare tools to the oracle block.
+- Verification: `bash tools/check_all.sh` → exit 0, 17 audited artifacts
+  source-only-clean, `detect_neon_behaviour_test` included. Oracle block still
+  stops in `tools/compare/zip_headers.py` in this worker worktree because the
+  private `research/assets/` OBB indices exist only in the maintainer tree
+  (pre-existing environment gap, not a regression).
+- No APK/ELF/OBB bytes, assembly or pseudocode written outside ignored
+  `.cache/`; docs carry addresses, sizes, symbol names and counts only.

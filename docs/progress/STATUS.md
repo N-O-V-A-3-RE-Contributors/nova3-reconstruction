@@ -1,5 +1,79 @@
 # Status — source resource, mesh and texture reconstruction
 
+## DetectNeon probe recovered, tested, and its caller chain mapped (2026-10-31)
+
+The first caller-side slice of the Premium cpu-features work is now source and
+behavioural evidence rather than a symbol name.
+
+**1. Recovered function.** `reconstruction/recovered/libNOVA3_neon/driver_callback_detect_neon.cpp`
+implements `_ZN3vox29DriverCallbackSourceInterface10DetectNeonEv` — ELF VA
+`0x009dad14`, 32 bytes, A32, `STT_FUNC` (local symbol) in
+`libNOVA3_neon.so` SHA-256 `84075223…baaf`. The source is seven lines of
+ordinary C++: query `android_getCpuFamily()`, return false unless it is `1`,
+then test one bit of `android_getCpuFeatures()`.
+
+**2. The source's claims were re-derived from the reference bytes, not from the
+comment.** `tools/compare/detect_neon_pilot.py` decodes the referenced window
+and asserts five independent facts: the two direct call targets are exactly the
+recovered getters `0x000d2f6c` (family) then `0x000d2f3c` (features); the family
+comparison is against the literal `1`; the feature extract is `ubfx` lsb 2 width
+1, i.e. exactly one bit; and a conditional return sits *between* the two calls,
+so a non-ARM family short-circuits. It also checks that r0 is never read before
+the first call, so the probe consumes no object state — which is why `this` is
+unused and why "static" vs non-static member is underdetermined rather than
+inferred. All five facts reproduce. The names `ANDROID_CPU_FAMILY_ARM` and
+`ANDROID_CPU_ARM_FEATURE_NEON` remain INFERRED from the public NDK header; the
+constants `1` and bit 2 are recovered.
+
+**3. Window measurement.** NDK r8e GCC 4.4.3, six configurations
+(`-O2`/`-O3`/`-Os` × stack protector on/off):
+`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION` in 6/6, 32/32 bytes,
+6 `EQUAL` + 2 `RELOCATION_FIELD` + 0 `ENCODING_DIFFERENCE`. The two differing
+words are exactly the two `BL` displacements, which an ET_REL object cannot
+contain. `code_window_equal` is false and the report carries
+`source_matching_verified=False`; no byte-match, compiler or flag claim is made.
+
+The pilot initially failed with `CompareError: reference SHA-256 mismatch`
+because it handed the extracted 32-byte window to `window_diff`, which bounds
+the reference function itself out of the whole ELF and therefore hashes the
+whole file. Fixed by passing the complete ELF bytes after the SHA check; this
+is recorded because the earlier crash was a caller bug, not a matching result.
+
+**4. Behaviour tests.** `reconstruction/tests/recovered/libNOVA3_neon/driver_callback_detect_neon_test.cpp`
+compiles the recovered TU *unchanged* and supplies counting stubs for the two
+cpufeatures entry points, so the probe's own logic is observable. It asserts:
+non-ARM families (unknown/x86/MIPS and an out-of-enum value 7) return false with
+zero feature reads; a full 64-bit single-bit sweep returns true for bit 2 only
+and false for every other bit; two distinct objects behave identically; the
+ARMv7/VFPv3/LDREX_STREX combination without NEON is false and with NEON is true;
+0 and all-ones bracket the range; and on the ARM path each getter is called
+exactly once. CTest `detect_neon_behaviour`, in `tools/check_all.sh`'s audited
+list and in `tools/setup/record_build_provenance.py` with its own `link_inputs`.
+Negative control: the recovered TU calls both getters, so deleting a stub breaks
+the link rather than silently passing.
+
+**5. Call-site map (the NEXT.md item that motivated this).**
+`tools/compare/cpuquery_callsites.py` decodes every bounded `STT_FUNC` in the
+engine ELF (39,108 functions, 0 undecodable) and reports direct branches to the
+recovered getters or to their PLT stubs. Result: exactly four hits, all direct,
+no PLT route.
+
+| call site | callee | host function | host VA / size |
+|---|---|---|---|
+| `0x00739764` | `android_getCpuFeatures` | `glitch::collada::detail::CSoftwareSkinTechnique::init(...)` | `0x00739630`, 1028 B |
+| `0x009d5414` | `DetectNeon` | `vox::DriverCallbackInterface::Init(void*)` | `0x009d53f4`, 48 B |
+| `0x009dad18` | `android_getCpuFamily` | `DriverCallbackSourceInterface::DetectNeon` | `0x009dad14`, 32 B |
+| `0x009dad28` | `android_getCpuFeatures` | `DriverCallbackSourceInterface::DetectNeon` | `0x009dad14`, 32 B |
+
+So there are exactly two consumers of the cpu-features API in the whole engine:
+the recovered probe, and the Collada software-skinning path directly. The probe
+itself has exactly one in-binary caller, the 48-byte
+`DriverCallbackInterface::Init`. That gives a small, real next slice instead of
+a speculative one.
+
+`ctest` is 16/16 and `bash tools/check_all.sh` exits 0 with 17 audited
+artifacts.
+
 ## cpu-features TU: initializer proven end-to-end, char signedness settled (2026-10-31)
 
 Two open items from the previous milestone are now closed or converted into

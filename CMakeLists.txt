@@ -145,4 +145,18 @@ if(BUILD_TESTING)
     target_link_libraries(cpu_features_init_test PRIVATE Threads::Threads
         -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=close)
     add_test(NAME cpu_features_behaviour_init COMMAND cpu_features_init_test)
+
+    # Behaviour of the recovered NEON capability probe
+    # (vox::DriverCallbackSourceInterface::DetectNeon, ELF VA 0x009dad14).  The
+    # test includes the recovered TU unchanged and supplies counting stubs for
+    # the two cpufeatures getters, so the probe's short-circuit, single-bit mask
+    # test and call order are asserted on the host.  Code-window agreement is
+    # measured by tools/compare/detect_neon_pilot.py, not here.
+    add_executable(detect_neon_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/driver_callback_detect_neon_test.cpp)
+    set_property(TARGET detect_neon_behaviour_test PROPERTY CXX_STANDARD 17)
+    target_include_directories(detect_neon_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(detect_neon_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME detect_neon_behaviour COMMAND detect_neon_behaviour_test)
 endif()

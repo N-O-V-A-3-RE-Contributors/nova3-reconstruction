@@ -4,7 +4,22 @@ Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and do
 
 ## Current source and exact limits
 
-Newest (2026-10-31): `reconstruction/recovered/libNOVA3_neon/cpu_features.c` is the
+Newest (2026-10-31): the caller side of the cpu-features work now exists.
+`reconstruction/recovered/libNOVA3_neon/driver_callback_detect_neon.cpp` is
+`vox::DriverCallbackSourceInterface::DetectNeon` (ELF VA `0x009dad14`, 32 B, A32):
+family != 1 → false, else one bit (bit 2) of `android_getCpuFeatures()`. It is
+IMPLEMENTED, behaviour-tested (`detect_neon_behaviour`, CTest) and measured
+`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION` in 6/6 NDK r8e 4.4.3 configs at
+32/32 B, with the two `BL` displacements as the only differing words;
+`code_window_equal` is false, no byte/compiler claim. `tools/compare/cpuquery_callsites.py`
+decoded all 39,108 bounded engine functions (0 undecodable) and found the whole
+cpu-features API surface: DetectNeon's only caller is
+`vox::DriverCallbackInterface::Init(void*)` (0x009d53f4, 48 B, call at 0x009d5414),
+and the only other consumer is a direct read in
+`glitch::collada::detail::CSoftwareSkinTechnique::init` (0x00739630, 1028 B, call
+at 0x00739764). Next slice is that 48-byte Init.
+
+Earlier (2026-10-31): `reconstruction/recovered/libNOVA3_neon/cpu_features.c` is the
 whole Premium `cpu-features.c` TU (getters + `android_cpuInit` + helpers) and its
 three exported getters (0x000d2f10/0x000d2f3c/0x000d2f6c, 44/48/44 B, A32) now match
 the reference instruction stream modulo the two unavoidable relocation words under
@@ -32,7 +47,10 @@ Native analyzed inventory:4ELFs,76,344symbol rows/73,318distinct binary+addresse
 
 ## Build and verification
 
-`NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` runs host tests, Python guard/archive checks, source-only artifact checks and selected original oracles. Latest host13/13, Python13/13, ASan/UBSan13/13, clean source-only Release13/13; ARMv7 source rebuild successful. Actual exit0 logs .cache/logs/scrambled-final-{checks,clean,sanitizer,armv7}.log. The 2026-10-31 cpu-features work added two CTest targets, so the current host count is 15/15 (`ctest --test-dir build/host`, Debug/Ninja) and `bash tools/check_all.sh` exits 0 with the new `cpu_features_init_test` in the audited-artifact list; the ASan/Release counts above predate that and were not re-run. Source-only guard rejects both original APKs and4ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
+`NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` runs host tests, Python guard/archive checks, source-only artifact checks and selected original oracles. Latest host13/13, Python13/13, ASan/UBSan13/13, clean source-only Release13/13; ARMv7 source rebuild successful. Actual exit0 logs .cache/logs/scrambled-final-{checks,clean,sanitizer,armv7}.log. The 2026-10-31 cpu-features and DetectNeon work added three CTest targets, so the
+current host count is 16/16 (`ctest --test-dir build/host`, Debug/Ninja) and
+`bash tools/check_all.sh` exits 0 with `cpu_features_init_test` and
+`detect_neon_behaviour_test` in the audited-artifact list (17 artifacts); the ASan/Release counts above predate that and were not re-run. Source-only guard rejects both original APKs and4ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
 
 `cmake -S . -B build/host -G Ninja && cmake --build build/host -j2 && ctest --test-dir build/host --output-on-failure` works from a source-only checkout. Clean disposable build: `.venv/bin/python tools/compare/clean_build.py`. Existing build/sanitize-nopie has clang ASan/UBSan/non-PIE flags needed on this host (docs/toolchain.md). Android NDK29 /opt/android-ndk, SDK ready, output build/android-armv7/libnova3_core.so; no APK packaging yet. No new host installs this continuation.
 
@@ -46,7 +64,13 @@ Core data checks: tools/compare/{package_resources,mesh_source,texture_corpus,et
 
 ## Next genuine source task
 
-Integrate SB readers into owned seekable/memory archive mounts, preserving actual custom filesystem precedence (customCreateAndOpenFile0x2a3afc; not exported yet). Header parser and CLI exist, not a mounted SB archive class. Then recover effect techniques/defines, material parameters, vertex semantic/byte normalization, samplers and scene/camera transforms for a newly implemented renderer. Actual first mesh buffer+4 references _2_-_Default; SMaterial uses24-byte SNewParam entries, count+16/array+20, type+8/value+20 per native createMaterial0x6a790c. First mesh images SF_Intro_Building_02_Wall.tga/TS_ground.tga resolve and source-decode. Effect dependency NV_DiffuseVC.bdae/#DiffuseVC-fx now found inside effects.gla; do not invent shader semantics or copy original GLSL into production. See NEXT.md for priority/details.
+Newest bounded task (NEXT.md): recover `vox::DriverCallbackInterface::Init`
+(ELF VA `0x009d53f4`, 48 B), the only in-binary caller of the recovered
+DetectNeon probe, using the same decode → source → pilot → CTest pattern; the
+alternative is bounding the NEON branch at `0x00739764` inside
+`CSoftwareSkinTechnique::init` (1028 B, much larger).
+
+Then: integrate SB readers into owned seekable/memory archive mounts, preserving actual custom filesystem precedence (customCreateAndOpenFile0x2a3afc; not exported yet). Header parser and CLI exist, not a mounted SB archive class. Then recover effect techniques/defines, material parameters, vertex semantic/byte normalization, samplers and scene/camera transforms for a newly implemented renderer. Actual first mesh buffer+4 references _2_-_Default; SMaterial uses24-byte SNewParam entries, count+16/array+20, type+8/value+20 per native createMaterial0x6a790c. First mesh images SF_Intro_Building_02_Wall.tga/TS_ground.tga resolve and source-decode. Effect dependency NV_DiffuseVC.bdae/#DiffuseVC-fx now found inside effects.gla; do not invent shader semantics or copy original GLSL into production. See NEXT.md for priority/details.
 
 ## Persistent analysis tools
 

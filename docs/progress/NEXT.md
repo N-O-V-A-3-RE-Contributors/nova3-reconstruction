@@ -1,37 +1,48 @@
 # Next tasks
 
-## Immediate: the cpu-features TU is behaviourally closed; one layout gap stays open (2026-10-31)
+## Immediate: DetectNeon is closed; the probe's single caller is the next slice (2026-10-31)
 
-`reconstruction/recovered/libNOVA3_neon/cpu_features.c` is the whole recovered
-TU.  The three getters are word-equal to the reference modulo link-time
-relocation words, the `.bss` layout matches, and the TU now has both helper
-tests (`cpu_features_behaviour`) and end-to-end initializer tests
-(`cpu_features_behaviour_init`, fixtures served through link-time
-`--wrap=open/read/close`).  What remains:
+`reconstruction/recovered/libNOVA3_neon/driver_callback_detect_neon.cpp` is
+`vox::DriverCallbackSourceInterface::DetectNeon` (ELF VA `0x009dad14`, 32 B).
+It is IMPLEMENTED, TESTED (`detect_neon_behaviour`, CTest) and measured
+`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION` 6/6 configs at 32/32 B with the
+two `BL` words as the only differences; `code_window_equal` stays false.
+The call-site search (`tools/compare/cpuquery_callsites.py`, 39,108 functions
+decoded, 0 undecodable) found exactly one in-binary caller and one other
+cpu-features consumer:
 
-1. **`android_cpuInit` is 2648 B against the reference's 2632 B.**  Char
-   signedness is settled (`-fsigned-char`; reference 11 `sxtb` / 18 `ldrsb` are
-   reproduced exactly), so the residual is inlining/scheduling: this compiler
-   inlines all three `has_list_item` feature tests while the reference sinks
-   the `vfpv3d16` comparison into a shared out-of-line tail.  Measured and
-   rejected already: all six feature-check orders (2648 each),
-   `-fno-toplevel-reorder` (2628 unsigned / different getter shapes),
-   `-fno-crossjumping` (2720), `-fno-reorder-blocks` and
-   `-fno-guess-branch-probability` (2612 each), `-fno-tree-dominator-opts`
-   (2800), `-fno-if-conversion2` (2652), `-fno-omit-frame-pointer` (2672).
-   The next bounded step is a *different GCC 4.4.3 patchlevel* (NDK r7c/r8b
-   prebuilt or a FSF 4.4.3 cross build), not more source edits: the source
-   already expresses the reference behaviour, and padding or hand-written
-   assembly is forbidden.  If no toolchain reproduces 2632 B, record that and
-   stop chasing it — the function is IMPLEMENTED and TESTED regardless.
-2. **Do not re-litigate the getter match.**  `cpu_features_pilot.py` keeps the
-   `-fsigned-char`, `-noToplevelReorder` and default rows visible so the
-   definition-order and signedness conclusions stay measured.
-3. **Next subsystem, not this TU.**  With the cpu-features slice closed to
-   TESTED, the next executable milestone is the caller side: find where
-   `android_getCpuFeatures()` gates NEON code paths in the engine (symbol/
-   call-site search in Ghidra exports) so the recovered TU can be linked into
-   a real source target rather than only a test binary.
+* `vox::DriverCallbackInterface::Init(void*)` — `0x009d53f4`, **48 B**, calls
+  DetectNeon at `0x009d5414`.
+* `glitch::collada::detail::CSoftwareSkinTechnique::init(...)` — `0x00739630`,
+  1028 B, calls `android_getCpuFeatures` directly at `0x00739764` (no family
+  gate, no helper).
+
+1. **Next bounded step: recover `vox::DriverCallbackInterface::Init` (48 B).**
+   It is the smallest remaining caller in the chain and it consumes the probe's
+   boolean, so it turns DetectNeon from a leaf into a linked source path. Do it
+   the same way this slice was done and in this order: decode the window with
+   `tools/compare/cpuquery_callsites.py --also 0x9d53f4:DriverCallbackInterfaceInit`
+   plus a small Capstone structure pass, write the source with every
+   constant/field INFERRED-or-observed labelled, then add
+   `tools/compare/<name>_pilot.py` and a CTest behaviour target. Do not guess the
+   `void*` parameter's type: 48 B is unlikely to prove it, and an unproven cast
+   is worse than an opaque parameter.
+2. **Then the Collada gate**, if the 48 B function has no source-visible
+   behaviour worth owning: `CSoftwareSkinTechnique::init` is where the engine
+   actually branches on NEON (1028 B, one direct cpu-features read). Recovering
+   the gate condition and the two paths is a real rendering decision, but it is
+   a much larger slice — bound it by the branch around `0x00739764` only, not by
+   the whole function.
+3. **Stop chasing `android_cpuInit`'s 12-byte residual.** It is 2648 B against
+   the reference 2632 B with char signedness settled (`-fsigned-char`), every
+   feature-check permutation measured and every relevant flag probed and
+   rejected (see the section below). Only a different GCC 4.4.3 patchlevel
+   would test the remaining hypothesis; if one is never tried, record that and
+   keep the function IMPLEMENTED + TESTED.
+4. **Keep the rejected hypotheses visible**: `-fno-toplevel-reorder` rows in
+   `tools/compare/cpufeatures_pilot.py`, the `-noToplevelReorder` objects under
+   `.cache/cpufeat/order/`, and the `-fno-*` measurements in STATUS.md. Do not
+   delete them.
 
 ## Previous: finish the cpu-features TU (2026-10-31)
 
