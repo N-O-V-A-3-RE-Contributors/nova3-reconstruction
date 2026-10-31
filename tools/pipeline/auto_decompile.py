@@ -121,6 +121,46 @@ def run_batch(binary: Path, batch_size: int, timeout: int, log, project_dir: str
     return new, "ok"
 
 
+def lock_path() -> Path:
+    return ROOT / ".cache/pipeline/auto_decompile.lock"
+
+
+def acquire_lock(binary_label: str) -> bool:
+    """Take the single-writer lock; False when another live run holds it.
+
+    Two concurrent runs would share the SQLite index and the Ghidra project, and
+    a killed session leaves a lock behind — so a holder whose PID is gone is
+    treated as stale and replaced instead of blocking the next run forever.
+    """
+    path = lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    holder = None
+    if path.exists():
+        try:
+            holder = int(json.loads(path.read_text()).get("pid"))
+        except (OSError, ValueError, TypeError, AttributeError):
+            holder = None
+        if holder and holder != os.getpid():
+            try:
+                os.kill(holder, 0)
+                return False
+            except OSError:
+                holder = None  # stale: the process that owned it is gone
+    path.write_text(json.dumps({"pid": os.getpid(), "started_at": utcnow(),
+                                "binary": binary_label}) + "\n")
+    return True
+
+
+def release_lock() -> None:
+    path = lock_path()
+    try:
+        if int(json.loads(path.read_text()).get("pid")) != os.getpid():
+            return
+        path.unlink()
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--binary", default=DEFAULT_BINARY)
@@ -169,6 +209,24 @@ def main() -> int:
                          indent=2))
         return 0
 
+    if not acquire_lock(args.binary):
+        holder = "unknown"
+        try:
+            holder = str(json.loads(lock_path().read_text()).get("pid"))
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+        print("auto_decompile: another run already owns %s (pid %s).\n"
+              "  Wait for it, or remove the lock if that process is gone."
+              % (lock_path().relative_to(ROOT), holder), file=sys.stderr)
+        return 4
+
+    try:
+        return _run(binary, digest, args, log, state_path, log_path)
+    finally:
+        release_lock()
+
+
+def _run(binary: Path, digest: str, args, log, state_path: Path, log_path: Path) -> int:
     ensure_index(binary, log)
     (ROOT / "generated/ghidra").mkdir(parents=True, exist_ok=True)
     total, exported = index_counts(digest)

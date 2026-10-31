@@ -236,11 +236,23 @@ def cmd_doctor(root: Path, as_json: bool) -> int:
 # index / decompile / status
 # --------------------------------------------------------------------------- #
 def cmd_index(root: Path) -> int:
-    proc = run([PY, str(root / "tools/index/inventory.py")])
-    sys.stdout.write(proc.stdout[-4000:])
+    print("indexing reference binaries (tools/index/inventory.py, ~45 s)...")
+    proc = run([PY, str(root / "tools/index/inventory.py")], timeout=1800)
     if proc.returncode != 0:
-        sys.stderr.write(proc.stderr[-2000:])
+        sys.stderr.write(proc.stdout[-2000:])
+        sys.stderr.write(proc.stderr[-3000:])
         return proc.returncode
+    path = db_path(root)
+    if not path.exists():
+        print("index reported success but %s is missing" % DB_REL, file=sys.stderr)
+        return 1
+    with sqlite3.connect(path) as db:
+        binaries = db.execute("SELECT hash, path FROM binaries").fetchall()
+    print("index built: %s" % DB_REL)
+    for digest, name in binaries:
+        print("  %-24s %9s functions  %s" % (Path(name).name, human(rows_for(root, digest)),
+                                             digest[:12]))
+    print("full ELF metadata: research/elf/inventory.json\nnext: ./nova3 decompile")
     return 0
 
 
@@ -280,10 +292,13 @@ def cmd_decompile(root: Path, args) -> int:
     sys.stdout.write(proc.stdout)
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr[-3000:])
+        if proc.returncode == 4:
+            print("another decompilation run owns the lock; this one did nothing.")
+        return proc.returncode
     print("\nexports: %s/<sha256>/%s\nstate:   .cache/pipeline/auto_decompile_state.json"
           % (EXPORTS_REL, "{addr:08x}.json"))
     print("inspect one: ./nova3 show 0x000d2f10")
-    return proc.returncode
+    return 0
 
 
 def cmd_status(root: Path, as_json: bool) -> int:

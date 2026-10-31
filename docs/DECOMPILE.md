@@ -73,6 +73,11 @@ stopped. Progress is checkpointed after every batch in
 `.cache/pipeline/auto_decompile_state.json` and logged to
 `.cache/logs/auto_decompile.log`.
 
+A single-writer lock (`.cache/pipeline/auto_decompile.lock`) stops two runs from
+sharing the index and Ghidra project: a second live run exits `4` and does
+nothing, while a lock left behind by a killed run is detected as stale and
+replaced automatically.
+
 Measured on the maintainer's N5100 (4 cores / 8 GiB): cold batch ~69 s (ELF
 import dominates), warm batch ~22 s per 2 functions, i.e. roughly 11 s per
 function. That is why the default is bounded and the full ELF is not a
@@ -177,6 +182,7 @@ workaround; granting the run the GitHub capability is the supportable route.
 | `no JDK found` | `JAVA_HOME` unset and no JDK under `/usr/lib/jvm` | install `jdk-openjdk`, or set `JAVA_HOME` |
 | `reference SHA-256 ... != expected` | wrong/different engine build | restore the original file; do not re-extract a different version |
 | batch reports `stalled` with 0 new exports | exporter failed on that address | read the tail it prints and `.cache/logs/auto_decompile.log` |
+| `another run already owns .cache/pipeline/auto_decompile.lock (pid N)` | a decompilation run is live | wait for it; delete the lock only if that PID is gone |
 | `ORA`/oracle tests fail in a worktree | private `research/assets` not linked | `bash tools/setup/link_private_references.sh` |
 
 Every command is safe to re-run. Nothing here deletes an existing export unless

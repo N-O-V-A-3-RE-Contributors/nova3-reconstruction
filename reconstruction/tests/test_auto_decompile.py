@@ -7,6 +7,7 @@ argument/verification/status contract, so they run on a clean checkout with no
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -49,3 +50,45 @@ def test_batch_arguments_are_wired_to_the_exporter():
     assert '"--all-symbols"' in source
     assert '"--project-dir"' in source
     assert "tools/ghidra/export_batch.py" in source
+
+
+# --------------------------------------------------------------------------- #
+# single-writer lock (unattended runs are easy to start twice)
+# --------------------------------------------------------------------------- #
+def _driver_module():
+    sys.path.insert(0, str(ROOT / "tools/pipeline"))
+    try:
+        import auto_decompile
+    finally:
+        sys.path.pop(0)
+    return auto_decompile
+
+
+def test_lock_refuses_a_second_run_while_the_holder_is_alive(tmp_path, monkeypatch):
+    driver = _driver_module()
+    monkeypatch.setattr(driver, "ROOT", tmp_path)
+    path = driver.lock_path()
+    path.parent.mkdir(parents=True)
+    holder = subprocess.Popen(["sleep", "30"])
+    try:
+        path.write_text(json.dumps({"pid": holder.pid, "started_at": "t"}))
+        assert driver.acquire_lock("binary.so") is False
+        # The foreign lock must survive a refused attempt.
+        assert json.loads(path.read_text())["pid"] == holder.pid
+    finally:
+        holder.terminate()
+        holder.wait(timeout=10)
+
+
+def test_lock_replaces_a_stale_holder_and_releases_its_own(tmp_path, monkeypatch):
+    driver = _driver_module()
+    monkeypatch.setattr(driver, "ROOT", tmp_path)
+    path = driver.lock_path()
+    path.parent.mkdir(parents=True)
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    path.write_text(json.dumps({"pid": dead.pid}))          # PID no longer exists
+    assert driver.acquire_lock("binary.so") is True
+    assert json.loads(path.read_text())["pid"] == os.getpid()
+    driver.release_lock()
+    assert not path.exists()
