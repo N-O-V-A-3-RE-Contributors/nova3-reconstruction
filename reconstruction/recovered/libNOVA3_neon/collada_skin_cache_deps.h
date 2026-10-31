@@ -64,6 +64,7 @@ template <typename T>
 class CMatrix4 {
 public:
     enum eConstructor {
+        kObservedConstructorValue0 = 0,  // value 0; see collada_matrix_multiply.cpp
         kObservedConstructorValue2 = 2,  // value 2; the other enumerators are unknown
     };
 

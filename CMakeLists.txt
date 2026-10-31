@@ -212,4 +212,24 @@ if(BUILD_TESTING)
     target_compile_options(collada_skin_prepare_cache_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME collada_skin_prepare_cache_behaviour
              COMMAND collada_skin_prepare_cache_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::operator*<float,
+    # collada::SMatrix>(CMatrix4<float> const&, SMatrix const&)
+    # (ELF VA 0x006e7e60, 564 B, A32).  The test includes the recovered TU
+    # unchanged and supplies only the CMatrix4(eConstructor) body, so the real
+    # arithmetic and the real constructor call are exercised: the 3x3 part and the
+    # translation row are checked against an independently written generic 4x4
+    # product, the result's fourth column is proved to be the literal 0.0f/1.0f
+    # (the CMatrix4's (3,3) element is never read), and the SMatrix's fourth float
+    # per row is proved unread with both a large sentinel and a NaN.
+    # Instruction agreement is measured by tools/compare/collada_matrix_multiply_pilot.py.
+    add_executable(collada_matrix_multiply_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix_multiply_test.cpp)
+    set_property(TARGET collada_matrix_multiply_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix_multiply_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix_multiply_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix_multiply_behaviour
+             COMMAND collada_matrix_multiply_behaviour_test)
 endif()

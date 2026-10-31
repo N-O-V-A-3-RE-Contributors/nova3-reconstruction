@@ -1,5 +1,26 @@
 # Session log
 
+## 2026-11-01 — fourth run: `glitch::core::operator*<float, SMatrix>` recovered
+
+- Decoded `0x006e7e60` (564 B, A32) with Capstone from the Premium ELF (SHA-256
+  `84075223...048abbaaf`); resolved the single `bl` to
+  `_ZN6glitch4core8CMatrix4IfEC1ENS2_12eConstructorE` (`0x00108c54`) from `.symtab`.
+- Established the element mapping from the store offsets (16 `vstr`, byte
+  0x00..0x3c) rather than from a matrix convention: row-major, rows 0..2 linear,
+  row 3 translation, fourth column literal 0.0f/1.0f; the CMatrix4's floats
+  3/7/11/15 and the SMatrix's fourth float per row are never loaded.
+- Wrote `collada_matrix_multiply.{h,cpp}` plus CTest
+  `collada_matrix_multiply_behaviour`; four mutants run and killed; wired into
+  `tools/check_all.sh`'s audit list, `record_build_provenance.py` and the oracle
+  block.
+- Measured with NDK r8e GCC 4.4.3: `-O3` 540 B vs 564 B with an identical
+  instruction mix apart from 6 `vldr` (the SMatrix's middle component kept live);
+  `-O2`/`-Os` stay looped (264/260 B). `source_matching_verified=False`.
+- `ctest` 20/20, `./nova3 verify` rc=0. Regression pilots: three leaves still
+  byte-equal, `prepareCache` still 224 B. The full
+  `NOVA3_RESEARCH_ORACLES=1 check_all.sh` exceeded the foreground time limit and
+  was not completed this session; the three Collada pilots were run individually.
+
 ## 2026-10-25 — initial source reconstruction checkpoint
 
 - Read actual AGENTS.md; verified /home/jason account via getent and workspace path. Root shell used runuser -u jason for analysis/build work. Initial disk38GiB free, RAM7.6GiB total/~4GiB available; no attached ADB device. No host package installs, service/security/global configuration changes intentionally performed.

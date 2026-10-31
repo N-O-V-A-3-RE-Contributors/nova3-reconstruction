@@ -1,5 +1,40 @@
 # Next tasks
 
+## The matrix product is recovered; the next slice is its constructor (2026-11-01)
+
+`glitch::core::operator*<float, SMatrix>` (`0x006e7e60`, 564 B) is IMPLEMENTED +
+TESTED, measured NOT MATCHED (identical instruction mix, 6 fewer `vldr`). The
+Collada matrix chain now has real arithmetic in both directions: `prepareCache`
+builds the destination vector and this operator computes each element.
+
+1. **Bounded next step: recover `glitch::core::CMatrix4<float>::CMatrix4(
+   eConstructor)`** at `0x00108c54` (56 B, `.symtab` exact). It is the one
+   unresolved dependency shared by *both* recovered Collada units, it is small,
+   and its callers already pin the two argument values used (2 in `prepareCache`,
+   0 here). Same pattern: decode → source with observed/INFERRED labels → pilot
+   (`tools/compare/`) → CTest. Record-and-stop if the enumerator bodies cannot be
+   pinned from 56 bytes.
+2. **Do not chase the 6-load gap** in `operator*` (the SMatrix's middle component
+   kept live across a row) nor `prepareCache`'s 4-byte gap. Both are measured
+   codegen residuals with every semantic fact matching; only a different GCC
+   4.4.3 patchlevel would move them.
+3. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+4. **Full oracle chain, once, when a session has the time:** the
+   `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` run exceeded the foreground
+   limit; the new pilot is wired in at
+   `.cache/cpufeat/collada_multiply/check_all.json` and is unverified *inside* the
+   chain until that completes.
+5. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
+
 ## prepareCache is done; the next slice is its SMatrix consumer (2026-11-01)
 
 `CSoftwareSkinTechnique::prepareCache` (`0x0073f0a4`, 228 B) is IMPLEMENTED +

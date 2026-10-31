@@ -1,5 +1,92 @@
 # Status — source resource, mesh and texture reconstruction
 
+## The matrix product behind prepareCache is now real arithmetic (2026-11-01, fourth run)
+
+**`glitch::core::operator*<float, glitch::collada::SMatrix>(CMatrix4<float>
+const&, SMatrix const&)`** (`_ZN6glitch4coremlIfNS_7collada7SMatrixEEENS0_8CMatrix4
+IT_EERKS6_RKT0_`, ELF VA `0x006e7e60`, 564 B, A32) is source, so the 64-byte
+product `prepareCache` stores is no longer opaque. New files:
+`reconstruction/recovered/libNOVA3_neon/collada_matrix_multiply.{h,cpp}`,
+`reconstruction/tests/recovered/libNOVA3_neon/collada_matrix_multiply_test.cpp`
+(CTest `collada_matrix_multiply_behaviour`), and
+`tools/compare/collada_matrix_multiply_pilot.py` (17/17 structure checks re-derived
+from the reference bytes, exit 0).
+
+**What the 564 bytes do, read instruction by instruction.** sret in r0 → r6;
+r1 (CMatrix4) → r4; r2 (SMatrix) → r5; one `bl` to
+`CMatrix4<float>::CMatrix4(eConstructor)` with `this` = the result and **r1 = 0**,
+and all 16 result floats are then overwritten. The element mapping below is in
+float index (`row*4+column`), taken from the store offsets, not assumed:
+
+- result(row,column) = S(row,0)*A(0,column) + S(row,1)*A(1,column) +
+  S(row,2)*A(2,column) for rows 0..2 and columns 0..2;
+- the result's fourth column is a **literal** 0.0f for rows 0..2 and 1.0f for
+  row 3: the CMatrix4's floats 3/7/11/15 are never loaded, so the result does not
+  depend on them;
+- result(3,column) = the SMatrix's translation row against the CMatrix4's linear
+  part, **plus** the CMatrix4's own translation (floats 12/13/14);
+- every SMatrix row contributes only its first three floats — the fourth float of
+  each row is never loaded.
+
+So both operands are affine, the SMatrix as four rows of three used components,
+and the multiply is the plain 4x4 product with the two implicit fourth columns
+folded in. That reading is INFERRED and labelled; the arithmetic is observed.
+
+**Window, measured** (NDK r8e GCC 4.4.3, `-fvisibility=hidden` unless noted):
+
+| config | ref | candidate | words |
+|---|---|---|---|
+| `-O2` | 564 B | 264 B | `FUNCTION_SIZE_MISMATCH` (loops not unrolled) |
+| `-O3` | 564 B | **540 B** | `FUNCTION_SIZE_MISMATCH`, 7 EQUAL / 1 RELOCATION_FIELD / 127 encoding |
+| `-Os` | 564 B | 260 B | `FUNCTION_SIZE_MISMATCH` |
+| `-O2` default | 564 B | 264 B | `FUNCTION_SIZE_MISMATCH` (negative control) |
+
+`code_window_equal=False`, `source_matching_verified=False`. The residual is
+measured, not guessed: at `-O3` the **instruction mix is identical** — 12
+`vmul.f32`, 24 `vmla.f32`, 3 `vadd.f32`, 16 `vstr`, 1 `vl`, 1 `push`/`pop`, 1
+`vmov.f32 #1.0` — and the only difference is **6 `vldr` (76 reference vs 70
+candidate)**, i.e. 24 B. Per offsets, the candidate keeps the SMatrix's second
+component of each row (offsets 0x04/0x14/0x24) live across that row's three
+columns (1 load instead of 3, ×3 rows ×2) while the reference re-loads. The
+result object is a fresh sret local, so the compiler may cache it legally; the
+original evidently did not. Not chased, same class as the `cpuInit` and
+`prepareCache` residuals; no source construct is missing.
+
+**One source-form finding, recorded.** The operands and the result are addressed
+as flat `float*` arrays. With the member-accessor form the compiler cached
+operands in VFP registers and emitted 70 loads at `-O3` (540 B) after the
+`-funroll-loops`/`-O3` unroll, but the same accessor form at `-O2` stayed loops
+(232 B). The shipped form is the array form, which is both the simplest model of
+the observed addressing and the one whose counts match the reference.
+
+**Behaviour test with negative controls.** `collada_matrix_multiply_behaviour`
+includes the recovered TU unchanged and supplies only the `CMatrix4(eConstructor)`
+body (call-counted). It asserts: identity × identity = identity; a
+rotation-times-scale/translation fixture against an independently written generic
+4x4 product; the result's fourth column is literal (the CMatrix4's 3/7/11/15
+filled with junk changes nothing); the SMatrix's fourth float per row is unread
+(1e30 and NaN give bit-identical results); exactly one constructor call per
+multiply; the operator is pure. Four mutants actually run and killed:
+translation addend dropped (`FAIL: translation x is wrong`), result (3,3) taken
+from the input (`FAIL: the CMatrix4 fourth column must not be read`), SMatrix
+lane 3 read instead of lane 1, and a wrong translation coefficient.
+
+**Verification actually run:** `cmake --build build/host` clean; `ctest` **20/20
+pass**; `./nova3 verify` (build + CTest + source-only audit) **rc=0** with the new
+binary audited. Regression pilots after the `collada_skin_cache_deps.h` change
+(one enumerator added for constructor value 0): the three 8-byte leaves still
+**byte-equal** (`collada_skin_trivial_pilot.py`, `source_matching_verified=true`)
+and `prepareCache` unchanged at 224 B with its leaves still equal. The full
+`NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` chain was **not** run to
+completion this session — it exceeded the harness's foreground time limit; the
+three Collada pilots in it were each run individually instead, and the new one is
+wired into the chain for the next full run.
+
+**Disposition:** `operator*` = IMPLEMENTED + TESTED; **NOT MATCHED** (identical
+instruction mix, 6 fewer loads). `prepareCache`'s 4-byte gap and `android_cpuInit`
+are unchanged and still not chased.
+
+
 ## prepareCache is recovered and tested; its 4-byte gap is scheduling, not semantics (2026-11-01, third run)
 
 **`glitch::collada::detail::CSoftwareSkinTechnique::prepareCache`

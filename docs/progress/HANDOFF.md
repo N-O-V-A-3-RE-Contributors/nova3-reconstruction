@@ -4,7 +4,7 @@ Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and do
 
 ## Source-recovered native chain (2026-11-01, third run)
 
-Seven source-owned functions across six files in
+Eight source-owned functions across seven files in
 `reconstruction/recovered/libNOVA3_neon/`, all IMPLEMENTED + TESTED:
 
 - the `cpu-features.c` TU (`cpu_features.c`) and its no-argument query thunks
@@ -19,7 +19,13 @@ Seven source-owned functions across six files in
   TESTED, **NOT MATCHED**: 224 B candidate, 17 words equal, 5 relocation words,
   the rest register scheduling. Its five dependencies are declared with the
   reference mangled names in `collada_skin_cache_deps.h` and are NOT
-  reconstructed; the class layout at +0x04/+0x08/+0x0c is declared there.
+  reconstructed; the class layout at +0x04/+0x08/+0x0c is declared there;
+- `glitch::core::operator*<float, collada::SMatrix>(CMatrix4<float> const&,
+  SMatrix const&)` (0x006e7e60, 564 B) — IMPLEMENTED + TESTED, **NOT MATCHED**:
+  identical instruction mix at `-O3` (12 `vmul`/24 `vmla`/3 `vadd`/16 `vstr`) but
+  540 B, the difference being 6 `vldr` (the SMatrix's middle component kept live
+  across a row). `collada_matrix_multiply.{h,cpp}`; the SMatrix is declared there
+  as 64 B of four rows of four floats with only three components per row read.
 
 The cpu-features consumer surface is closed: `CSoftwareSkinTechnique::init`
 (0x00739630) only lazily fills the TU-local 8-byte `cpuFeatures` static
@@ -29,10 +35,10 @@ Reproduce with `tools/compare/skin_cpu_cache.py`. Both call sites live inside
 1 KB / 4 KB functions and are NOT reconstructed.
 
 Machine-code evidence per unit: `tools/compare/{cpufeatures,detect_neon,
-driver_callback_init,skin_cpu_cache,collada_skin_trivial}_pilot.py` (the last two
-are named `skin_cpu_cache.py` and `collada_skin_trivial_pilot.py`). `ctest` is
-19/19. Next slice: `glitch::core::operator*<float, SMatrix>` at 0x006e7e60
-(564 B), the only semantic dependency prepareCache calls.
+driver_callback_init,skin_cpu_cache,collada_skin_trivial,collada_skin_prepare_cache,
+collada_matrix_multiply}_pilot.py` (also `skin_cpu_cache.py`). `ctest` is 20/20;
+`./nova3 verify` is rc=0. Next slice: `CMatrix4<float>::CMatrix4(eConstructor)`
+at 0x00108c54 (56 B), the one dependency shared by both Collada units.
 
 ## Front door for everything analysis-related (2026-11-01)
 
