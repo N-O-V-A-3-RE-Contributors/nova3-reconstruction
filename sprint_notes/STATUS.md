@@ -1,5 +1,52 @@
 # Sprint status — NOV-3 heartbeats
 
+## 2026-11-01 (sixth run) — CMatrix4<float>(CMatrix4 const&, eConstructor) recovered
+
+### Function under reconstruction
+- `_ZN6glitch4core8CMatrix4IfEC1ERKS2_NS2_12eConstructorE`
+  ELF VA 0x00108c8c, 240 B, A32, STT_FUNC (exact `.symtab` bounds)
+- Reference: `analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so`,
+  SHA-256 `84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf`
+  (the pilot refuses a mismatched reference)
+
+### Evidence summary
+`sub r2,r2,#1` / `cmp r2,#4` / `addls pc,pc,r2,lsl #2`; with ARM PC = insn+8 the
+five table entries start at `addls+8`: value 1 copy (4 `ldm`/`stm` pairs = 64 B),
+2 identity (`memset` stub 137 + four diagonal `vstr`), 3 `getTransposed(source,
+this)` (0x000eba84), 4 `getInverse(source, this)` (0x000ebb08) with a zero-result
+`memset`, 5 `getInverse` then transpose in place through a stack local built by
+the plain ctor with r1=0; 0 and >= 6 fall through to the epilogue and write
+nothing. 10 in-binary call sites: 8 x `r2=1`, 2 x `r2=4`.
+
+### Files changed
+- `reconstruction/recovered/libNOVA3_neon/collada_matrix4_copy_ctor.cpp` — new
+- `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_copy_ctor_test.cpp` — new
+- `tools/compare/collada_matrix4_copy_ctor_pilot.py` — new
+- `reconstruction/recovered/libNOVA3_neon/collada_skin_cache_deps.h` — enum values
+  3/4/5, copy ctor and the two dependency declarations
+- `CMakeLists.txt`, `tools/check_all.sh`, `tools/setup/record_build_provenance.py`
+- `docs/progress/{STATUS,NEXT,SESSION_LOG,HANDOFF}.md`, this file
+
+### Commands
+```
+.venv/bin/python tools/compare/collada_matrix4_copy_ctor_pilot.py \
+  --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so \
+  --out .cache/cpufeat/collada_copy_ctor/pilot.json      # 8.4 s, rc=0
+cmake --build build/host && ctest --test-dir build/host   # 22/22
+bash tools/check_all.sh                                   # rc=0, 23 artifacts
+```
+
+### Result
+- Status: IMPLEMENTED + TESTED; window **NOT MATCHED** — 240/240 B, 28 EQUAL /
+  7 RELOCATION_FIELD / 25 encoding, non-branch word multiset exactly equal
+  (41/41); the difference is block placement (`4,2,3,1` vs `1,3,4,2`).
+  `code_window_equal=False`, `source_matching_verified=False`.
+- Four mutants run and killed; restored source passes.
+
+### Next ONE source-recovery step
+`glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const` at
+`0x000eba84` (132 B) — smallest remaining dependency of this constructor.
+
 ## 2026-11-01 (fifth run) — CMatrix4<float>(eConstructor) recovered, window matched modulo relocation
 
 ### Function under reconstruction

@@ -250,4 +250,26 @@ if(BUILD_TESTING)
     target_compile_options(collada_matrix4_ctor_behaviour_test PRIVATE -UNDEBUG)
     add_test(NAME collada_matrix4_ctor_behaviour
              COMMAND collada_matrix4_ctor_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::CMatrix4(
+    # CMatrix4<float> const&, eConstructor) (ELF VA 0x00108c8c, 240 B, A32).
+    # The test includes both recovered constructor TUs unchanged and supplies
+    # only the two unrecovered dependencies (getTransposed 0x000eba84,
+    # getInverse 0x000ebb08) as instrumented stand-ins.  Asserted per enumerator
+    # value: 1 copies the source, 2 builds the identity, 3 writes the transpose
+    # of the source into `this`, 4 stores the inverse and zeroes the object on
+    # failure, 5 stores transpose(inverse(source)) and skips the transpose when
+    # the inverse fails, 0 and >= 6 write nothing at all; guard bytes prove no
+    # store lands outside the 64-byte object.
+    # Instruction agreement is measured by
+    # tools/compare/collada_matrix4_copy_ctor_pilot.py.
+    add_executable(collada_matrix4_copy_ctor_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_copy_ctor_test.cpp)
+    set_property(TARGET collada_matrix4_copy_ctor_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_copy_ctor_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_copy_ctor_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_copy_ctor_behaviour
+             COMMAND collada_matrix4_copy_ctor_behaviour_test)
 endif()

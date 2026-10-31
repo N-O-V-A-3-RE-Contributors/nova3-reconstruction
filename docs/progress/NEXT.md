@@ -1,5 +1,49 @@
 # Next tasks
 
+## The copy-with-mode constructor is done; the next slice is its transpose dependency (2026-11-01)
+
+`glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float> const&, eConstructor)`
+(`0x00108c8c`, 240 B) is IMPLEMENTED + TESTED and measured **NOT MATCHED**: the
+instruction content is identical (41/41 non-branch words as a multiset) but the
+reference lays the four trailing case blocks out `4,2,3,1` where this compiler
+emits `1,3,4,2`, so 25 displacement words differ. The five enumerator values are
+now pinned from the bytes (1 copy, 2 identity, 3 transpose, 4 inverse, 5
+inverse-transpose; 0 and >= 6 write nothing) and the in-binary call sites agree:
+10 calls, 8 x `r2=1`, 2 x `r2=4`.
+
+1. **Bounded next step: recover `glitch::core::CMatrix4<float>::getTransposed(
+   CMatrix4<float>&) const`** at `0x000eba84` (132 B, `.symtab` exact). It is the
+   smallest dependency the just-recovered constructor calls and it is already
+   declared in `collada_skin_cache_deps.h`, so recovering it turns value 3 (and
+   value 5's in-place transpose) from an instrumented stand-in into real
+   arithmetic. Same pattern: decode → source with observed/INFERRED labels →
+   `tools/compare/collada_matrix4_transpose_pilot.py` → CTest. Read the element
+   mapping out of its own load/store offsets first; if 132 B cannot pin the
+   mapping, record that and stop rather than assuming a transpose convention.
+2. **Do not chase the block-order residual.** Source case order was measured to
+   have no effect (six permutations, identical counts) and eleven `-fno-*` /
+   reorder flags were measured (`-fno-reorder-blocks` 15 EQUAL,
+   `-fno-schedule-insns2` 19, `-fno-guess-branch-probability` 4,
+   `-fno-crossjumping` 292 B, the rest 28). It is bb-reorder placement, not a
+   missing source construct.
+3. **Keep the `-fno-pic` row.** It is the negative control that proves the
+   dispatcher form (`addls pc,pc,r2,lsl #2`) comes from the default
+   configuration, not from a flag chosen to fit; it changes the table to
+   `ldrls pc,[pc,...]` and 12 relocation words.
+4. **Do not re-open the settled residuals**: `operator*`'s 6-load gap
+   (`0x006e7e60`, 540 vs 564 B), `prepareCache`'s 4-byte gap and
+   `android_cpuInit`'s 2648-vs-2632 B.
+5. **Publish is still a credential grant, and nothing else.** Managed broker
+   token absent; `gh` not logged in; the host SSH key authenticates as
+   `UmbraSecurity` but the remote answers `Permission ... denied`. Either grant
+   this agent GitHub capability and run `./nova3 push`, or from the maintainer's
+   terminal run `GH_TOKEN=<repo-scoped token> bash tools/setup/push_branch.sh`.
+   `NOVA3_PUSH_DRY_RUN=1` rehearses.
+6. **Early-development codebase, when supplied**: candidate source under
+   `reconstruction/third_party/<name>/` with a pinned commit and a
+   licence/provenance record in `docs/decisions/ARCHITECTURE.md`; it upgrades no
+   completion state by itself.
+
 ## The shared matrix constructor is done; the next slice is its copy-construct sibling (2026-11-01)
 
 `glitch::core::CMatrix4<float>::CMatrix4(eConstructor)` (`0x00108c54`, 56 B) is

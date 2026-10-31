@@ -1,5 +1,45 @@
 # Session log
 
+## 2026-11-01 — sixth run: `CMatrix4<float>(CMatrix4<float> const&, eConstructor)` recovered
+
+- Decoded `0x00108c8c` (240 B, A32) with Capstone from the Premium ELF
+  (SHA-256 `84075223...048abbaaf`). First decode got the jump table wrong by one
+  word: ARM reads PC as *instruction + 8*, so the five entries start at
+  `addls+8`. Re-deriving with that offset resolved all five arms.
+- Resolved every callee from `.symtab`/`.dynsym`: `0x00108c54` the plain
+  `CMatrix4(eConstructor)` (called with `r1 = 0`), `0x000eba84`
+  `getTransposed(CMatrix4&) const` (132 B), `0x000ebb08`
+  `getInverse(CMatrix4&) const` (776 B), `0xd2610` the `.rel.plt` stub 137 ->
+  `memset`.
+- Per value: 1 copy (64-byte `ldm`/`stm`), 2 identity, 3 `getTransposed(source,
+  this)`, 4 `getInverse` + zero-on-failure, 5 `getInverse` then transpose in
+  place through a 64-byte stack local built by the plain ctor with value 0;
+  0 and >= 6 write nothing (the `b` right after `addls`).
+- Call sites: 10 in-binary, 8 x `r2=1`, 2 x `r2=4` (spark particle emitters).
+- Source form experiments, all measured: 6 case-order permutations (identical
+  output, i.e. source order does not drive the emitted body order) and 11 flags
+  (`-fno-reorder-blocks` 15 EQUAL, `-fno-schedule-insns2` 19,
+  `-fno-guess-branch-probability` 4, `-fno-crossjumping` 292 B, `-fno-schedule-insns`
+  / `-fno-tree-copyrename` / `-fno-if-conversion2` / `-fno-tree-dominator-opts` /
+  `-fno-toplevel-reorder` / `-freorder-blocks-and-partition` 28 each).
+- `-fno-pic` was rejected and kept only as a negative-control row: it switches the
+  dispatcher to `ldrls pc,[pc,...]` and 12 relocation words.
+- Window: 240/240 B at `-O2`/`-O3`/`-O2 default` with 28 EQUAL / 7
+  RELOCATION_FIELD / 25 encoding, and the non-branch instruction multiset exactly
+  equal (41/41). Residue is block placement (`4,2,3,1` vs `1,3,4,2`).
+- New CTest `collada_matrix4_copy_ctor_behaviour`; four mutants run and killed.
+  Wired into `CMakeLists.txt`, `tools/check_all.sh`, `record_build_provenance.py`
+  and the oracle block.
+- Pilot performance: the naive call-site sweep took 54 s (15.4 s in pyelftools
+  `Symbol` objects alone). Rewrote the symbol table as one `struct.unpack`
+  pass plus a BL/B opcode scan over `.text`: 8.4 s end to end.
+- `cmake --build build/host` clean, `ctest` 22/22, `bash tools/check_all.sh`
+  rc=0 with 23 audited artifacts, tooling pytest 30 passed. Regression pilots:
+  three leaves still byte-equal (`all_configs_exact=true`), `prepareCache` 224 B,
+  `operator*` 540 B, plain constructor 56 B
+  (`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION`, 74 call sites) — unchanged by
+  the header additions.
+
 ## 2026-11-01 — fourth run: `glitch::core::operator*<float, SMatrix>` recovered
 
 - Decoded `0x006e7e60` (564 B, A32) with Capstone from the Premium ELF (SHA-256

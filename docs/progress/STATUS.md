@@ -1,5 +1,127 @@
 # Status — source resource, mesh and texture reconstruction
 
+## The copy-with-mode matrix constructor is recovered, and its five enumerator paths are named from the bytes (2026-11-01, sixth run)
+
+**`glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float> const&,
+CMatrix4<float>::eConstructor)`** (`_ZN6glitch4core8CMatrix4IfEC1ERKS2_NS2_12eConstructorE`,
+ELF VA `0x00108c8c`, 240 B, A32, exact `.symtab` bounds) is source. It is the
+sibling of the plain constructor recovered last run, and it is the only function
+in the reference that separates the enumerator values above 2 — which is exactly
+what the plain constructor's `<= 1` guard could not show. New files:
+`reconstruction/recovered/libNOVA3_neon/collada_matrix4_copy_ctor.cpp`,
+`reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_copy_ctor_test.cpp`
+(CTest `collada_matrix4_copy_ctor_behaviour`) and
+`tools/compare/collada_matrix4_copy_ctor_pilot.py` (structure pass re-derives
+every fact from the reference, exit 0).
+
+**The dispatcher, and the ARM PC quirk that decodes it.** `sub r2,r2,#1` /
+`push {r4,r5,lr}` / `mov r4,r0` / `sub sp,sp,#0x44` / `cmp r2,#4` /
+`addls pc,pc,r2,lsl #2`. ARM reads PC as *instruction + 8*, so the five jump-table
+entries start **two words after** the `addls`, not immediately after it:
+
+| value | table word | target | behaviour |
+|---|---|---|---|
+| 1 | `0x108ca8` | `0x108d74` | copy the source's 64 bytes (four `ldm`/`stm` pairs) |
+| 2 | `0x108cac` | `0x108d40` | `memset(this,0,0x40)` + four diagonal `vstr` (identity) |
+| 3 | `0x108cb0` | `0x108d64` | `getTransposed(source, this)` |
+| 4 | `0x108cb4` | `0x108d1c` | `getInverse(source, this)`; zero result -> `memset` |
+| 5 | `0x108cb8` | `0x108cbc` | `getInverse(source, this)`, then transpose in place |
+| 0 and >= 6 | — | `0x108d10` | the `b` right after `addls`: epilogue, **no store at all** |
+
+**Every callee resolved by address, not guessed.** `0x00108c54` is the plain
+`CMatrix4(eConstructor)` (called with `r1 = 0`, i.e. the no-op value, purely to
+introduce the 64-byte stack local); `0x000eba84` is
+`CMatrix4<float>::getTransposed(CMatrix4<float>&) const` (132 B); `0x000ebb08` is
+`CMatrix4<float>::getInverse(CMatrix4<float>&) const` (776 B); `0x000d2610` is
+the same `.rel.plt` stub 137 -> `.dynsym` `memset` the plain constructor uses.
+So value 5 is `*this = transpose(inverse(source))`: the transpose is taken of the
+object that just received the inverse (`mov r0,r4` at `0x108cdc`), written into the
+local, and copied back through the same 64-byte tail value 1 uses.
+
+**The getInverse contract, read off the instruction.** `bl getInverse` then
+`subs r1,r0,#0` then a conditional branch: the return value is tested for zero in
+`r0`, and the same `subs` leaves `r1 = 0` for the `memset` on the failure path. So
+a failed inverse produces the **all-zero matrix**, not the identity. The return
+*type* is not in the Itanium mangling, so `bool` stays INFERRED while the zero
+test is observed.
+
+**Call-site distribution, measured.** 10 in-binary direct calls to `0x00108c8c`:
+**8** pass a literal `r2 = 1` and **2** pass `r2 = 4` (both in the `spark`
+particle emitters' forward/reverse system updates). Values 2, 3 and 5 have **no**
+in-binary caller, so their names carry no call-site evidence at all — which is
+why the enum names in `collada_skin_cache_deps.h` are marked INFERRED while the
+five behaviours above are observed.
+
+**Window, measured** (NDK r8e GCC 4.4.3, `-march=armv7-a`, softfp,
+`-mfpu=vfpv3-d16`):
+
+| config | ref | candidate | words |
+|---|---|---|---|
+| `-O2` hidden | 240 B | 240 B | 28 EQUAL / 7 RELOCATION_FIELD / 25 encoding |
+| `-O3` hidden | 240 B | 240 B | 28 / 7 / 25 |
+| `-Os` hidden | 240 B | 240 B | 4 / 7 / 49 |
+| `-O2` default | 240 B | 240 B | 28 / 7 / 25 |
+| `-O2` hidden **`-fno-pic`** (rejected) | 240 B | 240 B | 26 / 12 / 22 |
+
+`code_window_equal=False`, `source_matching_verified=False` everywhere. Two
+measured findings rather than guesses:
+
+* the residue is **block placement, not content**. All 41 non-branch instruction
+  words agree as a multiset in every `-O2`/`-O3` row (`non_branch_multiset_equal`),
+  and the first 0x90 bytes agree positionally except for branch displacements. The
+  reference lays the four trailing cases out `4, 2, 3, 1` after the epilogue; this
+  compiler emits `1, 3, 4, 2`. Source-level case order was measured to have **no**
+  effect (six permutations, identical counts) because the switch bodies are emitted
+  in ascending case order, and `-fno-reorder-blocks` (15 EQUAL),
+  `-fno-schedule-insns2` (19), `-fno-guess-branch-probability` (4),
+  `-fno-crossjumping` (292 B) and `-fno-schedule-insns`/`-fno-tree-copyrename`/
+  `-fno-if-conversion2`/`-fno-tree-dominator-opts`/`-fno-toplevel-reorder`/
+  `-freorder-blocks-and-partition` (28 each) were all measured and do not close it.
+  Same class of residual as `prepareCache`, `operator*` and `cpuInit`; not chased and
+  nothing was padded or hand-reordered to force the number.
+* the `-fno-pic` row is the **negative control**: it changes the dispatcher from
+  `addls pc,pc,r2,lsl #2` to `ldrls pc,[pc,...]` with a word offset table
+  (12 relocation words instead of 7), so the matching rows are not a flag tuned to
+  fit — the default configuration is the one that reproduces the reference's
+  dispatcher form.
+
+**Behaviour test, stubbing only the two unrecovered dependencies.** The test
+includes **both** recovered constructor TUs unchanged (so the plain constructor's
+value-0 body really runs for the stack local) and supplies `getTransposed` /
+`getInverse` as instrumented stand-ins that record call order, receiver and
+destination. Asserted: value 1 copies the source and touches nothing else; value 2 is
+the identity; value 3 transposes the **source** into `this`; value 4 keeps the
+inverse and, on a failed inverse, leaves **all 16 bytes-zeros**; value 5 stores
+`transpose(inverse(source))`, calls the transpose on `this` (not on the source) and
+skips it entirely when the inverse fails; values 0 and >= 6 write no byte at all;
+guard bytes prove nothing lands outside the 64-byte object. Four mutants actually
+run and killed: `*this = other` deleted (`FAIL: value 1 did not copy the source`),
+half-length failure memset (`FAIL: a failed inverse did not leave the all-zero
+matrix`), value 5 transposing the source (`FAIL: value 5 transposed the source
+instead of the inverse`), value 3 transposing the wrong object (`FAIL: value 3
+called getTransposed on the wrong object`); restored source passes.
+
+**Verification actually run:** clean `cmake --build build/host`; `ctest --test-dir
+build/host` **22/22 pass**; `bash tools/check_all.sh` **rc=0** with **23**
+source-only audited artifacts and tooling pytest **30 passed**. Regression pilots
+re-run after the header gained three enumerators and two member declarations: the
+three 8-byte `CSoftwareSkinTechnique` leaves are still **byte-equal**
+(`collada_skin_trivial_pilot`, `all_configs_exact=true`), and `prepareCache`
+(224 B), `operator*` (540 B) and the plain constructor (56 B,
+`ALL_INSTRUCTION_WORDS_EQUAL_MODULO_RELOCATION`, 74 call sites, 54 x `r1=2` /
+6 x `r1=0`) are unchanged. The copy-ctor pilot was measured,
+not assumed, at **8.4 s** after its call-site sweep was rewritten to scan `.text`
+for the BL/B encoding instead of disassembling all 39,108 functions (the naive
+version costs 54 s and 15 s of that was pyelftools symbol objects).
+
+**Disposition:** IMPLEMENTED + TESTED; instruction window **NOT MATCHED** (same
+instruction content, permuted block order). Totals unchanged and unexaggerated:
+39,123 indexed functions, 9 DECOMPILED exports (never a completion state), **8**
+source-recovered units IMPLEMENTED + TESTED, 0 VERIFIED against original runtime
+behaviour, no end-to-end gameplay. Still NOT RECONSTRUCTED: `getTransposed`
+(0x000eba84), `getInverse` (0x000ebb08), the three `std::vector` helpers,
+`android_cpuInit` (2648 vs 2632 B, not chased), `CSoftwareSkinTechnique::init`/`skin`.
+
 ## The shared matrix constructor is recovered and byte-equal modulo its one relocation (2026-11-01, fifth run)
 
 **`glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float>::eConstructor)`**

@@ -18,6 +18,10 @@
 //                     std::vector<CMatrix4<float> const*, SAllocator<...> >::size() const
 //   bl 0x006e7e60  -> _ZN6glitch4coremlIfNS_7collada7SMatrixEEENS0_8CMatrix4IT_EERKS6_RKT0_
 //                     glitch::core::CMatrix4<float> glitch::core::operator*<float, glitch::collada::SMatrix>(CMatrix4<float> const&, SMatrix const&)
+//   bl 0x000eba84  -> _ZNK6glitch4core8CMatrix4IfE13getTransposedERS2_
+//                     glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const
+//   bl 0x000ebb08  -> _ZNK6glitch4core8CMatrix4IfE10getInverseERS2_
+//                     glitch::core::CMatrix4<float>::getInverse(CMatrix4<float>&) const
 //
 // None of their bodies are recovered, so this header declares them with the
 // reference's exact mangled names and our source calls them as ordinary
@@ -63,17 +67,47 @@ namespace core {
 template <typename T>
 class CMatrix4 {
 public:
+    // Enumerator VALUES are observed; every NAME below is INFERRED from that
+    // value's behaviour in the two reconstructed constructors plus the measured
+    // in-binary call-site argument distribution.  The reference contains no
+    // symbol or string that names them.
+    //
+    //   value | CMatrix4(eConstructor) 0x00108c54 | CMatrix4(const&, eConstructor)
+    //         | (plain)                          | 0x00108c8c (copy-with-mode)
+    //   ------+----------------------------------+----------------------------------
+    //     0   | writes nothing                   | writes nothing
+    //     1   | writes nothing                   | copies the source's 64 bytes
+    //     2   | writes the 4x4 identity          | writes the 4x4 identity
+    //     3   | writes the 4x4 identity          | transposed copy of the source
+    //     4   | writes the 4x4 identity          | inverse of the source (zeroed
+    //         |                                  | on failure)
+    //     5   | writes the 4x4 identity          | inverse, then transposed in place
+    //   >= 6  | writes the 4x4 identity          | writes nothing
     enum eConstructor {
-        kObservedConstructorValue0 = 0,  // observed: writes nothing
-        kObservedConstructorValue1 = 1,  // observed: writes nothing
-        kObservedConstructorValue2 = 2,  // observed: writes the 4x4 identity
-        // Values >= 2 all take the identity path in the 56-byte constructor.
-        // The enumerator NAMES are not recoverable from the reference (no
-        // symbol or string names them); only these values are observed.
+        kObservedConstructorValue0 = 0,
+        kObservedConstructorValue1 = 1,
+        kObservedConstructorValue2 = 2,
+        kObservedConstructorValue3 = 3,
+        kObservedConstructorValue4 = 4,
+        kObservedConstructorValue5 = 5,
     };
 
     // 0x00108c54, 56 B -- RECOVERED in collada_matrix4_ctor.cpp.
     CMatrix4(eConstructor);
+
+    // 0x00108c8c, 240 B -- RECOVERED in collada_matrix4_copy_ctor.cpp.
+    CMatrix4(CMatrix4<T> const& other, eConstructor);
+
+    // 0x000eba84, 132 B; 0x000ebb08, 776 B -- NOT RECONSTRUCTED.  Declared so
+    // the recovered copy-with-mode constructor can call them; the bodies stay
+    // external dependencies.  `getTransposed` returns void in the reference (the
+    // call sites never read r0 after it).  `getInverse`'s return TYPE is not in
+    // the Itanium mangling: the copy-with-mode constructor tests r0 for zero
+    // (`subs r1,r0,#0` then a conditional branch), so a scalar is observed while
+    // `bool` is INFERRED.  Both write their result through the reference
+    // argument, never into `*this`.
+    void getTransposed(CMatrix4<T>& out) const;
+    bool getInverse(CMatrix4<T>& out) const;
 
     T m_observedValues[16];
 };

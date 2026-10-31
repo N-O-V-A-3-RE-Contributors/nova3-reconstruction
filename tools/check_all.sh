@@ -7,7 +7,7 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 .venv/bin/python -m pytest -q reconstruction/tests/test_source_only.py tools/extract/test_archive_inspection.py reconstruction/tests/test_workbench.py reconstruction/tests/test_auto_decompile.py
 .venv/bin/python tools/setup/record_build_provenance.py
-for artifact in nova3_crc nova3_scramble nova3_zip_header nova3_zip_index nova3_zip_extract nova3_resource nova3_bres_relocate nova3_package_probe nova3_mesh nova3_texture nova3_etc1 nova3_texture_path nova3_scrambled_zip libnova3_core.a cpu_features_behaviour_test cpu_features_init_test detect_neon_behaviour_test driver_callback_init_behaviour_test collada_skin_technique_behaviour_test collada_skin_prepare_cache_behaviour_test collada_matrix_multiply_behaviour_test collada_matrix4_ctor_behaviour_test; do
+for artifact in nova3_crc nova3_scramble nova3_zip_header nova3_zip_index nova3_zip_extract nova3_resource nova3_bres_relocate nova3_package_probe nova3_mesh nova3_texture nova3_etc1 nova3_texture_path nova3_scrambled_zip libnova3_core.a cpu_features_behaviour_test cpu_features_init_test detect_neon_behaviour_test driver_callback_init_behaviour_test collada_skin_technique_behaviour_test collada_skin_prepare_cache_behaviour_test collada_matrix_multiply_behaviour_test collada_matrix4_ctor_behaviour_test collada_matrix4_copy_ctor_behaviour_test; do
     .venv/bin/python tools/verify_source_only.py "build/host/$artifact" --manifest build/host/provenance.json
 done
 if test "${NOVA3_RESEARCH_ORACLES:-0}" = 1; then
@@ -23,6 +23,7 @@ if test "${NOVA3_RESEARCH_ORACLES:-0}" = 1; then
     .venv/bin/python tools/compare/collada_skin_prepare_cache_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/collada_cache/check_all.json
     .venv/bin/python tools/compare/collada_matrix_multiply_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/collada_multiply/check_all.json
     .venv/bin/python tools/compare/collada_matrix4_ctor_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/collada_ctor/check_all.json
+    .venv/bin/python tools/compare/collada_matrix4_copy_ctor_pilot.py --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --out .cache/cpufeat/collada_copy_ctor/check_all.json
     .venv/bin/python tools/compare/scramble_oracle.py
     .venv/bin/python tools/compare/zip_headers.py
     .venv/bin/python tools/compare/zip_payload.py
