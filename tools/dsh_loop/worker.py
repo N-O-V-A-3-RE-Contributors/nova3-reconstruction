@@ -41,6 +41,8 @@ from .workspace import LoopState, Repo
 ROOT = plat.checkout_root()
 WORKTREES = ROOT / ".local" / "worktrees"
 MISSION_FILE = "WORKER-MISSION.md"
+# A standing owner mission in the checkout is the default for every worker.
+DEFAULT_MISSION = ROOT / MISSION_FILE
 
 
 # ---------------------------------------------------------------------------
@@ -203,9 +205,13 @@ def start(name: str, mission: Path | None, max_minutes: int, pass_timeout: int,
     if updated:
         print(f"worker '{name}': refreshed policy from main: {', '.join(updated)}")
     mission_text = ""
-    if mission:
-        mission_text = Path(mission).read_text(encoding="utf-8")
-        (path / MISSION_FILE).write_text(mission_text, encoding="utf-8")
+    chosen_mission = Path(mission) if mission else (
+        DEFAULT_MISSION if DEFAULT_MISSION.is_file() else None)
+    if chosen_mission:
+        mission_text = chosen_mission.read_text(encoding="utf-8")
+        target = path / MISSION_FILE
+        if not target.is_file() or target.read_text(encoding="utf-8") != mission_text:
+            target.write_text(mission_text, encoding="utf-8")
     elif (path / MISSION_FILE).is_file():
         mission_text = (path / MISSION_FILE).read_text(encoding="utf-8")
     tasks = tasks_from_next(ROOT / "docs" / "progress" / "NEXT.md")
