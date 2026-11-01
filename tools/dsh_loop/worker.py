@@ -138,6 +138,44 @@ def seed_backlog(path: Path, tasks: list[str], mission: str = "") -> None:
 # start / status / stop
 # ---------------------------------------------------------------------------
 
+# Instruction documents a worker must never run with a stale copy of.  Git can
+# fast-forward the *worktree* only, so these are copied from the checkout that
+# owns the worker before every start.
+POLICY_FILES = (
+    "AGENTS.md",
+    "docs/progress/STATUS.md",
+    "docs/progress/NEXT.md",
+    "docs/progress/HANDOFF.md",
+    "docs/progress/SESSION_LOG.md",
+)
+
+
+def sync_policy(worktree: Path) -> list[str]:
+    """Refresh instruction docs in a worker worktree from this checkout.
+
+    Without this, a long-lived worker branch keeps whatever AGENTS.md it was
+    created with, and an unattended worker would silently follow outdated
+    rules.  Only files that differ are written.  The copy is not committed
+    automatically (the worker commits it with its next change); a dirty copy is
+    reported so a human can see it was refreshed.
+    """
+    updated = []
+    for relative in POLICY_FILES:
+        source = ROOT / relative
+        target = worktree / relative
+        if not source.is_file():
+            continue
+        try:
+            if target.is_file() and target.read_bytes() == source.read_bytes():
+                continue
+        except OSError:
+            pass
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(source.read_bytes())
+        updated.append(relative)
+    return updated
+
+
 def worker_config(name: str) -> tuple[Path, dict]:
     """Create (or reuse) this worker's own config file."""
     path = worktree_path(name)
@@ -161,6 +199,9 @@ def start(name: str, mission: Path | None, max_minutes: int, pass_timeout: int,
         print("this checkout is not set up yet; run: nova3-dsh setup", file=sys.stderr)
         return 2
     path = ensure_worktree(name)
+    updated = sync_policy(path)
+    if updated:
+        print(f"worker '{name}': refreshed policy from main: {', '.join(updated)}")
     mission_text = ""
     if mission:
         mission_text = Path(mission).read_text(encoding="utf-8")

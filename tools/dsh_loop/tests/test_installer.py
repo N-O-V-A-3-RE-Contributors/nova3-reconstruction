@@ -288,6 +288,34 @@ class LoopStateTests(unittest.TestCase):
             self.assertIn("tools/check_all.sh", followup)
 
 
+class WorkerTests(unittest.TestCase):
+    def test_sync_policy_copies_only_changed_documents(self):
+        from tools.dsh_loop import worker as worker_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "main"
+            work = Path(tmp) / "worker"
+            (root / "docs" / "progress").mkdir(parents=True)
+            (root / "AGENTS.md").write_text("new rules")
+            (root / "docs" / "progress" / "NEXT.md").write_text("next")
+            work.mkdir()
+            (work / "AGENTS.md").write_text("old rules")
+            with mock.patch.object(worker_mod, "ROOT", root), \
+                    mock.patch.object(worker_mod, "POLICY_FILES", ("AGENTS.md", "docs/progress/NEXT.md")):
+                updated = worker_mod.sync_policy(work)
+                self.assertEqual(updated, ["AGENTS.md", "docs/progress/NEXT.md"])
+                self.assertEqual(worker_mod.sync_policy(work), [])
+
+    def test_tasks_from_next_skips_negative_priorities(self):
+        from tools.dsh_loop.worker import tasks_from_next
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "NEXT.md"
+            path.write_text("# Next\n\n1. Recover function 0x1234 with tests\n"
+                            "2. Do not chase the rolled form\n3. **Bold** priority `code`\n")
+            tasks = tasks_from_next(path)
+            self.assertEqual(tasks[0], "Recover function 0x1234 with tests")
+            self.assertEqual(tasks[1], "Bold priority code")
+
+
 class PackagerTests(unittest.TestCase):
     def test_getting_started_mentions_every_platform_launcher(self):
         text = packager.getting_started({"commit": "abc123", "repo": "o/r"})
