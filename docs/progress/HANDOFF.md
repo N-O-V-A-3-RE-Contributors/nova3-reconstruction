@@ -117,6 +117,35 @@ can be left running (`docs/DECOMPILE.md` §2) and restarted safely.
   `origin/main` was at `43f3502` when last read. Do not bypass the wrapper with
   the host's personal credentials.
 
+## GCC 4.4.3 is installed; start here (2026-11-02)
+
+The engine's compiler is now available and verified:
+`bash tools/setup/fetch_gcc443.sh` -> `.cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++`
+(GCC 4.4.3; ELF attributes of the original: ARM v7-A, VFPv3, softfp, wchar 4).
+
+Do not cite "clang-21 vs GCC 4.4.3 codegen" as the reason a function differs any
+more: rebuild it with the real compiler:
+
+```sh
+.venv/bin/python tools/compare/gcc443_sweep.py \
+  --gcc .cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++ \
+  --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so \
+  --case reconstruction/recovered/libNOVA3_neon/<file>.cpp:0x<VA>:<mangled>\;reconstruction/recovered/libNOVA3_neon \
+  --out .cache/gcc443-sweep/<name>.json
+.venv/bin/python tools/compare/gcc443_explain.py --gcc <same> --reference <same> \
+  --source <file> --address 0x<VA> --symbol <mangled> --flags "<flags>"
+```
+
+Current findings are in `docs/progress/NEXT.md` (top section): CMatrix4
+(eConstructor) already matches size 56 B; operator*<float,SMatrix> has an exact
+instruction-class profile at `-mfpu=vfpv3-d16 -O2 -funroll-loops` and a 6-load
+reload-pattern gap; `__restrict` rejected.
+
+The worker worktree `/.local/automation/worktrees/worker` is rebased onto main
+and has `tools/compare/gcc443_{sweep,explain}.py`, a `WORKER-MISSION.md` and a
+seeded `.local/dsh-loop/BACKLOG.md`; the DeepSeek Harness loop can run there with
+`nova3-dsh loop --workspace <that dir>` once an API key is available.
+
 ## Current source and exact limits
 
 Newest (2026-10-31): the caller side of the cpu-features work now exists.
