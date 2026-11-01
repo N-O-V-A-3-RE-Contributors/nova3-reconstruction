@@ -116,3 +116,32 @@ Independent RGB8 decoder is included in host and ARMv7 core targets. `build/host
 ## SB package source inspection
 
 `build/host/nova3_scrambled_zip FILE ORIGINAL_BASENAME` lists checked local SB records; append `--verify` to decode all payloads and validate size/CRC. `build/host/nova3_scrambled_zip FILE ORIGINAL_BASENAME MEMBER OUTPUT` extracts a named record for offline research. No SDIR validation or mounted SB archive API yet. Full actual corpus reproduction: `.venv/bin/python tools/compare/scrambled_zip_source.py`; it reads local main/patch OBB data and keeps selected original effect references only under ignored .cache/assets. Latest independent host/Release/sanitizer suites13/13 and ARMv7 rebuild pass; no new packages installed.
+
+## Historical compiler: GCC 4.4.3 via Android NDK r8e (added 2026-11-02)
+
+The Premium engine's `.comment` states GCC 4.4.3 and its attributes state ARM
+v7-A / VFPv3 / softfp, so object-matching work must use that compiler rather
+than a modern clang.
+
+```sh
+bash tools/setup/fetch_gcc443.sh     # verified download into ignored .cache
+.cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++
+```
+
+| Item | Value |
+| --- | --- |
+| Archive | `android-ndk-r8e-linux-x86_64.tar.bz2` from `dl.google.com/android/ndk/` |
+| SHA-1 (pinned in the script) | `5a2f85ac665e34e3d27199ed25b7585f3f2f488b` |
+| Compiler | `arm-linux-androideabi-g++ (GCC) 4.4.3`, 32-bit host binaries that run on x86_64 |
+| Size on disk | about 1.4 GiB (kept out of Git and out of release archives) |
+| License | the NDK ships a `NOTICE`; the prebuilt GCC is GPLv3 with the standard runtime exception and is used here only as an analysis/verification tool |
+
+Comparison entry points:
+
+* `tools/compare/gcc443_sweep.py` — flag matrix compiled and byte-compared per
+  function; writes `.cache/gcc443-sweep/sweep*.json`.
+* `tools/compare/gcc443_explain.py` — instruction-class difference between the
+  original window and one candidate build (counts only, never bytes).
+
+Neither tool is part of the product build; the shipped Android library is still
+compiled by the NDK r29 toolchain recorded above.

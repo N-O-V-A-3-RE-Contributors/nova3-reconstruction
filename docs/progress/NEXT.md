@@ -1,10 +1,39 @@
 # Next tasks
 
-<<<<<<< HEAD
-## Pass 8 completed (2026-10-30)
+## 2026-11-02 — GCC 4.4.3 is now on the machine; the match work is flag-and-spelling work
 
-Collada named-parameter accessors (getMaterial by name 0x007146ac, getImage by name 0x0071476c) implemented, host-tested (22 new checks), ARM-compiled and compared. Both FUNCTION_SIZE_MISMATCH (116 vs 96 B) due to clang-21 loop-unrolling vs GCC 4.4.3 codegen. CTest 23/23. Next: either (a) CVirtualTexture::getSizeInBytes(unsigned char) 0x0077d4a8 ARM comparison, or (b) GCC 4.4.3 toolchain. See sprint_notes/STATUS.md and sprint_notes/evidence_pass8.json.
-=======
+Android NDK r8e was fetched (`tools/setup/fetch_gcc443.sh`,
+`.cache/toolchains/android-ndk-r8e`, SHA-1 `5a2f85ac…`) and its
+`arm-linux-androideabi-g++ (GCC) 4.4.3` runs on this host. The compiler
+identity is no longer a hypothesis; the remaining unknowns are the flag set and
+the source spelling.
+
+Evidence so far (`tools/compare/gcc443_sweep.py`, report
+`.cache/gcc443-sweep/sweep1.json`, 420 configurations per function, ABI fixed
+to softfp/vfpv3-d16/neon x marm/mthumb x gnu++98 x O2/O3/Os/unroll x align x
+fast-math):
+
+* `CMatrix4<float>::CMatrix4(eConstructor)` `0x108c54` (56 B): size 56 already
+  at `-std=gnu++98 -marm -mfpu=vfpv3-d16 -O2`; bytes differ.
+* `operator*<float, collada::SMatrix>` `0x6e7e60` (564 B): at
+  `-mfpu=vfpv3-d16 -O2 -funroll-loops` the instruction-class profile is exact
+  (vldr 70 vs 76, everything else equal). The 6-load gap is a reload pattern of
+  the `a` operand (`vldr; vmul` first instead of `vldr r5; vldr r4; vmul`);
+  `__restrict` helps `a` but hurts `b` and is rejected on evidence.
+
+1. **Byte-equality pass with GCC 4.4.3** for every recovered function, starting
+   with `0x6e7e60` and `0x108c54`: search source spellings (typed member access,
+   row pointers, helper functions, loop order) with `gcc443_explain.py`, then
+   confirm with `gcc443_sweep.py`. A spelling that reaches the class profile and
+   the exact size is the candidate; only `compare_window` byte equality is a
+   match.
+2. Re-run the whole recovered-function matrix with GCC 4.4.3 instead of clang-21
+   and republish the {matched / size-only / behavioural} table.
+3. `CMatrix4<float>::getInverse` `0x000ebb08` (776 B) remains the next
+   unimplemented dependency of the Collada matrix group (see the 2026-11-01
+   section below).
+
+
 ## The transpose is byte-equal; the last dangling dependency is its inverse sibling (2026-11-01)
 
 `glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const`
@@ -447,7 +476,6 @@ values". NDK r8e GCC 4.4.3 is installed locally at
    original interface.
 
 Existing source-engine and asset milestones remain valuable and are retained.
->>>>>>> c840ee2
 
 ## Immediate evidence/worker priorities (2026-10-28)
 

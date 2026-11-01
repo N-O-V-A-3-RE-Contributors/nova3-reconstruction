@@ -1,44 +1,33 @@
 # Status — source resource, mesh and texture reconstruction
 
-<<<<<<< HEAD
-## Tooling checkpoint — 2026-11-02: the DeepSeek Harness worker loop replaces the PyInstaller launchers
+## Compiler identity established; byte-equality pass under way (2026-11-02)
 
-The released `launcher-v6-*` assets were single-file PyInstaller bundles of
-`nova3_easy.py`, which drove Codex/Claude/Gemini CLIs. They are replaced by
-`tools/dsh_loop`, a standard-library Python package that installs and runs the
-DeepSeek Harness (`@deepseek-ai/dsh`, pinned 0.2.1-rc.5) as an unattended worker:
+Android NDK r8e (GCC 4.4.3, the version named in the engine's `.comment`)
+now runs on this host from ignored `.cache/toolchains/android-ndk-r8e`
+(`tools/setup/fetch_gcc443.sh` pins the SHA-1). The ELF attributes settle the
+ABI without guessing: ARM v7-A, **VFPv3** (not NEONv1), softfp, wchar_t 4,
+8-byte alignment.
 
-* **Installer** (`nova3-dsh setup`, `START-*` launchers, `install.sh/.cmd` in the
-  source archive): per-user, idempotent, no root. Reuses a suitable system
-  Node.js or unpacks a checksum-verified private one, installs the pinned DSH
-  runtime, generates a `nova3-worker` profile (dsh-base + dsh-headless, own
-  model route, approvals off, danger-full-access sandbox, web search disabled),
-  composes it with `--dump-config` as a self-check, and writes launchers in
-  `~/.local/bin` (`%LOCALAPPDATA%\Nova3\bin` on Windows).
-* **Credentials**: the contributor's own key is typed into a hidden prompt,
-  used for one verification request and never written by the installer; only
-  the environment-variable *name* is stored, plus a masked fingerprint for
-  display. Keys never appear in logs (the loop masks key-shaped text).
-* **Loop** (`nova3-dsh`): bounded `dsh headless --json` passes with a durable
-  `.local/dsh-loop/` state directory (pass records, backlog, live pointer),
-  objective progress detection from git status/HEAD, hard stops on credential
-  rejection, provider quota (15 min cooldown), N consecutive failing passes and
-  N consecutive no-change passes, SIGINT/SIGTERM drain, a single-loop lock, and
-  memory/disk guards for this 4-core/8 GiB host.
-* **Distribution**: `.github/workflows/nova-launchers.yml` now builds
-  Linux x64, macOS arm64/Intel and Windows launchers plus a **source-only**
-  archive (`nova3-source.tar.gz/zip`) for contributors without private-repo
-  Git access. CI verifies the archive contains no APK/OBB/SO/DEX/RAR files.
-* **Tests**: 29 platform-independent tests in `tools/dsh_loop/tests` run in the
-  new multi-OS workflow job and in `nova-ci.yml`; the loop was additionally
-  exercised end to end locally (invalid key -> single AUTH stop; fake-runner
-  passes -> progress/commit detection; extraction -> install help).
+New tools: `tools/compare/gcc443_sweep.py` (flag-matrix build + byte compare via
+`nova3_team.object_compare`) and `tools/compare/gcc443_explain.py`
+(instruction-class differences between original and candidate, counts only).
 
-Nothing in this checkpoint changes the reconstruction claims above: source
-mappings, verified functions and game functionality figures are unchanged.
+First evidence, 420 configurations each for two recovered functions
+(`.cache/gcc443-sweep/sweep1.json`):
 
+| Function | Original | Best GCC 4.4.3 result | Status |
+| --- | --- | --- | --- |
+| `CMatrix4<float>::CMatrix4(eConstructor)` @0x108c54 | 56 B | 56 B at `gnu++98 -marm -mfpu=vfpv3-d16 -O2` | size match, bytes differ |
+| `operator*<float, collada::SMatrix>` @0x6e7e60 | 564 B | 540 B, class profile exact (vldr 70/76) at `-mfpu=vfpv3-d16 -O2 -funroll-loops` | not matched; 6-load spelling gap identified |
 
-=======
+This replaces the previous "bytes differ due to clang-21 vs GCC 4.4.3 codegen"
+note: with the real compiler the remaining difference is a *source spelling*
+question for one operand's reload pattern, and `__restrict` was tested and
+rejected on evidence.
+
+Merged the unmerged worker branch (`automation/paperclip-worker`) into main and
+rebased that worktree onto it, so future work is a fast-forward.
+
 ## The matrix transpose is recovered and its whole 132-byte window is byte-equal (2026-11-01, seventh run)
 
 **`glitch::core::CMatrix4<float>::getTransposed(CMatrix4<float>&) const`**
@@ -1116,7 +1105,6 @@ components are already rejected, so the first component is the only component
 that can name a private root tree. It is restored with that reasoning recorded,
 and the suite below was run against it.
 
->>>>>>> c840ee2
 ## Compiler-aware historical revalidation (2026-10-28)
 
 A read-only inventory over 25 existing `reconstruction/recovered/` C++ blocks

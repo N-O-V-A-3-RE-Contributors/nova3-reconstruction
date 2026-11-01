@@ -162,16 +162,12 @@ Native analyzed inventory:4ELFs,76,344symbol rows/73,318distinct binary+addresse
 
 ## Build and verification
 
-<<<<<<< HEAD
-`cmake -S . -B build/host -G Ninja && cmake --build build/host -j2 && ctest --test-dir build/host --output-on-failure` works from a source-only checkout. Latest host CTest **23/23** (pass 8). 15 source-owned functions in the pass-6 ARM pipeline: 7 MATCHED_ARM code-window, 8 COMPILED+BEHAVIOURAL (bytes differ due to clang-21 vs GCC 4.4.3 codegen). Collada database accessor cluster is now 7 functions: getVersion, linkInstanceMaterial, getImage (index), getMaterial (index), getGeometry (index), getMaterial (name), getImage (name). ARM comparison reports in .cache/om-{getMaterialByName,getImageByName}/matrix.json. Compiler profile: NDK r29 clang-21, --target=armv7a-linux-androideabi21 -marm -O2 -fomit-frame-pointer -fPIC -std=c++17. No GCC 4.4.3 cross-compiler established yet. Source-only guard rejects both original APKs and 4 ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
-=======
 `NOVA3_RESEARCH_ORACLES=1 bash tools/check_all.sh` runs host tests, Python guard/archive checks, source-only artifact checks and selected original oracles. Latest host13/13, Python13/13, ASan/UBSan13/13, clean source-only Release13/13; ARMv7 source rebuild successful. Actual exit0 logs .cache/logs/scrambled-final-{checks,clean,sanitizer,armv7}.log. The 2026-10-31 cpu-features and DetectNeon work added three CTest targets, so the
 current host count is 16/16 (`ctest --test-dir build/host`, Debug/Ninja) and
 `bash tools/check_all.sh` exits 0 with `cpu_features_init_test` and
 `detect_neon_behaviour_test` in the audited-artifact list (17 artifacts); the ASan/Release counts above predate that and were not re-run. Source-only guard rejects both original APKs and4ELFs, but full final APK/DEX/linker/license certification remains pending. No device run; ADB has no attached device.
 
 `cmake -S . -B build/host -G Ninja && cmake --build build/host -j2 && ctest --test-dir build/host --output-on-failure` works from a source-only checkout. Clean disposable build: `.venv/bin/python tools/compare/clean_build.py`. Existing build/sanitize-nopie has clang ASan/UBSan/non-PIE flags needed on this host (docs/toolchain.md). Android NDK29 /opt/android-ndk, SDK ready, output build/android-armv7/libnova3_core.so; no APK packaging yet. No new host installs this continuation.
->>>>>>> c840ee2
 
 ## Local reference data and reproduction
 
