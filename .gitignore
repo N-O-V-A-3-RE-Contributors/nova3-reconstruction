@@ -76,3 +76,8 @@ __pycache__/
 /analysis
 /research
 /generated
+
+# Local game materials supplied by the user (see materials/README.md)
+/materials/apk/*
+/materials/obb/*
+!/materials/README.md
