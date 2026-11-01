@@ -52,6 +52,20 @@ This is an early reconstruction, not a playable game. It contains source-owned C
 
 Read [status](docs/progress/STATUS.md), [handoff](docs/progress/HANDOFF.md), and [next tasks](docs/progress/NEXT.md) before continuing. Exact evidence is under research/. Proprietary reference inputs and generated decompiler/project databases are excluded from Git.
 
+
+### Where your game files go (contributors and owner)
+
+Game files are never shipped. Put the two APKs you own in `materials/apk/` and
+the expansion archives or extracted `.obb` files in `materials/obb/` (owner
+checkouts may keep using `originals/` and `Archive/`), then run:
+
+```sh
+python tools/extract/find_materials.py     # what it found + the exact next commands
+```
+
+A pre-released source tree dropped in `source-release/` next to the checkout is
+reported there too.
+
 Build without any supplied game files:
 
 ```sh
