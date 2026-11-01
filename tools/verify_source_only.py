@@ -7,7 +7,15 @@ import argparse,hashlib,io,json,pathlib,sys,zipfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 MAX_MEMBER=128<<20
 MAX_TOTAL=512<<20
+# Private reference trees. Only the *repository-root* directories are private:
+# a project-owned source tree may legitimately contain its own
+# ``reconstruction/research/`` module (source-backed ABI experiments) and must
+# not be confused with the private top-level ``research/`` reference dump.
 FORBIDDEN_PARTS={'originals','analysis','generated','research','Archive'}
+PRIVATE_ROOTS={part.lower() for part in FORBIDDEN_PARTS}
+def forbidden_path(rel):
+ parts=[part.lower() for part in rel.parts]
+ return not parts or parts[0] in PRIVATE_ROOTS
 def sha(data):return hashlib.sha256(data).hexdigest()
 def verify(path,manifest,denied):
  errors=[];seen=[];budget=[MAX_TOTAL]
@@ -40,11 +48,11 @@ def verify(path,manifest,denied):
   if not sources:errors.append(f'{label}: empty source provenance')
   for source in sources:
    rel=pathlib.PurePosixPath(source['path'])
-   if rel.is_absolute() or '..' in rel.parts or set(rel.parts)&FORBIDDEN_PARTS:errors.append(f'{label}: forbidden source path {rel}');continue
+   if rel.is_absolute() or '..' in rel.parts or forbidden_path(rel):errors.append(f'{label}: forbidden source path {rel}');continue
    src=ROOT/rel
    if not src.is_file() or sha(src.read_bytes())!=source['sha256']:errors.append(f'{label}: source hash mismatch {rel}')
   for inp in entry.get('link_inputs',[]):
-   if set(pathlib.PurePosixPath(inp).parts)&FORBIDDEN_PARTS:errors.append(f'{label}: forbidden linker input {inp}')
+   if forbidden_path(pathlib.PurePosixPath(inp)):errors.append(f'{label}: forbidden linker input {inp}')
   if not entry.get('build_command'):errors.append(f'{label}: missing build command')
  if path.is_dir():
   for p in sorted(path.rglob('*')):

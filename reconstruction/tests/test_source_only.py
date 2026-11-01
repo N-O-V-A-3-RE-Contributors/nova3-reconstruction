@@ -33,3 +33,10 @@ def test_nested_shared_budget(tmp_path,monkeypatch):
  with zipfile.ZipFile(path,'w') as z:
   z.writestr('a.zip',inner.getvalue());z.writestr('b.zip',inner.getvalue())
  assert not guard.verify(path,{},set())['ok']
+
+def test_project_research_source_tree_is_not_the_private_root():
+ # reconstruction/research/ holds source-backed ABI experiments; only the
+ # repository-root research/ directory is a private reference tree.
+ assert guard.forbidden_path(pathlib.PurePosixPath('reconstruction/research/arm32_cpu_query_candidate.cpp')) is False
+ assert guard.forbidden_path(pathlib.PurePosixPath('research/elf/inventory.json')) is True
+ assert guard.forbidden_path(pathlib.PurePosixPath('originals/N.O.V.A.3_premium.apk')) is True

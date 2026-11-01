@@ -1,5 +1,42 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Tooling checkpoint — 2026-11-02: the DeepSeek Harness worker loop replaces the PyInstaller launchers
+
+The released `launcher-v6-*` assets were single-file PyInstaller bundles of
+`nova3_easy.py`, which drove Codex/Claude/Gemini CLIs. They are replaced by
+`tools/dsh_loop`, a standard-library Python package that installs and runs the
+DeepSeek Harness (`@deepseek-ai/dsh`, pinned 0.2.1-rc.5) as an unattended worker:
+
+* **Installer** (`nova3-dsh setup`, `START-*` launchers, `install.sh/.cmd` in the
+  source archive): per-user, idempotent, no root. Reuses a suitable system
+  Node.js or unpacks a checksum-verified private one, installs the pinned DSH
+  runtime, generates a `nova3-worker` profile (dsh-base + dsh-headless, own
+  model route, approvals off, danger-full-access sandbox, web search disabled),
+  composes it with `--dump-config` as a self-check, and writes launchers in
+  `~/.local/bin` (`%LOCALAPPDATA%\Nova3\bin` on Windows).
+* **Credentials**: the contributor's own key is typed into a hidden prompt,
+  used for one verification request and never written by the installer; only
+  the environment-variable *name* is stored, plus a masked fingerprint for
+  display. Keys never appear in logs (the loop masks key-shaped text).
+* **Loop** (`nova3-dsh`): bounded `dsh headless --json` passes with a durable
+  `.local/dsh-loop/` state directory (pass records, backlog, live pointer),
+  objective progress detection from git status/HEAD, hard stops on credential
+  rejection, provider quota (15 min cooldown), N consecutive failing passes and
+  N consecutive no-change passes, SIGINT/SIGTERM drain, a single-loop lock, and
+  memory/disk guards for this 4-core/8 GiB host.
+* **Distribution**: `.github/workflows/nova-launchers.yml` now builds
+  Linux x64, macOS arm64/Intel and Windows launchers plus a **source-only**
+  archive (`nova3-source.tar.gz/zip`) for contributors without private-repo
+  Git access. CI verifies the archive contains no APK/OBB/SO/DEX/RAR files.
+* **Tests**: 29 platform-independent tests in `tools/dsh_loop/tests` run in the
+  new multi-OS workflow job and in `nova-ci.yml`; the loop was additionally
+  exercised end to end locally (invalid key -> single AUTH stop; fake-runner
+  passes -> progress/commit detection; extraction -> install help).
+
+Nothing in this checkpoint changes the reconstruction claims above: source
+mappings, verified functions and game functionality figures are unchanged.
+
+
 ## Compiler-aware historical revalidation (2026-10-28)
 
 A read-only inventory over 25 existing `reconstruction/recovered/` C++ blocks

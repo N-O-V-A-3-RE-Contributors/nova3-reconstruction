@@ -1,5 +1,13 @@
 # Start contributing to the N.O.V.A. 3 source reconstruction
 
+> **Updated 2026-11-02:** the recommended route is now the **DeepSeek Harness
+> worker loop** — see [WORKER_LOOP.md](WORKER_LOOP.md). Download your
+> platform's launcher from the Releases page (or the source-only
+> `nova3-source.tar.gz`) and run `START.sh` / `START.command` / `START.cmd`;
+> it installs everything and asks for your own API key. The Codex/Claude/
+> Gemini route below still works and remains useful for interactive work.
+
+
 **Repository:** https://github.com/crjase/nova3-reconstruction
 
 Each contributor uses **their own** GitHub account and one of **Codex CLI, Claude Code, or Gemini CLI**. The ordinary ChatGPT/Claude/Gemini website chat is not a substitute for the corresponding coding CLI. No one shares AI account credentials. A VPS is not required.

@@ -1,5 +1,14 @@
 # NOVA3 — one-click AI contributor
 
+> **Updated 2026-11-02:** [WORKER_LOOP.md](WORKER_LOOP.md) describes the current
+> launcher (`launcher-v7` and later). Its archives contain `START.sh` /
+> `START.command` / `START.cmd` rather than a PyInstaller `.exe`, need no
+> GitHub invitation when you use the `nova3-source` asset, and ask for a
+> DeepSeek/OpenRouter key instead of a Codex/Claude/Gemini account. The
+> instructions below describe the earlier `launcher-v6` bundles and are kept
+> for those who still use them.
+
+
 **The source repository is PRIVATE.** Before starting, ask the maintainer for a GitHub **Read** invitation and accept it in the GitHub website or email. You must have a GitHub account.
 
 ## Download launcher
