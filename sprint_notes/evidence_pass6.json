@@ -1,0 +1,154 @@
+{
+  "schema_version": 1,
+  "sprint": "20261030-163856",
+  "pass": 6,
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "architecture": "ARM EABI, 32-bit little-endian, ARM (A32) mode"
+  },
+  "compiler_profile": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "flags": [
+      "--target=armv7a-linux-androideabi21",
+      "-marm",
+      "-O2",
+      "-fomit-frame-pointer",
+      "-fPIC",
+      "-std=c++17"
+    ],
+    "profile_file": ".cache/armv7-clang-omitfp.json",
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+    "note": "clang-21 is a candidate tool, NOT the historical GCC 4.4.3 compiler. -fomit-frame-pointer added after observing the original has no frame pointer prologue."
+  },
+  "functions": [
+    {
+      "address": "0x007b892c",
+      "symbol": "_ZNK6glitch5video15CImageLoaderDDS9CDataInfo15getFileDataSizeEv",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_file_data_size",
+      "report": ".cache/om-cdatinfo-dds-fsize/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b8974",
+      "symbol": "_ZNK6glitch5video15CImageLoaderPVR9CDataInfo15getFileDataSizeEv",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8974.cpp",
+      "candidate_symbol": "nova3_recovered_pvr_cdatainfo_file_data_size",
+      "report": ".cache/om-cdatinfo-pvr-fsize/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b8958",
+      "symbol": "_ZNK6glitch5video15CImageLoaderDDS9CDataInfo18getFaceStartOffsetEv",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_face_start_offset",
+      "report": ".cache/om-cdatinfo-dds-face/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b8960",
+      "symbol": "_ZNK6glitch5video15CImageLoaderDDS9CDataInfo14isLittleEndianEv",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_is_little_endian",
+      "report": ".cache/om-cdatinfo-dds-little/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b8968",
+      "symbol": "_ZNK6glitch5video15CImageLoaderDDS9CDataInfo9needsFlipEv",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_needs_flip",
+      "report": ".cache/om-cdatinfo-dds-flip/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b8970",
+      "symbol": "_ZN6glitch5video15CImageLoaderDDS9CDataInfoD1Ev",
+      "size": 4,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b8970.cpp",
+      "candidate_symbol": "nova3_recovered_dds_cdatainfo_destructor",
+      "report": ".cache/om-cdatinfo-dds-dtor/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (4 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x007b897c",
+      "symbol": "_ZNK6glitch5video15CImageLoaderPVR9CDataInfo12getFilePitchEh",
+      "size": 8,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007b897c.cpp",
+      "candidate_symbol": "nova3_recovered_pvr_cdatainfo_file_pitch",
+      "report": ".cache/om-cdatinfo-pvr-pitch/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "LINKED_FUNCTION_WINDOW_EQUAL (8 B, 0 relocations)"
+      }
+    },
+    {
+      "address": "0x0071017c",
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase10getVersionEv",
+      "size": 20,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp",
+      "candidate_symbol": "nova3_recovered_collada_database_version",
+      "report": ".cache/om-collada-get-version/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (20 B, 0 relocations) — same 5-instruction shape, register allocation differs (walk in r0 vs original r3)"
+      }
+    }
+  ],
+  "totals": {
+    "functions_passed": 8,
+    "linked_window_equal": 7,
+    "bytes_different_behavioural": 1,
+    "relocation_carried": 0,
+    "end_to_end_game_functionality": false,
+    "whole_so_sha_matched": false
+  }
+}

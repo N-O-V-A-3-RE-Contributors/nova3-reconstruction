@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "sprint": "20261030-163856",
+  "pass": 9,
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "architecture": "ARM EABI, 32-bit little-endian, ARM (A32) mode",
+    "section_layout": {".text": "0x000d2f10 size 0xb13670", ".rodata": "0x00be6580 size 0x0f0088"}
+  },
+  "compiler_profile": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "flags": ["--target=armv7a-linux-androideabi21", "-marm", "-O2", "-fomit-frame-pointer", "-fPIC", "-std=c++17"],
+    "profile_file": ".cache/armv7-clang-omitfp.json",
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+    "note": "clang-21 candidate only; historical GCC 4.4.3 remains unverified/unavailable."
+  },
+  "functions": [
+    {
+      "address": "0x0077bf84",
+      "symbol": "_ZN6glitch5video17getPrimitiveCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 152,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp",
+      "candidate_symbol": "nova3_recovered_get_primitive_count",
+      "report": ".cache/om-getPrimitiveCount/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_SIZE_MISMATCH (cand 144 vs ref 152, relocs 0). 9-entry switch recovered; /3 and /4 floor-division cases verified. clang jump-table/register idiom differs from GCC 4.4.3."
+      }
+    },
+    {
+      "address": "0x0077c1e0",
+      "symbol": "_ZN6glitch5video16getTriangleCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 112,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077c1e0.cpp",
+      "candidate_symbol": "nova3_recovered_get_triangle_count",
+      "report": ".cache/om-getTriangleCount/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (same 112 B size, relocs 0). Closest of the cluster: same size, but clang emits a PIC LUT (`ldr [r2,r0,lsl#2]`) vs GCC relative branch table (`addls pc,pc,rN,lsl#2`), and `subs/movcc` saturate vs GCC `sub/bic`. No byte-window match."
+      }
+    },
+    {
+      "address": "0x0077c250",
+      "symbol": "_ZN6glitch5video13getIndexCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 124,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077c250.cpp",
+      "candidate_symbol": "nova3_recovered_get_index_count",
+      "report": ".cache/om-getIndexCount/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_SIZE_MISMATCH (cand 112 vs ref 124, relocs 0). Reproduces the observed EPT_LEGACY_TRIANGLES (type 3) -> 0 quirk in getIndexCount."
+      }
+    }
+  ],
+  "totals": {
+    "functions_this_pass": 3,
+    "linked_window_equal": 0,
+    "bytes_different_behavioural": 3,
+    "relocation_carried": 0,
+    "end_to_end_game_functionality": false,
+    "whole_so_sha_matched": false,
+    "cumulative_matched_arm": 7,
+    "cumulative_behavioural": 11
+  }
+}

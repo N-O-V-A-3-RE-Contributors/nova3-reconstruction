@@ -1,5 +1,9 @@
 # Next tasks
 
+## Pass 8 completed (2026-10-30)
+
+Collada named-parameter accessors (getMaterial by name 0x007146ac, getImage by name 0x0071476c) implemented, host-tested (22 new checks), ARM-compiled and compared. Both FUNCTION_SIZE_MISMATCH (116 vs 96 B) due to clang-21 loop-unrolling vs GCC 4.4.3 codegen. CTest 23/23. Next: either (a) CVirtualTexture::getSizeInBytes(unsigned char) 0x0077d4a8 ARM comparison, or (b) GCC 4.4.3 toolchain. See sprint_notes/STATUS.md and sprint_notes/evidence_pass8.json.
+
 ## Immediate evidence/worker priorities (2026-10-28)
 
 **Pre-start checkpoint:** Jason's local six-stage audit succeeded. It

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "sprint": "20261030-163856",
+  "pass": 10,
+  "kind": "CORRECTION + VERIFICATION (enum value 3 + string table)",
+  "reference": {
+    "library": "libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+    "architecture": "ARM EABI, 32-bit little-endian, ARM (A32) mode",
+    "section_layout": {
+      ".text": "0x000d2f10 size 0xb13670",
+      ".rodata": "0x00be6580 size 0x0f0088",
+      ".data.rel.ro": "0x00d35358 size 0x04d6ec"
+    }
+  },
+  "primary_correction": {
+    "function": "_ZN6glitch5video17getPrimitiveCountENS0_16E_PRIMITIVE_TYPEEj",
+    "address": "0x0077bf84",
+    "size": 152,
+    "what_was_wrong": "Pass 9 recorded enum value 3 as `indexCount / 3` and labeled it 'legacy Triangles'. The linked jump table at 0x77bf9c branches case 3 to 0x77bfcc, which is `lsr r1,r1,#1` (N/2) - NOT the `umull` divide-by-3 chain at 0x77bfc0/0x77bfc8 used by case 6 ('Triangles').",
+    "what_is_correct": "Value 3 is 'Lines' (GL_LINES): getPrimitiveCount = indexCount / 2 (one line per two vertices). getIndexCount and getTriangleCount still return 0 for it (verified separately).",
+    "evidence": "arm-none-eabi-objdump -d --start-address=0x77bf84 --stop-address=0x77c01c analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so"
+  },
+  "string_table_verification": {
+    "accessor": "_ZN6glitch5video18getStringsInternalEPNS0_16E_PRIMITIVE_TYPEE",
+    "accessor_address": "0x0077bf74",
+    "accessor_size": 16,
+    "mechanism": "ldr r0,[pc,#4] ; add r0,pc,r0 ; bx lr - returns the base of the enum's display-name array. Literal 0x005ba67c at 0x77bf80 resolves 0x77bf80 + 0x005ba67c = 0x00d365fc.",
+    "table_base": "0x00d365fc",
+    "entries": [
+      {"index": 0, "entry_va": "0xd365fc", "string_va": "0xcaf4c0", "name": "Points"},
+      {"index": 1, "entry_va": "0xd36600", "string_va": "0xc7d488", "name": "Line Strip"},
+      {"index": 2, "entry_va": "0xd36604", "string_va": "0xc7d494", "name": "Line Loop"},
+      {"index": 3, "entry_va": "0xd36608", "string_va": "0xc7d4a0", "name": "Lines"},
+      {"index": 4, "entry_va": "0xd3660c", "string_va": "0xc7d4a8", "name": "Triangle Strip"},
+      {"index": 5, "entry_va": "0xd36610", "string_va": "0xc7d4b8", "name": "Triangle Fan"},
+      {"index": 6, "entry_va": "0xd36614", "string_va": "0xc7d4c8", "name": "Triangles"},
+      {"index": 7, "entry_va": "0xd36618", "string_va": "0xc7d4d4", "name": "Quad Strip"},
+      {"index": 8, "entry_va": "0xd3661c", "string_va": "0xc7d4e0", "name": "Quads"}
+    ],
+    "relocation_evidence": "R_ARM_RELATIVE (r_info 0x17) at 0xd365fc carries addend 0xcaf4c0 ('Points'), confirming entry 0. Remaining eight entries confirmed by direct .data.rel.ro word scan (each pointer targets a NUL-terminated .rodata string).",
+    "note": "Entry 0 string 'Points' lives at 0xcaf4c0, immediately after the OpenSSL 'X509v3 CRL Distribution Points' OID literal (0xcaf4a8..0xcaf4c6); the runtime-visible value is the NUL-terminated 'Points'. Pass 9 cited this address correctly but had not established the .data.rel.ro pointer/relocation link."
+  },
+  "compiler_profile": {
+    "compiler": "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang-21",
+    "flags": ["--target=armv7a-linux-androideabi21", "-marm", "-O2", "-fomit-frame-pointer", "-fPIC", "-std=c++17"],
+    "version_sha256": "8cf366e60c6d1c67b39e753917ecb622887eb9438aba3a6470ab2a29539ee5d6",
+    "note": "clang-21 candidate only; historical GCC 4.4.3 remains unverified/unavailable (unchanged blocker)."
+  },
+  "functions": [
+    {
+      "address": "0x0077bf84",
+      "symbol": "_ZN6glitch5video17getPrimitiveCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 152,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp",
+      "candidate_symbol": "nova3_recovered_get_primitive_count",
+      "report": ".cache/om-getPrimitiveCount-v2/matrix.json",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": true, "COMPARISON_CHECKED": true,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "COMPILED + BEHAVIOURAL; FUNCTION_BYTES_DIFFERENT (cand 152 B == ref 152 B, relocs 0). Corrected value 3 compiles to `lsr r0,r1,#1` (N/2), matching the original's `lsr r1,r1,#1`; improved from pass-9 FUNCTION_SIZE_MISMATCH (144 vs 152). Remaining byte diffs are clang PIC LUT vs GCC 4.4.3 relative branch table and subs/movcc vs sub/bic saturation idiom."
+      }
+    },
+    {
+      "address": "0x0077bf74",
+      "symbol": "_ZN6glitch5video18getStringsInternalEPNS0_16E_PRIMITIVE_TYPEE",
+      "size": 16,
+      "mode": "ARM",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bf74.cpp",
+      "candidate_symbol": "nova3_recovered_get_strings_internal",
+      "report": "n/a (data-table recovery; not byte-compared)",
+      "status_chain": {
+        "DISCOVERED": true, "ANALYZED": true, "SOURCE": true,
+        "ARM_COMPILES": false, "COMPARISON_CHECKED": false,
+        "BEHAVIOR_TESTED": true,
+        "VERIFIED_AT_SCOPED_LEVEL": "DATA-VERIFIED: returns the 9-entry display-name array base (0xd365fc), transcribed string-for-string from the relocated .data.rel.ro table. Host test asserts all 9 names. No ARM byte comparison performed (the original is a 3-instruction constant-return; the 9 strings are data, recovered as literals)."
+      }
+    },
+    {
+      "address": "0x0077c1e0",
+      "symbol": "_ZN6glitch5video16getTriangleCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 112,
+      "mode": "ARM",
+      "note": "Arithmetic unchanged this pass; value 3 already returned 0 via the <4 fall-through. Enum names corrected ('Triangles'/'Quads')."
+    },
+    {
+      "address": "0x0077c250",
+      "symbol": "_ZN6glitch5video13getIndexCountENS0_16E_PRIMITIVE_TYPEEj",
+      "size": 124,
+      "mode": "ARM",
+      "note": "Arithmetic unchanged this pass; value 3 ('Lines') -> 0 quirk re-confirmed (jump entry 0x77c268 -> 0x77c280 return 0)."
+    }
+  ],
+  "negative_control": {
+    "description": "Flipped getPrimitiveCount value 3 from N/2 back to N/3 (pass-9 bug) and rebuilt; primitive_count_test failed with 6 precise mismatches (type=3,N in {2,4,5,6,7,8}), exit 1. Corrected source passes all checks. Confirms the literal-table test actually guards the reconstruction."
+  },
+  "totals": {
+    "functions_this_pass": "1 string-table recovery (getStringsInternal) + 1 arithmetic correction (getPrimitiveCount)",
+    "linked_window_equal": 0,
+    "bytes_different_behavioural": 1,
+    "relocation_carried": 0,
+    "enum_names_now_verified": 9,
+    "end_to_end_game_functionality": false,
+    "whole_so_sha_matched": false,
+    "host_ctest": "24/24"
+  }
+}
