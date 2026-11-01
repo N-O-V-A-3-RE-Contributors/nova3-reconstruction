@@ -61,3 +61,10 @@ __pycache__/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
+.worktrees/
+
+# Distributed worker loop: per-machine and per-run state is never committed.
+/.local/
+/.nova3-dsh-loop
+/node_modules/
+/package-lock.json

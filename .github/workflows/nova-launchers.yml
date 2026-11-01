@@ -1,4 +1,18 @@
 name: Build contributor launchers
+
+# Produces the "plug and play" NOVA3 worker distribution for every supported
+# platform from one Python source:
+#   * per-platform console launchers (double-click / terminal) that run the
+#     setup wizard on first use and continue work afterwards,
+#   * a platform-independent SOURCE archive for contributors who cannot or do
+#     not want to use Git (private repository access, corporate machines),
+# plus the browser dashboard.
+# No game data, binary, or API key is ever packaged. Every user installs for
+# their own account and supplies their own provider key.
+#
+# The former PyInstaller launchers (nova3_easy.py) remain available through
+# START-LINUX.sh --legacy-workflow; they are no longer packaged.
+
 on:
   push:
     tags:
@@ -6,30 +20,102 @@ on:
   workflow_dispatch:
     inputs:
       publish_release:
-        description: 'Publish versioned launcher and Observatory assets (maintainer only)'
+        description: 'Publish launcher and source assets (maintainer only)'
         required: false
         default: false
         type: boolean
+      tag:
+        description: 'Release tag to publish under (defaults to launcher-v<run number>)'
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
+
+env:
+  PYINSTALLER_REQ: 'pyinstaller>=6,<8'
+  NOVA3_REPO: N-O-V-A-3-RE-Contributors/nova3-reconstruction
+
 jobs:
-  build:
+  test-loop:
+    name: Loop and installer tests
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15, windows-latest]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Unit tests (no network, no credentials)
+        run: python -m unittest discover -s tools/dsh_loop/tests -t . -v
+      - name: Launcher scripts parse
+        if: runner.os != 'Windows'
+        run: |
+          sh -n START-LINUX.sh
+          bash -n START-MAC.command
+      - name: Bootstrap help works offline
+        if: runner.os != 'Windows'
+        run: ./START-LINUX.sh --help > /dev/null
+
+  source-archive:
+    needs: test-loop
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build source-only distribution
+        run: |
+          python tools/dsh_loop/packager.py --repo . --out dist/source --repository "$NOVA3_REPO"
+          ls -la dist/source
+          tar tzf dist/source/nova3-source.tar.gz | grep -q 'tools/dsh_loop/install.py'
+          tar tzf dist/source/nova3-source.tar.gz | grep -q '^GETTING-STARTED.txt$'
+      - name: Refuse if the archive contains proprietary binaries
+        run: |
+          set -e
+          bad=$(tar tzf dist/source/nova3-source.tar.gz | grep -Ei '\.(apk|obb|so|dex|rar|elf)$' || true)
+          if [ -n "$bad" ]; then echo "proprietary/binary content in archive:"; echo "$bad"; exit 1; fi
+          echo "source archive contains no APK/OBB/SO/DEX/RAR files"
+      - name: Round-trip from the extracted archive
+        run: |
+          set -e
+          mkdir -p /tmp/untar && tar xzf dist/source/nova3-source.tar.gz -C /tmp/untar
+          cd /tmp/untar
+          test -f install.sh && sh -n install.sh
+          python tools/dsh_loop/install.py --help > /dev/null
+          python -m unittest discover -s tools/dsh_loop/tests -t . -q
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nova3-Source
+          path: dist/source/*
+          if-no-files-found: error
+          retention-days: 30
+
+  launcher:
+    needs: test-loop
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: windows-latest
-            bundle: Nova3-Windows
-            os: windows
           - runner: ubuntu-24.04
-            bundle: Nova3-Linux-x64
-            os: linux
+            name: Nova3-Linux-x64
           - runner: macos-15
-            bundle: Nova3-Mac-AppleSilicon
-            os: mac
+            name: Nova3-Mac-AppleSilicon
           - runner: macos-15-intel
-            bundle: Nova3-Mac-Intel
-            os: mac
+            name: Nova3-Mac-Intel
+          - runner: windows-latest
+            name: Nova3-Windows
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     steps:
@@ -40,38 +126,45 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install packager
-        run: python -m pip install --disable-pip-version-check 'pyinstaller>=6,<8'
-      - name: Check launcher source
-        run: python nova3_easy.py --self-test
-      - name: Package native launcher
-        run: python -m PyInstaller --noconfirm --clean --onefile --console --name "${{ matrix.bundle }}" nova3_easy.py
-      - name: Smoke-test packaged launcher (Unix)
-        if: matrix.os != 'windows'
-        run: ./dist/${{ matrix.bundle }} --self-test
-      - name: Smoke-test packaged launcher (Windows)
-        if: matrix.os == 'windows'
+        run: python -m pip install --disable-pip-version-check "$env:PYINSTALLER_REQ"
         shell: pwsh
-        run: '& "dist/${{ matrix.bundle }}.exe" --self-test'
+        if: runner.os == 'Windows'
+      - name: Install packager (Unix)
+        if: runner.os != 'Windows'
+        run: python -m pip install --disable-pip-version-check "$PYINSTALLER_REQ"
+      - name: Test the loop before packaging
+        run: python -m unittest discover -s tools/dsh_loop/tests -t . -q
+      - name: Package console launcher
+        run: python -m PyInstaller --noconfirm --clean --onefile --console --name "${{ matrix.name }}" --paths . tools/dsh_loop/frozen.py
+      - name: Smoke-test packaged launcher (Unix)
+        if: runner.os != 'Windows'
+        run: ./dist/${{ matrix.name }} --self-test
+      - name: Smoke-test packaged launcher (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: '& "dist/${{ matrix.name }}.exe" --self-test'
       - name: Assemble release archive (Windows)
-        if: matrix.os == 'windows'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -Type Directory -Force release | Out-Null
-          Copy-Item "dist/${{ matrix.bundle }}.exe" release/
-          Copy-Item docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
-          "$env:GITHUB_REPOSITORY" | Set-Content release/NOVA3-REPO.txt
-          Compress-Archive -Path release/* -DestinationPath "${{ matrix.bundle }}.zip"
+          Copy-Item "dist/${{ matrix.name }}.exe" release/
+          Copy-Item README-WORKER.txt release/READ-ME.txt
+          "$env:NOVA3_REPO" | Set-Content release/NOVA3-REPO.txt
+          Compress-Archive -Path release/* -DestinationPath "${{ matrix.name }}.zip"
       - name: Assemble release archive (macOS)
-        if: matrix.os == 'mac'
+        if: runner.os == 'mac'
         shell: bash
         run: |
           mkdir -p release
-          cp "dist/${{ matrix.bundle }}" release/
+          cp "dist/${{ matrix.name }}" release/
+          cp README-WORKER.txt release/READ-ME.txt
+          printf '%s\n' "$NOVA3_REPO" > release/NOVA3-REPO.txt
           cat > "release/START.command" <<'SH'
           #!/bin/bash
           cd "$(dirname "$0")" || exit 1
           FILE="$(find . -maxdepth 1 -name 'Nova3-Mac-*' -type f | head -n 1)"
-          if [[ -z "$FILE" ]]; then echo 'Launcher binary missing'; read -r; exit 1; fi
+          if [[ -z "$FILE" ]]; then echo 'Launcher binary is missing'; read -r; exit 1; fi
           "./${FILE#./}" "$@"
           status=$?
           echo
@@ -79,80 +172,54 @@ jobs:
           exit "$status"
           SH
           chmod +x release/*
-          cp docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
-          printf '%s\n' "$GITHUB_REPOSITORY" > release/NOVA3-REPO.txt
-          ditto -c -k --sequesterRsrc --keepParent release "${{ matrix.bundle }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent release "${{ matrix.name }}.zip"
       - name: Assemble release archive (Linux)
-        if: matrix.os == 'linux'
+        if: runner.os == 'linux'
         shell: bash
         run: |
           mkdir -p release
-          cp "dist/${{ matrix.bundle }}" release/
-          cat > release/START.sh <<'SH'
+          cp "dist/${{ matrix.name }}" release/
+          cp README-WORKER.txt release/READ-ME.txt
+          printf '%s\n' "$NOVA3_REPO" > release/NOVA3-REPO.txt
+          cat > "release/START.sh" <<'SH'
           #!/bin/sh
           cd "$(dirname "$0")" || exit 1
           exec ./Nova3-Linux-x64 "$@"
           SH
           chmod +x release/*
-          cp docs/ONE_CLICK_CONTRIBUTORS.md release/READ-ME.txt
-          printf '%s\n' "$GITHUB_REPOSITORY" > release/NOVA3-REPO.txt
-          tar czf "${{ matrix.bundle }}.tar.gz" -C release .
+          tar czf "${{ matrix.name }}.tar.gz" -C release .
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.bundle }}
+          name: ${{ matrix.name }}
           path: |
-            ${{ matrix.bundle }}.zip
-            ${{ matrix.bundle }}.tar.gz
+            ${{ matrix.name }}.zip
+            ${{ matrix.name }}.tar.gz
           if-no-files-found: error
-          retention-days: 14
-  observatory:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Test shared observatory
-        run: |
-          python -m unittest discover -s tools/observatory/tests -q
-          python tools/observatory/observer.py --demo --once
-          bash -n tools/observatory/install.sh
-      - name: Package source-based observatory
-        run: |
-          mkdir -p package/observatory
-          cp tools/observatory/{observer.py,operator_ops.py,presence_view.py,progress.py,project_roadmap.json,README.md,install.sh,install.ps1} package/observatory/
-          cp -r tools/observatory/tests package/observatory/tests
-          cd package
-          zip -q -r ../Nova3-Observatory.zip observatory -x '*/__pycache__/*' '*.pyc'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Nova3-Observatory
-          path: Nova3-Observatory.zip
-          if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
   release:
-    needs: [build, observatory]
+    needs: [test-loop, launcher, source-archive]
     if: startsWith(github.ref, 'refs/tags/launcher-v') || (github.event_name == 'workflow_dispatch' && inputs.publish_release && github.actor == 'crjase' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: files
           pattern: Nova3-*
           merge-multiple: true
-      - name: Publish launchers on tag
+      - name: Publish launchers and source on tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/launcher-v') && github.ref_name || format('launcher-v{0}-{1}', github.run_number, github.run_attempt) }}
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/launcher-v') && github.ref_name || (inputs.tag != '' && inputs.tag || format('launcher-v{0}-{1}', github.run_number, github.run_attempt)) }}
         run: |
           set -euo pipefail
           ls -lh files
-          gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz --target "$GITHUB_SHA" \
-            --title "NOVA3 contributor launcher $RELEASE_TAG" \
-            --notes "Unsigned contributor launchers and source-based NOVA3 Observatory. Install Observatory separately for richer monitoring; all GitHub owner actions require ADMIN/MAINTAIN permission. Each user authenticates their own GitHub and AI accounts. No game data is included."
+          gh release create "$RELEASE_TAG" files/*.zip files/*.tar.gz files/nova3-source.manifest.json --target "$GITHUB_SHA" \
+            --title "NOVA3 worker $RELEASE_TAG" \
+            --notes-file README-WORKER.txt

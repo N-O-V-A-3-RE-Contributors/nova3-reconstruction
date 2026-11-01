@@ -1,10 +1,10 @@
 @echo off
+rem NOVA3 worker -- Windows launcher (double-click). First run: setup + your API key.
 cd /d "%~dp0"
 where py >nul 2>nul
 if not errorlevel 1 (
-  py -3 nova3_easy.py %*
+  py -3 tools\dsh_loop\install.py --workspace "%CD%" --then-run %*
 ) else (
-  python nova3_easy.py %*
+  python tools\dsh_loop\install.py --workspace "%CD%" --then-run %*
 )
-echo.
-pause
+if errorlevel 1 pause

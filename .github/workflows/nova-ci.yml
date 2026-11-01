@@ -41,6 +41,8 @@ jobs:
           bash -n tools/run_compiler_pilot.sh
           sh -n START-LINUX.sh
           python nova3_easy.py --self-test
+      - name: Worker loop and installer tests
+        run: python -m unittest discover -s tools/dsh_loop/tests -t . -q
       - name: Observatory contributor/owner role tests
         run: |
           python -m unittest discover -s tools/observatory/tests -v

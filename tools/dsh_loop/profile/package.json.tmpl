@@ -1,0 +1,17 @@
+{
+  "name": "nova3-dsh-profile",
+  "private": true,
+  "description": "NOVA3 worker profile: DSH base + headless bundles with an OpenRouter model route supplied by the user's own key.",
+  "dependencies": {
+    "@deepseek-ai/dsh-base": "__DSH_VERSION__",
+    "@deepseek-ai/dsh-headless": "__DSH_VERSION__"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-headless"
+      ]
+    }
+  }
+}
