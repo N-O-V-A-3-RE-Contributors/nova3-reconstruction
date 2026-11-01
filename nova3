@@ -1,0 +1,18 @@
+#!/bin/sh
+# N.O.V.A. 3 reconstruction workbench — the one command to run.
+#
+#   ./nova3                # command list
+#   ./nova3 doctor         # is this machine ready?
+#   ./nova3 decompile      # bounded Ghidra batch, resumable
+#
+# It only locates the project virtual environment and forwards arguments; all
+# logic lives in tools/workbench.py so it can be tested without a shell.
+set -e
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PY="$ROOT/.venv/bin/python"
+if [ ! -x "$PY" ]; then
+    echo "nova3: no project virtual environment at $ROOT/.venv" >&2
+    echo "  create it once with: bash tools/setup/bootstrap.sh" >&2
+    exit 2
+fi
+exec "$PY" "$ROOT/tools/workbench.py" "$@"

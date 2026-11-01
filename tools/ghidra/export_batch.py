@@ -5,10 +5,25 @@ for resumable symbol-address ordered batches. No full autoanalysis by default.
 """
 import argparse,hashlib,json,pathlib,sqlite3,os,sys
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-p=argparse.ArgumentParser(); p.add_argument('--binary',default='analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so'); p.add_argument('--addresses',default='0xde2cc,0x8d890c'); p.add_argument('--start',type=lambda s:int(s,0),default=0); p.add_argument('--limit',type=int,default=16); p.add_argument('--all-symbols',action='store_true'); p.add_argument('--retry',action='store_true'); args=p.parse_args()
-os.environ.setdefault('JAVA_HOME','/usr/lib/jvm/java-21-openjdk')
+p=argparse.ArgumentParser(); p.add_argument('--binary',default='analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so'); p.add_argument('--addresses',default='0xde2cc,0x8d890c'); p.add_argument('--start',type=lambda s:int(s,0),default=0); p.add_argument('--limit',type=int,default=16); p.add_argument('--all-symbols',action='store_true'); p.add_argument('--retry',action='store_true')
+p.add_argument('--ghidra-home',default=os.environ.get('NOVA3_GHIDRA_HOME') or os.environ.get('GHIDRA_INSTALL_DIR'),
+ help='Ghidra installation directory; auto-detected when omitted (see tools/pipeline/ghidra_env.py)')
+p.add_argument('--project-dir',default=os.environ.get('NOVA3_GHIDRA_PROJECT_DIR') or str(pathlib.Path.home()/'nova3-analysis'/'ghidra'),
+ help='Ghidra project directory. MUST NOT contain a path element starting with "." — '
+      'Ghidra\'s ProjectLocator rejects those, which is why an isolated worktree under '
+      '.local/ or .cache/ cannot host the project itself.'); args=p.parse_args()
+sys.path.insert(0,str(ROOT/'tools/pipeline'))
+from ghidra_env import resolve_ghidra_install,resolve_java_home
+_java=resolve_java_home()
+if _java is None:
+ print('export_batch: no JDK found; set JAVA_HOME (Ghidra 11+ needs JDK 17 or newer)',file=sys.stderr); raise SystemExit(2)
+os.environ.setdefault('JAVA_HOME',str(_java))
+_ghidra=resolve_ghidra_install(args.ghidra_home)
+if _ghidra is None:
+ print('export_batch: no Ghidra installation found; set NOVA3_GHIDRA_HOME or pass --ghidra-home',file=sys.stderr); raise SystemExit(2)
+print('GHIDRA',_ghidra,'JAVA_HOME',os.environ['JAVA_HOME'],flush=True)
 import pyghidra
-pyghidra.start(install_dir=pathlib.Path('/opt/ghidra'))
+pyghidra.start(install_dir=_ghidra)
 from ghidra.app.decompiler import DecompInterface
 from ghidra.program.model.address import AddressSet
 from ghidra.util.task import ConsoleTaskMonitor
@@ -23,7 +38,7 @@ rows=list(chosen.values())
 out=ROOT/'generated/ghidra/exports'/digest; out.mkdir(parents=True,exist_ok=True)
 rows=[r for r in rows if args.retry or not (out/f'{r[0]:08x}.json').exists()][:args.limit]
 failures=0
-with pyghidra.open_program(binary,project_location=ROOT/'generated/ghidra',project_name='premium',analyze=False,nested_project_location=False) as api:
+with pyghidra.open_program(binary,project_location=pathlib.Path(args.project_dir),project_name='premium',analyze=False,nested_project_location=False) as api:
  program=api.getCurrentProgram(); image_base=program.getImageBase().getOffset(); monitor=ConsoleTaskMonitor(); decomp=DecompInterface(); decomp.openProgram(program)
  print('OPEN',program.getName(),program.getLanguageID(),flush=True)
  # Remove the mislabeled function created by the initial unrebased experiment.

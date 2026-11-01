@@ -3,6 +3,8 @@ project(nova3_reconstruction LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
 option(BUILD_SHARED_LIBS "Build source-owned core as a shared library" OFF)
 add_library(nova3_core reconstruction/engine/crc32.cpp reconstruction/engine/scramble.cpp reconstruction/engine/zip_local.cpp reconstruction/engine/zip_payload.cpp reconstruction/engine/zip_lookup.cpp reconstruction/engine/zip_archive.cpp reconstruction/engine/bres.cpp reconstruction/engine/collada_mesh.cpp reconstruction/engine/pvr_texture.cpp reconstruction/engine/texture_bundle.cpp reconstruction/engine/etc1.cpp reconstruction/engine/texture_path.cpp reconstruction/engine/scrambled_zip.cpp)
 target_include_directories(nova3_core PUBLIC reconstruction/engine)
@@ -120,187 +122,265 @@ if(BUILD_TESTING)
     add_test(NAME scrambled_zip_headers COMMAND scrambled_zip_test)
 endif()
 
-# Recovered function: computePitch (0x0077d37c)
+# Behavioural regression for the reconstructed cpu-features TU.  The test
+# compiles the recovered TU into itself so its file-scope helpers can be
+# exercised over fixture buffers; it needs no proprietary input and no game
+# code.  Machine-code equivalence is measured separately by
+# tools/compare/cpufeatures_pilot.py and is not claimed here.
 if(BUILD_TESTING)
-    add_executable(compute_pitch_test
-        reconstruction/tests/compute_pitch_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d37c.cpp)
-    target_include_directories(compute_pitch_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(compute_pitch_test PRIVATE -UNDEBUG)
-    add_test(NAME compute_pitch_arithmetic COMMAND compute_pitch_test)
+    add_executable(cpu_features_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/cpu_features_test.c)
+    set_property(TARGET cpu_features_behaviour_test PROPERTY C_STANDARD 99)
+    target_compile_options(cpu_features_behaviour_test PRIVATE -UNDEBUG -D_GNU_SOURCE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(cpu_features_behaviour_test PRIVATE Threads::Threads)
+    add_test(NAME cpu_features_behaviour COMMAND cpu_features_behaviour_test)
+
+    # End-to-end behaviour of android_cpuInit and the getters.  The recovered
+    # source keeps its fixed /proc and /sys paths, so this target redirects
+    # open/read/close at link time (--wrap) to an in-memory fixture table; the
+    # translation unit under test is unchanged.  See the test file header.
+    add_executable(cpu_features_init_test
+        reconstruction/tests/recovered/libNOVA3_neon/cpu_features_init_test.c)
+    set_property(TARGET cpu_features_init_test PROPERTY C_STANDARD 99)
+    target_compile_options(cpu_features_init_test PRIVATE -UNDEBUG -D_GNU_SOURCE)
+    target_link_libraries(cpu_features_init_test PRIVATE Threads::Threads
+        -Wl,--wrap=open -Wl,--wrap=read -Wl,--wrap=close)
+    add_test(NAME cpu_features_behaviour_init COMMAND cpu_features_init_test)
+
+    # Behaviour of the recovered NEON capability probe
+    # (vox::DriverCallbackSourceInterface::DetectNeon, ELF VA 0x009dad14).  The
+    # test includes the recovered TU unchanged and supplies counting stubs for
+    # the two cpufeatures getters, so the probe's short-circuit, single-bit mask
+    # test and call order are asserted on the host.  Code-window agreement is
+    # measured by tools/compare/detect_neon_pilot.py, not here.
+    add_executable(detect_neon_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/driver_callback_detect_neon_test.cpp)
+    set_property(TARGET detect_neon_behaviour_test PROPERTY CXX_STANDARD 17)
+    target_include_directories(detect_neon_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(detect_neon_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME detect_neon_behaviour COMMAND detect_neon_behaviour_test)
+
+    # Behaviour of the recovered initializer
+    # (vox::DriverCallbackInterface::Init, ELF VA 0x009d53f4).  The test includes
+    # the recovered TU unchanged and stubs only DetectNeon, so the statics Init
+    # clears, the 1-byte NEON flag it writes, and the fact that it reads neither
+    # `this` nor its void* argument are asserted on the host.  Instruction-shape
+    # and anchor-offset agreement with the reference is measured by
+    # tools/compare/driver_callback_init_pilot.py, not here.
+    add_executable(driver_callback_init_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/driver_callback_init_test.cpp)
+    set_property(TARGET driver_callback_init_behaviour_test PROPERTY CXX_STANDARD 17)
+    target_include_directories(driver_callback_init_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(driver_callback_init_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME driver_callback_init_behaviour
+             COMMAND driver_callback_init_behaviour_test)
+
+    # Behaviour of three recovered CSoftwareSkinTechnique leaves
+    # (checkAvailability 0x00710b50, needOutputBuffer 0x00710b48, attach
+    # 0x00710b58; 8 B each, A32, no relocation).  The test includes the recovered
+    # TU unchanged and asserts the constant predicates and the single +0x0c
+    # pointer store over sentinel-filled objects.  Byte equality with the
+    # reference is measured by tools/compare/collada_skin_trivial_pilot.py, not
+    # here.
+    add_executable(collada_skin_technique_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_technique_test.cpp
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_cache_stubs.cpp)
+    set_property(TARGET collada_skin_technique_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_skin_technique_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_skin_technique_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_skin_technique_behaviour
+             COMMAND collada_skin_technique_behaviour_test)
+
+    # Behaviour of the recovered CSoftwareSkinTechnique::prepareCache
+    # (ELF VA 0x0073f0a4, 228 B, A32).  The test includes the recovered TU
+    # unchanged and defines the five dependencies it calls with the reference's
+    # mangled names, so the real call sites are exercised: the flag-bit guard,
+    # the prepare -> resize -> size -> multiply order, the resize count from the
+    # bind object's +0x4c field, the in-place fill value, one 64-byte product per
+    # collected pointer at stride 0x40, and the bit-0 clear.  Instruction
+    # agreement is measured by tools/compare/collada_skin_prepare_cache_pilot.py
+    # (228 B reference vs 224 B candidate), not here.
+    add_executable(collada_skin_prepare_cache_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_skin_prepare_cache_test.cpp)
+    set_property(TARGET collada_skin_prepare_cache_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_skin_prepare_cache_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_skin_prepare_cache_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_skin_prepare_cache_behaviour
+             COMMAND collada_skin_prepare_cache_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::operator*<float,
+    # collada::SMatrix>(CMatrix4<float> const&, SMatrix const&)
+    # (ELF VA 0x006e7e60, 564 B, A32).  The test includes the recovered TU
+    # unchanged and supplies only the CMatrix4(eConstructor) body, so the real
+    # arithmetic and the real constructor call are exercised: the 3x3 part and the
+    # translation row are checked against an independently written generic 4x4
+    # product, the result's fourth column is proved to be the literal 0.0f/1.0f
+    # (the CMatrix4's (3,3) element is never read), and the SMatrix's fourth float
+    # per row is proved unread with both a large sentinel and a NaN.
+    # Instruction agreement is measured by tools/compare/collada_matrix_multiply_pilot.py.
+    add_executable(collada_matrix_multiply_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix_multiply_test.cpp)
+    set_property(TARGET collada_matrix_multiply_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix_multiply_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix_multiply_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix_multiply_behaviour
+             COMMAND collada_matrix_multiply_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::CMatrix4(
+    # eConstructor) (ELF VA 0x00108c54, 56 B, A32).  The test includes the
+    # recovered TU unchanged and stubs nothing.  Asserted: values 0 and 1 write
+    # no byte at all; every value >= 2 zeroes the 64-byte object and sets floats
+    # 0/5/10/15 to 1.0f (the 4x4 identity, with off-diagonals exactly +0.0f); no
+    # store lands outside the object; reconstruction is idempotent and a later
+    # value <= 1 does not disturb an already-built identity.
+    # Instruction agreement is measured by tools/compare/collada_matrix4_ctor_pilot.py.
+    add_executable(collada_matrix4_ctor_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_ctor_test.cpp)
+    set_property(TARGET collada_matrix4_ctor_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_ctor_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_ctor_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_ctor_behaviour
+             COMMAND collada_matrix4_ctor_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::CMatrix4(
+    # CMatrix4<float> const&, eConstructor) (ELF VA 0x00108c8c, 240 B, A32).
+    # The test includes both recovered constructor TUs unchanged and supplies
+    # only the two unrecovered dependencies (getTransposed 0x000eba84,
+    # getInverse 0x000ebb08) as instrumented stand-ins.  Asserted per enumerator
+    # value: 1 copies the source, 2 builds the identity, 3 writes the transpose
+    # of the source into `this`, 4 stores the inverse and zeroes the object on
+    # failure, 5 stores transpose(inverse(source)) and skips the transpose when
+    # the inverse fails, 0 and >= 6 write nothing at all; guard bytes prove no
+    # store lands outside the 64-byte object.
+    # Instruction agreement is measured by
+    # tools/compare/collada_matrix4_copy_ctor_pilot.py.
+    add_executable(collada_matrix4_copy_ctor_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_copy_ctor_test.cpp)
+    set_property(TARGET collada_matrix4_copy_ctor_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_copy_ctor_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_copy_ctor_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_copy_ctor_behaviour
+             COMMAND collada_matrix4_copy_ctor_behaviour_test)
+
+    # Behaviour of the recovered glitch::core::CMatrix4<float>::getTransposed(
+    # CMatrix4<float>&) const (ELF VA 0x000eba84, 132 B, A32).  The recovered TU
+    # is included unchanged and nothing is stubbed: the reference window calls
+    # nothing and reads no global.  Asserted: the exact slot mapping
+    # destination k <- source (k % 4) * 4 + k / 4, the source never modified, the
+    # four diagonal slots fixed and every other slot moved, the mapping an
+    # involution, a junk destination fully overwritten, bit patterns moved
+    # unchanged (no arithmetic), and the observed element-wise in-place behaviour
+    # when out == *this.
+    # Instruction agreement is measured by
+    # tools/compare/collada_matrix4_transpose_pilot.py.
+    add_executable(collada_matrix4_transpose_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_test.cpp)
+    set_property(TARGET collada_matrix4_transpose_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_transpose_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_transpose_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_transpose_behaviour
+             COMMAND collada_matrix4_transpose_behaviour_test)
+
+    # Link path: the three recovered Collada matrix TUs together (plain
+    # constructor, copy-with-mode constructor, getTransposed), with only the
+    # still-unrecovered getInverse stubbed.  This is what turns the copy
+    # constructor's value-3 and value-5 paths from an instrumented stand-in into
+    # the recovered transpose arithmetic, so it asserts those two results slot by
+    # slot against an independently written transpose and checks that the
+    # inverse path is unchanged.
+    add_executable(collada_matrix4_transpose_link_path_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_transpose_link_path_test.cpp)
+    set_property(TARGET collada_matrix4_transpose_link_path_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_transpose_link_path_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_transpose_link_path_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_transpose_link_path
+             COMMAND collada_matrix4_transpose_link_path_test)
 endif()
 
-# Recovered function: computeSizeInBytes (0x0077d3cc) + slices overload (0x0077d43c)
+# ---------------------------------------------------------------------------
+# Functions recovered on main before this merge (retained from the mainline
+# series): FPS counter, vertex stream layout, texture size arithmetic and the
+# Collada database accessor cluster.  The merged source files now live under
+# reconstruction/recovered/libNOVA3_neon/.
+# ---------------------------------------------------------------------------
 if(BUILD_TESTING)
-    add_executable(compute_size_in_bytes_test
+set(NOVA3_RECOVERED reconstruction/recovered/libNOVA3_neon)
+function(nova3_recovered_test name test_source)
+        add_executable(${name} ${test_source} ${ARGN})
+        target_include_directories(${name} PRIVATE ${NOVA3_RECOVERED})
+        set_property(TARGET ${name} PROPERTY CXX_STANDARD 17)
+        target_compile_options(${name} PRIVATE -UNDEBUG)
+        add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+nova3_recovered_test(compute_pitch_test
+        reconstruction/tests/compute_pitch_test.cpp ${NOVA3_RECOVERED}/block_0077d37c.cpp)
+nova3_recovered_test(compute_size_in_bytes_test
         reconstruction/tests/compute_size_in_bytes_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d3cc.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d43c.cpp)
-    target_include_directories(compute_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(compute_size_in_bytes_test PRIVATE -UNDEBUG)
-    add_test(NAME compute_size_in_bytes_arithmetic COMMAND compute_size_in_bytes_test)
-endif()
-
-# Recovered function: CVirtualTexture::getSizeInBytes(unsigned char) (0x0077d4a8)
-if(BUILD_TESTING)
-    add_executable(virtual_texture_get_size_in_bytes_test
-        reconstruction/tests/virtual_texture_get_size_in_bytes_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d4a8.cpp)
-    target_include_directories(virtual_texture_get_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(virtual_texture_get_size_in_bytes_test PRIVATE -UNDEBUG)
-    add_test(NAME virtual_texture_get_size_in_bytes COMMAND virtual_texture_get_size_in_bytes_test)
-endif()
-
-# Recovered functions: computeMipmapSizeInBytes (0x0077d450) + slices overload (0x0077d470)
-if(BUILD_TESTING)
-    add_executable(compute_mipmap_size_in_bytes_test
+        ${NOVA3_RECOVERED}/block_0077d3cc.cpp ${NOVA3_RECOVERED}/block_0077d43c.cpp)
+nova3_recovered_test(virtual_texture_get_size_in_bytes_test
+        reconstruction/tests/virtual_texture_get_size_in_bytes_test.cpp ${NOVA3_RECOVERED}/block_0077d4a8.cpp)
+nova3_recovered_test(compute_mipmap_size_in_bytes_test
         reconstruction/tests/compute_mipmap_size_in_bytes_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d450.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d470.cpp)
-    target_include_directories(compute_mipmap_size_in_bytes_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(compute_mipmap_size_in_bytes_test PRIVATE -UNDEBUG)
-    add_test(NAME compute_mipmap_size_in_bytes_arithmetic COMMAND compute_mipmap_size_in_bytes_test)
-endif()
-
-# Recovered function: CVirtualTexture::getSizeInBytes() no-arg (0x007863e4)
-if(BUILD_TESTING)
-    add_executable(virtual_texture_get_size_in_bytes_noarg_test
-        reconstruction/tests/virtual_texture_get_size_in_bytes_noarg_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007863e4.cpp)
-    target_include_directories(virtual_texture_get_size_in_bytes_noarg_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(virtual_texture_get_size_in_bytes_noarg_test PRIVATE -UNDEBUG)
-    add_test(NAME virtual_texture_get_size_in_bytes_noarg COMMAND virtual_texture_get_size_in_bytes_noarg_test)
-endif()
-
-# Recovered function: ITexture::computeSizeInBytes() const (0x0077d99c)
-if(BUILD_TESTING)
-    add_executable(itexture_compute_size_test
-        reconstruction/tests/itexture_compute_size_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077d99c.cpp)
-    target_compile_options(itexture_compute_size_test PRIVATE -UNDEBUG)
-    add_test(NAME itexture_compute_size COMMAND itexture_compute_size_test)
-endif()
-
-# Recovered CDataInfo accessors: DDS/PVR CImageLoader CDataInfo family
-#   getFilePitch DDS 0x007b8934
-#   getFileDataSize DDS 0x007b892c, PVR 0x007b8974
-#   getFaceStartOffset DDS 0x007b8958
-#   isLittleEndian DDS 0x007b8960, needsFlip DDS 0x007b8968
-#   ~CDataInfo DDS 0x007b8970, getFilePitch PVR 0x007b897c
-if(BUILD_TESTING)
-    add_executable(cimage_datainfo_test
-        reconstruction/tests/cimage_datainfo_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b892c.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8934.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8958.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8960.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8968.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8970.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b8974.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007b897c.cpp)
-    target_include_directories(cimage_datainfo_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(cimage_datainfo_test PRIVATE -UNDEBUG)
-    add_test(NAME cimage_datainfo COMMAND cimage_datainfo_test)
-endif()
-
-# Recovered function: CColladaDatabase::getVersion (0x0071017c)
-# Linked non-PIE so the four-level 32-bit pointer walk is addressable on LP64.
-if(BUILD_TESTING)
-    add_executable(ccollada_get_version_test
-        reconstruction/tests/ccollada_get_version_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp)
-    target_include_directories(ccollada_get_version_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(ccollada_get_version_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(ccollada_get_version_test PRIVATE -no-pie)
-    add_test(NAME ccollada_get_version COMMAND ccollada_get_version_test)
-endif()
-
-# Recovered Collada named-parameter accessor cluster:
-# getMaterial by name (0x007146ac), getImage by name (0x0071476c).
-# Both call strcmp, which carries a relocation in ARM ET_REL.
-if(BUILD_TESTING)
-    add_executable(ccollada_by_name_test
-        reconstruction/tests/ccollada_by_name_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp
-        reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp)
-    target_include_directories(ccollada_by_name_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(ccollada_by_name_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(ccollada_by_name_test PRIVATE -no-pie)
-    add_test(NAME ccollada_by_name COMMAND ccollada_by_name_test)
-endif()
-if(BUILD_TESTING)
-    add_executable(ccollada_accessors_test
-        reconstruction/tests/ccollada_accessors_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp
-        reconstruction/recovered/libNOVA3_neon/block_00710160_v2.cpp
-        reconstruction/recovered/libNOVA3_neon/block_00710318.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0071034c.cpp
-        reconstruction/recovered/libNOVA3_neon/block_00710368_v2.cpp)
-    target_include_directories(ccollada_accessors_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(ccollada_accessors_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(ccollada_accessors_test PRIVATE -no-pie)
-    add_test(NAME ccollada_accessors COMMAND ccollada_accessors_test)
-endif()
-if(BUILD_TESTING)
-    add_executable(primitive_count_test
+        ${NOVA3_RECOVERED}/block_0077d450.cpp ${NOVA3_RECOVERED}/block_0077d470.cpp)
+nova3_recovered_test(virtual_texture_get_size_in_bytes_noarg_test
+        reconstruction/tests/virtual_texture_get_size_in_bytes_noarg_test.cpp ${NOVA3_RECOVERED}/block_007863e4.cpp)
+nova3_recovered_test(itexture_compute_size_test
+        reconstruction/tests/itexture_compute_size_test.cpp ${NOVA3_RECOVERED}/block_0077d99c.cpp)
+nova3_recovered_test(primitive_count_test
         reconstruction/tests/primitive_count_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077c1e0.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077c250.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bf74.cpp)
-    target_include_directories(primitive_count_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(primitive_count_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(primitive_count_test PRIVATE -no-pie)
-    add_test(NAME primitive_count COMMAND primitive_count_test)
-endif()
-
-# Recovered CFPSCounter constructor: C2 (0x0077bb7c) + C1 (0x0077bbb4, identical).
-if(BUILD_TESTING)
-    add_executable(fps_counter_ctor_test
-        reconstruction/tests/fps_counter_ctor_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp)
-    target_include_directories(fps_counter_ctor_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(fps_counter_ctor_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(fps_counter_ctor_test PRIVATE -no-pie)
-    add_test(NAME fps_counter_ctor COMMAND fps_counter_ctor_test)
-endif()
-
-# Recovered CVertexStreams accessors: getActiveAttributeMask (0x0077bd28)
-# and addOffset (0x0077be04).
-if(BUILD_TESTING)
-    add_executable(vertex_streams_test
-        reconstruction/tests/vertex_streams_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bd28.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp)
-    target_include_directories(vertex_streams_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(vertex_streams_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(vertex_streams_test PRIVATE -no-pie)
-    add_test(NAME vertex_streams COMMAND vertex_streams_test)
-endif()
-
-# Recovered enum string tables: E_INDEX_TYPE, E_BUFFER_USAGE, E_BUFFER_TYPE
-# and their getStringsInternal helpers (data-verified from .data.rel.ro).
-if(BUILD_TESTING)
-    add_executable(vertex_types_test
-        reconstruction/tests/vertex_types_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bf64.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bf54.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bf44.cpp)
-    target_include_directories(vertex_types_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(vertex_types_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(vertex_types_test PRIVATE -no-pie)
-    add_test(NAME vertex_types COMMAND vertex_types_test)
-endif()
-
-# Recovered CVertexStreams::getStream — const (0x0077bd7c) and non-const (0x0077bdc0).
-if(BUILD_TESTING)
-    add_executable(vertex_stream_getstream_test
+        ${NOVA3_RECOVERED}/block_0077bf84.cpp ${NOVA3_RECOVERED}/block_0077c1e0.cpp
+        ${NOVA3_RECOVERED}/block_0077c250.cpp ${NOVA3_RECOVERED}/block_0077bf74.cpp)
+nova3_recovered_test(fps_counter_ctor_test
+        reconstruction/tests/fps_counter_ctor_test.cpp ${NOVA3_RECOVERED}/block_0077bb7c.cpp)
+nova3_recovered_test(vertex_types_test
+        reconstruction/tests/vertex_types_test.cpp ${NOVA3_RECOVERED}/block_0077bf64.cpp
+        ${NOVA3_RECOVERED}/block_0077bf54.cpp ${NOVA3_RECOVERED}/block_0077bf44.cpp)
+nova3_recovered_test(vertex_streams_test
+        reconstruction/tests/vertex_streams_test.cpp ${NOVA3_RECOVERED}/block_0077bd28.cpp ${NOVA3_RECOVERED}/block_0077be04.cpp)
+nova3_recovered_test(vertex_stream_getstream_test
         reconstruction/tests/vertex_stream_getstream_test.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bd7c.cpp
-        reconstruction/recovered/libNOVA3_neon/block_0077bdc0.cpp)
-    target_include_directories(vertex_stream_getstream_test PRIVATE reconstruction/recovered/libNOVA3_neon)
-    target_compile_options(vertex_stream_getstream_test PRIVATE -UNDEBUG -fno-pie)
-    target_link_options(vertex_stream_getstream_test PRIVATE -no-pie)
-    add_test(NAME vertex_stream_getstream COMMAND vertex_stream_getstream_test)
+        ${NOVA3_RECOVERED}/block_0077bd7c.cpp ${NOVA3_RECOVERED}/block_0077bdc0.cpp)
+nova3_recovered_test(ccollada_accessors_test
+        reconstruction/tests/ccollada_accessors_test.cpp
+        ${NOVA3_RECOVERED}/block_0071017c.cpp
+        ${NOVA3_RECOVERED}/block_00710160_v2.cpp
+        ${NOVA3_RECOVERED}/block_00710318.cpp
+        ${NOVA3_RECOVERED}/block_0071034c.cpp
+        ${NOVA3_RECOVERED}/block_00710368_v2.cpp)
+nova3_recovered_test(ccollada_by_name_test
+        reconstruction/tests/ccollada_by_name_test.cpp
+        ${NOVA3_RECOVERED}/block_0071017c.cpp
+        ${NOVA3_RECOVERED}/block_007146ac.cpp
+        ${NOVA3_RECOVERED}/block_0071476c.cpp)
+nova3_recovered_test(ccollada_get_version_test
+        reconstruction/tests/ccollada_get_version_test.cpp
+        ${NOVA3_RECOVERED}/block_0071017c.cpp)
+nova3_recovered_test(cimage_datainfo_test
+        reconstruction/tests/cimage_datainfo_test.cpp
+        ${NOVA3_RECOVERED}/block_007b892c.cpp
+        ${NOVA3_RECOVERED}/block_007b8934.cpp
+        ${NOVA3_RECOVERED}/block_007b8958.cpp
+        ${NOVA3_RECOVERED}/block_007b8960.cpp
+        ${NOVA3_RECOVERED}/block_007b8968.cpp
+        ${NOVA3_RECOVERED}/block_007b8970.cpp
+        ${NOVA3_RECOVERED}/block_007b8974.cpp
+        ${NOVA3_RECOVERED}/block_007b897c.cpp)
 endif()

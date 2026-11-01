@@ -65,12 +65,43 @@ Logs .cache/logs/sanitizer-tests.log (failed initialization) and sanitizer-nopie
 
 ```sh
 .venv/bin/python tools/index/inventory.py
+.venv/bin/python tools/pipeline/auto_decompile.py --status          # coverage
+.venv/bin/python tools/pipeline/auto_decompile.py --max-functions 8 --batch-size 4
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk JAVA_TOOL_OPTIONS=-Xmx1400m \
  .venv/bin/python tools/ghidra/export_batch.py --addresses 0xde2cc,0x411610
 .venv/bin/python tools/index/check_index.py
+.venv/bin/python -m pytest -q reconstruction/tests/test_auto_decompile.py
 ```
 
-Ghidra project generated/ghidra/premium.gpr persists. JVM class loading/import can take~1–2minutes; first bytes are validated in rebased address space. No global autoanalysis yet. Run inventory then exports sequentially to avoid SQLite write locks. Installed local Ghidra headless API documentation /opt/ghidra/support/analyzeHeadlessREADME.md and Java API inspected via javap; deprecated PyGhidra open_program currently works, migration to modern API is future tooling work.
+`./nova3 decompile` (front door: `./nova3`, see `docs/DECOMPILE.md`) resolves
+Ghidra through `tools/pipeline/ghidra_env.py`: `--ghidra-home`, then
+`NOVA3_GHIDRA_HOME`, `GHIDRA_INSTALL_DIR`, `/opt/ghidra`, `/usr/share/ghidra`,
+`/usr/local/ghidra`, then versioned `ghidra*` directories. A directory only
+counts when it contains `support/analyzeHeadless`, so a wrong explicit path is an
+error instead of a silent fallback. The JDK is resolved the same way
+(`JAVA_HOME`, then the newest JDK under `/usr/lib/jvm`). This host: Ghidra
+12.1.2 at `/opt/ghidra`, JDK 27. The same resolver feeds `./nova3 doctor`.
+
+Ghidra project path is `~/nova3-analysis/ghidra` by default (override
+`--project-dir` or `NOVA3_GHIDRA_PROJECT_DIR`): it must not contain a
+`.`-prefixed path element, because Ghidra's `ProjectLocator` rejects those and
+every worktree lives under `.local/`. The project persists; JVM class
+loading/import can take ~1–2 minutes and the first import of the 18.7 MB Premium
+ELF measured 68.7 s. Export batches write to the gitignored
+`generated/ghidra/exports/<sha256>/`; the driver checkpoints coverage to
+`.cache/pipeline/auto_decompile_state.json`. First bytes are validated in rebased
+address space. No global autoanalysis yet — exports are `DECOMPILED` evidence
+only. Run inventory then exports sequentially to avoid SQLite write locks
+(JDWP/SQLite lock failures are recorded in BLOCKERS). Installed local Ghidra
+headless API documentation /opt/ghidra/support/analyzeHeadlessREADME.md and Java
+API inspected via javap; deprecated PyGhidra open_program currently works,
+migration to modern API is future tooling work.
+
+Publishing: `bash tools/setup/push_branch.sh [branch]` pushes the current branch
+and verifies the remote head; exit `3` means no credential source (the runtime
+`git` wrapper strips `GH_TOKEN`/`GITHUB_TOKEN`/`SSH_AUTH_SOCK` and needs
+`PAPERCLIP_GITHUB_BROKER_TOKEN`), `5` a rejected credential, `7` a remote/local
+SHA mismatch.
 
 rev.ng official installer inspected, not piped into shell. Pin and safe extraction tools/revng/install_local.py, research/architecture/REVNG.md. Actual ARM probes timed out90/30seconds without output. All tool downloads stay local; proprietary inputs never uploaded.
 

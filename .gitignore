@@ -68,3 +68,11 @@ __pycache__/
 /.nova3-dsh-loop
 /node_modules/
 /package-lock.json
+
+# Worktree symlinks to the private reference trees (a symlink is not a dir,
+# so the trailing-slash patterns above do not cover them).
+/originals
+/Archive
+/analysis
+/research
+/generated
