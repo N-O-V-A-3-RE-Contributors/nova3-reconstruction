@@ -81,3 +81,8 @@ __pycache__/
 /materials/apk/*
 /materials/obb/*
 !/materials/README.md
+
+# A pre-released source tree dropped next to the checkout (reported, never committed)
+/source-release/
+/nova3-source/
+/prerelease/
