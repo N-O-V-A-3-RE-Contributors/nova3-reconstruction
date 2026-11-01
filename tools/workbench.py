@@ -199,18 +199,28 @@ def checks(root: Path) -> list[dict]:
         out.append(_check("build: %s" % tool, "PASS" if shutil.which(tool) else "FAIL",
                           shutil.which(tool) or "missing", fix))
 
-    # 8. optional analysis tools
-    for tool, why in (("jadx", "Android/Java recovery"), ("apktool", "resource decode"),
-                      ("7z", "OBB/archive inspection")):
+    # 8. optional analysis tools.  Each WARN must say how to fix it: a dead end
+    # is not a report (and CI enforces that every non-PASS check has a fix).
+    for tool, why, fix in (
+            ("jadx", "Android/Java recovery", "install jadx 1.5+ (pacman -S jadx / brew install jadx)"),
+            ("apktool", "resource decode", "install apktool 2.9+ (pacman -S apktool)"),
+            ("7z", "OBB/archive inspection", "install p7zip (pacman -S p7zip)")):
         out.append(_check("optional: %s" % tool, "PASS" if shutil.which(tool) else "WARN",
-                          (shutil.which(tool) or "missing") + " (%s)" % why))
+                          (shutil.which(tool) or "missing") + " (%s)" % why, fix))
 
     # 9. historical compiler for the matching track
-    ndk = Path(os.environ.get("NOVA3_R8E_NDK")
-               or Path.home() / ".local/opt/android-ndk-r8e")
-    out.append(_check("optional: NDK r8e (GCC 4.4.3)", "PASS" if ndk.is_dir() else "WARN",
-                      str(ndk), "only needed for compiler-match pilots; see "
-                      "docs/toolchain.md"))
+    ndk = Path(os.environ.get("NOVA3_R8E_NDK") or "~/.local/opt/android-ndk-r8e").expanduser()
+    project_ndk = root / ".cache/toolchains/android-ndk-r8e"
+    compiler = (project_ndk / "toolchains/arm-linux-androideabi-4.4.3/prebuilt/"
+                "linux-x86_64/bin/arm-linux-androideabi-g++")
+    candidates = [p for p in (ndk, project_ndk) if p.is_dir()]
+    if project_ndk.is_dir() and not compiler.is_file():
+        candidates.remove(project_ndk)
+    present = candidates[0] if candidates else None
+    out.append(_check("optional: NDK r8e (GCC 4.4.3)", "PASS" if present else "WARN",
+                      str(present or ndk), "run 'bash tools/setup/fetch_gcc443.sh' "
+                      "(verified download into .cache/toolchains); only needed for "
+                      "compiler-match work, see docs/toolchain.md"))
     return out
 
 

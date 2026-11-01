@@ -23,6 +23,18 @@ GXX="$CACHE/$VERSION/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_6
 
 mkdir -p "$CACHE"
 
+# An r8e NDK that was already installed elsewhere (outside this checkout) is
+# reused rather than downloaded again.
+for existing in "${NOVA3_R8E_NDK:-}" "$HOME/.local/opt/$VERSION"; do
+    [ -n "$existing" ] || continue
+    candidate="$existing/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++"
+    if [ -x "$candidate" ]; then
+        echo "already present: $("$candidate" --version | head -1)"
+        echo "$candidate"
+        exit 0
+    fi
+done
+
 if [ -x "$GXX" ]; then
     echo "already present: $("$GXX" --version | head -1)"
     echo "$GXX"

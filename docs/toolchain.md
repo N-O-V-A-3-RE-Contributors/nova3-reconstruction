@@ -130,7 +130,8 @@ bash tools/setup/fetch_gcc443.sh     # verified download into ignored .cache
 
 | Item | Value |
 | --- | --- |
-| Archive | `android-ndk-r8e-linux-x86_64.tar.bz2` from `dl.google.com/android/ndk/` |
+| Already installed | `~/.local/opt/android-ndk-r8e` (or `$NOVA3_R8E_NDK`) is reused; otherwise the script downloads into `.cache/toolchains` |
+| Archive | `android-ndk-r8e-linux-x86_64.tar.bz2` from `dl.google.com/android/ndk/` (the old `android/repository` path now 404s) |
 | SHA-1 (pinned in the script) | `5a2f85ac665e34e3d27199ed25b7585f3f2f488b` |
 | Compiler | `arm-linux-androideabi-g++ (GCC) 4.4.3`, 32-bit host binaries that run on x86_64 |
 | Size on disk | about 1.4 GiB (kept out of Git and out of release archives) |
