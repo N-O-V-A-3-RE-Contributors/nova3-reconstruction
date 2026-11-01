@@ -416,6 +416,11 @@ class Installer:
                 return
             if cp.returncode == 0 and have:
                 self.echo(f"  runtime has {have}, pin wants {self.dsh_version}; reinstalling")
+        reused = self._reusable_runtime()
+        if reused is not None:
+            self.result.add("dsh-runtime", True,
+                            f"{DSH_PACKAGE} {self.dsh_version} reused from {reused.parent.parent.parent}", False)
+            return
         if not self.allow_network:
             raise InstallError("the pinned DeepSeek Harness runtime is missing and network access is disabled")
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -440,6 +445,42 @@ class Installer:
         if cp.returncode != 0 or have != self.dsh_version:
             raise InstallError(f"runtime installed but reports '{have or cp.stderr}'; expected {self.dsh_version}")
         self.result.add("dsh-runtime", True, f"{DSH_PACKAGE} {have} installed at {self.runtime_dir}", True)
+
+    def _reusable_runtime(self) -> Path | None:
+        """An identical pinned runtime that already exists on this machine.
+
+        Reusing it keeps N checkouts on one machine from downloading ~600
+        npm packages each.  Only an exact version match is reused.
+        """
+        entry_suffix = Path("node_modules") / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+        candidates = [
+            plat.legacy_install_root() / "runtime",
+            Path.home() / "node_modules" / "@deepseek-ai" / "dsh",
+        ]
+        env_runtime = os.environ.get("NOVA3_DSH_RUNTIME")
+        if env_runtime:
+            candidates.insert(0, Path(env_runtime).expanduser() / "..")
+        for root in candidates:
+            entry = (root / entry_suffix).resolve()
+            package = (root / "node_modules" / "@deepseek-ai" / "dsh" / "package.json")
+            try:
+                version = json.loads(package.read_text(encoding="utf-8")).get("version")
+            except (OSError, ValueError):
+                continue
+            if version == self.dsh_version and entry.is_file():
+                try:
+                    self.runtime_dir.parent.mkdir(parents=True, exist_ok=True)
+                    if self.runtime_dir.is_symlink() or self.runtime_dir.exists():
+                        if self.runtime_dir.is_symlink():
+                            self.runtime_dir.unlink()
+                        else:
+                            return None
+                    if not self.runtime_dir.exists():
+                        self.runtime_dir.symlink_to(root, target_is_directory=True)
+                except OSError:
+                    return entry.parent.parent.parent
+                return self.runtime_dir / entry_suffix
+        return None
 
     def _node_exe(self) -> Path:
         for candidate in self._node_candidates():

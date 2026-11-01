@@ -64,20 +64,28 @@ def log(echo: Echo, text: str) -> None:
 # preflight
 # ---------------------------------------------------------------------------
 
-def check_state(state: dict, workspace: Path, config_path: Path) -> list[str]:
+def check_state(state: dict, workspace: Path, config_path: Path, checkout: Path | None = None) -> list[str]:
     """Return human-readable problems that make a pass impossible."""
     problems: list[str] = []
+    # A checkout keeps its worker state in its own ignored .local/dsh tree; a
+    # config produced for another checkout records that other root, so prefer
+    # the tree this process actually belongs to.
+    if checkout is not None:
+        state = dict(state)
+        state["install_root"] = str(checkout / ".local" / "dsh")
     if not state.get("marker"):
         problems.append(
             f"no installation found at {config_path}; run 'nova3-dsh setup' (or "
             "tools/dsh_loop/install.sh) first")
         return problems
     install_root = Path(str(state.get("install_root") or ""))
-    entry = install_root / "runtime" / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
-    if not entry.is_file():
-        problems.append(f"DeepSeek Harness runtime missing ({entry}); re-run setup")
-    if not (install_root / "dsh-home" / "profiles" / str(state.get("dsh_profile"))).is_dir():
-        problems.append("worker profile missing; re-run setup")
+    if not _runtime_entry(state).is_file():
+        problems.append(
+            "DeepSeek Harness runtime not found (checked the checkout install root, "
+            "$NOVA3_DSH_RUNTIME and ~/node_modules); run 'nova3-dsh setup'")
+    profile_dir = install_root / "dsh-home" / "profiles" / str(state.get("dsh_profile"))
+    if not profile_dir.is_dir() and not (plat.legacy_install_root() / "dsh-home" / "profiles" / str(state.get("dsh_profile"))).is_dir():
+        problems.append("worker profile missing; run 'nova3-dsh setup'")
     provider = state.get("provider")
     if provider in credentials.PROVIDERS:
         status = credentials.key_status(provider)
@@ -92,17 +100,50 @@ def check_state(state: dict, workspace: Path, config_path: Path) -> list[str]:
     return problems
 
 
+RUNTIME_SUFFIX = Path("runtime") / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+
+
+def _runtime_entry(state: dict) -> Path:
+    install_root = Path(str(state.get("install_root") or plat.default_install_root()))
+    return install_root / RUNTIME_SUFFIX
+
+
+def dsh_home_for(state: dict) -> Path:
+    """The DSH home that holds the configured profile."""
+    name = str(state.get("dsh_profile") or "nova3-worker")
+    roots = [Path(str(state.get("install_root") or plat.default_install_root())) / "dsh-home",
+             plat.legacy_install_root() / "dsh-home"]
+    for root in roots:
+        if (root / "profiles" / name).is_dir():
+            return root
+    return roots[0]
+
+
 def node_and_entry(state: dict) -> tuple[Path, Path]:
-    install_root = Path(str(state["install_root"]))
     node_dir = state.get("node_home")
     if node_dir:
         node = Path(node_dir) / ("node.exe" if plat.WINDOWS else Path("bin") / "node")
+        if not node.is_file():
+            found = plat.find_executable("node")
+            if not found:
+                raise Stop("node is not installed and the recorded private runtime is gone; re-run setup", 2)
+            node = Path(found)
     else:
         found = plat.find_executable("node")
         if not found:
-            raise Stop("node is not installed and no private runtime was recorded; re-run setup", 2)
+            raise Stop("node is not installed; install Node.js 22+ (or run setup)", 2)
         node = Path(found)
-    entry = install_root / "runtime" / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+    entry = _runtime_entry(state)
+    if not entry.is_file():
+        for root in (plat.default_install_root(), plat.legacy_install_root()):
+            candidate = root / RUNTIME_SUFFIX
+            if candidate.is_file():
+                return node, candidate
+        # Fall back to any runtime DSH already installed on this machine.
+        found_runtime = plat.find_node_with_dsh()
+        if found_runtime is None:
+            raise Stop("the DeepSeek Harness runtime is not installed; run 'nova3-dsh setup'", 2)
+        return Path(found_runtime[0]), Path(found_runtime[1])
     return node, entry
 
 
@@ -156,12 +197,22 @@ def heartbeat(url: str | None, payload: dict) -> None:
 # main loop
 # ---------------------------------------------------------------------------
 
+def apply_checkout_state(state: dict, checkout: Path) -> dict:
+    """Override machine-global paths with this checkout's own trees."""
+    merged = dict(state)
+    merged["install_root"] = str(checkout / ".local" / "dsh")
+    merged["dsh_home"] = str(dsh_home_for(merged))
+    merged["workspace"] = str(checkout)
+    return merged
+
+
 class Loop:
     def __init__(self, config: LoopConfig, *, echo: Echo = print,
                  install_state: dict | None = None) -> None:
         self.cfg = config
         self.echo = echo
-        self.install_state = install_state if install_state is not None else {}
+        raw_state = install_state if install_state is not None else {}
+        self.install_state = apply_checkout_state(raw_state, config.workspace) if raw_state else {}
         self.state = LoopState(config.workspace)
         self.started = time.time()
         self.stop_file = self.state.dir / "STOP"
@@ -175,7 +226,8 @@ class Loop:
         self.state.ensure()
         lock: Path | None = None
         try:
-            problems = check_state(self.install_state, cfg.workspace, cfg.config_path)
+            problems = check_state(self.install_state, cfg.workspace, cfg.config_path,
+                                   checkout=plat.checkout_root())
             if problems:
                 for p in problems:
                     log(self.echo, "BLOCKED: " + p)
@@ -185,6 +237,14 @@ class Loop:
             if previous:
                 log(self.echo, f"(clearing previous stop reason: {previous})")
                 self.state.clear_stop()
+                # A human restarted the worker: give the new attempt a full
+                # failure budget instead of stopping on the first pass, and
+                # let it re-seed its backlog from NEXT.md if the old one is
+                # exhausted.
+                self.state.data["consecutive_failures"] = 0
+                self.state.data["consecutive_no_progress"] = 0
+                self.state.data.pop("seeded", None)
+                self.state.save()
             self._install_signal_handlers()
             return self._loop()
         except Stop as stop:
@@ -215,7 +275,7 @@ class Loop:
         cfg = self.cfg
         node, entry = node_and_entry(self.install_state)
         profile = str(self.install_state.get("dsh_profile") or "nova3-worker")
-        dsh_home = Path(str(self.install_state.get("dsh_home")))
+        dsh_home = dsh_home_for(self.install_state)
         log_file = self.state.dir / "logs" / f"passes-{time.strftime('%Y%m%d')}.log"
         seeded = bool(self.state.data.get("seeded"))
         pass_index = 0

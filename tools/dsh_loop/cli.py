@@ -32,6 +32,14 @@ from . import credentials, installer, launch, loop, platforms as plat, resource
 from .workspace import Repo
 
 
+def _config(args: argparse.Namespace | None = None) -> Path:
+    """Explicit --config, else this checkout's own config, else the machine one."""
+    explicit = getattr(args, "config", None) if args is not None else None
+    if explicit:
+        return Path(explicit).expanduser()
+    return launch.config_for_checkout()
+
+
 def _install_state(config_path: Path) -> dict:
     return installer.load_state(config_path)
 
@@ -49,7 +57,7 @@ def _resolve_workspace(state: dict, explicit: str | None) -> Path:
 
 def cmd_setup(args: argparse.Namespace) -> int:
     from . import wizard
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     settings = wizard.run_wizard(
         echo=print, assume_yes=args.yes, provider=args.provider, model=args.model,
         base_url=args.base_url, previous=installer.load_state(config_path))
@@ -83,7 +91,7 @@ def _loop_config(args: argparse.Namespace, state: dict) -> loop.LoopConfig:
     workspace = _resolve_workspace(state, args.workspace)
     config = loop.LoopConfig(
         workspace=workspace,
-        config_path=Path(args.config).expanduser() if args.config else plat.default_config_path(),
+        config_path=_config(args),
         max_passes=args.max_passes,
         max_minutes=args.max_minutes,
         pass_timeout=args.pass_timeout,
@@ -106,7 +114,7 @@ def _default_goal() -> str:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     cfg = _loop_config(args, state)
     cfg.max_passes = 1
@@ -114,14 +122,14 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 def cmd_loop(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     cfg = _loop_config(args, state)
     return loop.Loop(cfg, install_state=state).run()
 
 
 def cmd_status(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     print(launch.status_text(state, config_path=config_path))
     workspace = state.get("workspace")
@@ -147,7 +155,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_logs(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     workspace = state.get("workspace")
     if not workspace:
@@ -170,7 +178,7 @@ def _loop_dir(state: dict) -> Path | None:
 
 
 def cmd_stop(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     d = _loop_dir(_install_state(config_path))
     if not d:
         return 1
@@ -185,7 +193,7 @@ def cmd_pause(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     d = _loop_dir(_install_state(config_path))
     if d:
         try:
@@ -197,7 +205,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
 
 
 def cmd_update(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     workspace = state.get("workspace")
     if not workspace:
@@ -219,7 +227,7 @@ def cmd_update(args: argparse.Namespace) -> int:
 
 def cmd_env(args: argparse.Namespace) -> int:
     """Open a shell whose KEY names are announced, never their values."""
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     provider = state.get("provider")
     if provider in credentials.PROVIDERS:
@@ -230,7 +238,7 @@ def cmd_env(args: argparse.Namespace) -> int:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    config_path = Path(args.config).expanduser() if args.config else plat.default_config_path()
+    config_path = _config(args)
     state = _install_state(config_path)
     print("NOVA3 DSH loop doctor")
     print("  host: " + resource.describe())

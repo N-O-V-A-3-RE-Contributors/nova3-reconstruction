@@ -100,6 +100,20 @@ def windows_cmd_launcher_text(state_path: Path) -> str:
     )
 
 
+def config_for_checkout(checkout: Path | None = None) -> Path:
+    """The config that belongs to a checkout (its own .local/dsh/worker.json).
+
+    Each checkout is an independent worker: its runtime lives in
+    ``<checkout>/.local/dsh`` and so does its config.  The machine-wide config
+    is only a fallback for checkouts that have never run setup.
+    """
+    checkout = Path(checkout or REPO)
+    local = checkout / ".local" / "dsh" / "worker.json"
+    if local.is_file():
+        return local
+    return plat.default_config_path()
+
+
 def status_text(state: dict, *, config_path: Path | None = None, check_key: bool = True) -> str:
     """Human-readable status. Never prints key material, only its fingerprint."""
     lines = [

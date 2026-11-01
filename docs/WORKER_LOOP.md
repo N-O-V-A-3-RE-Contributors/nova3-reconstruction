@@ -168,3 +168,39 @@ operating systems.
   deliberately wide (no approvals, full file access) because it runs
   unattended on the contributor's own machine as their own user; it never
   grants root and the prompt forbids system changes.
+
+## Continuous work: independent workers and the backlog
+
+One model process can only do so much, and one worktree can only hold one
+worker's uncommitted state. The project therefore runs **independent workers**
+that each own one Git worktree and one model session:
+
+```sh
+python -m tools.dsh_loop.worker start gcc-match --mission WORKER-MISSION.md
+python -m tools.dsh_loop.worker status
+python -m tools.dsh_loop.worker stop  gcc-match
+```
+
+(or the owner helper `./.local/dsh-worker start gcc-match`). Starting a worker:
+
+1. creates/reuses `.local/worktrees/<name>` on branch `automation/worker-<name>`
+   (fast-forwarded from `main` when it has no work of its own);
+2. writes the worker's own `.local/dsh/worker.json` and profile, reusing the
+   runtime that is already installed (no second download) -- so each checkout
+   is a separate worker with its own sessions, `.local/dsh-loop/` state and
+   pass log;
+3. **generates the worker's backlog from `docs/progress/NEXT.md`** -- the
+   project's own prioritised list becomes the worker's task queue, so the loop
+   keeps finding the next task after finishing one, and re-seeds itself when the
+   list is exhausted and a human restarts it;
+4. runs the loop until a stop condition, then leaves its commits on its branch
+   for review (never pushes, never merges).
+
+Two things a worker deliberately does **not** decide on its own: which branch
+tip is authoritative (a human or the owner agent merges) and how much money to
+spend (each worker has its own budget and stops at the same limits as any
+other loop run).
+
+The loop's objective decision on "did this pass do anything" is a git-state
+digest plus HEAD across the pass; a commit made by the model counts, an
+uncommitted change counts, a no-op does not.

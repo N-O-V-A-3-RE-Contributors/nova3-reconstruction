@@ -153,6 +153,35 @@ def git_package_ids(f: Facts) -> list[str]:
     return []
 
 
+def find_node_with_dsh(home: Path | None = None) -> tuple[str, str] | None:
+    """Return (node executable, dsh bin.js) if a Node + DSH runtime is present.
+
+    Resolution order: an explicit ``NOVA3_DSH_RUNTIME`` (path to the dsh
+    package), a runtime inside the checkout's ``.local/dsh`` install root, the
+    global npm install, then ``<home>/node_modules`` for a user-level install.
+    Node itself must be on PATH (or the private Node in the install root).
+    """
+    home = Path.home() if home is None else home
+    node = shutil.which("node")
+    if node is None:
+        return None
+    candidates: list[Path] = []
+    env_runtime = os.environ.get("NOVA3_DSH_RUNTIME")
+    if env_runtime:
+        candidates.append(Path(env_runtime).expanduser() / "lib" / "bin.js")
+    candidates.append(checkout_root() / ".local" / "dsh" / "runtime"
+                      / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js")
+    prefix = os.environ.get("npm_config_prefix")
+    if prefix:
+        candidates.append(Path(prefix) / "lib" / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js")
+    candidates.append(home / ".npm-global" / "lib" / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js")
+    candidates.append(home / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js")
+    for candidate in candidates:
+        if candidate.is_file():
+            return node, str(candidate)
+    return None
+
+
 def find_executable(name: str, extra_dirs: Iterable[Path] = ()) -> str | None:
     """PATH lookup that also considers directories created by this installer."""
     for directory in extra_dirs:
@@ -167,10 +196,30 @@ def find_executable(name: str, extra_dirs: Iterable[Path] = ()) -> str | None:
 
 
 def default_install_root() -> Path:
-    """Where the installer puts the DSH runtime, Node and generated launchers."""
+    """Where the installer puts the DSH runtime, generated launchers and state.
+
+    Default: ``<checkout>/.local/dsh`` -- everything about one worker lives in
+    that checkout's ignored ``.local`` tree, so N checkouts on one machine are N
+    independent workers (each with a token budget) with no shared global
+    runtime.  ``--install-root`` / ``NOVA3_DSH_INSTALL`` override it.
+    """
     override = os.environ.get("NOVA3_DSH_INSTALL")
     if override:
         return Path(override).expanduser().resolve()
+    return checkout_root() / ".local" / "dsh"
+
+
+def checkout_root() -> Path:
+    """The source checkout that owns this copy of ``tools/dsh_loop``."""
+    return Path(__file__).resolve().parents[2]
+
+
+def legacy_install_root() -> Path:
+    """The shared per-user install root used by launcher-v7 before 2026-11-02.
+
+    Kept so the installer can explain or reuse an existing global runtime
+    instead of downloading a second copy of the harness.
+    """
     if WINDOWS:
         base = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
         return base / "Nova3" / "dsh"
