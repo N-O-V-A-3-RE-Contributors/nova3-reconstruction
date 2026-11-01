@@ -229,6 +229,33 @@ def stop(name: str) -> int:
     return 0
 
 
+def web(name: str, *, port: int, profile: str, open_browser: bool = True) -> int:
+    """Full interactive view of one worker in the DeepSeek Harness Web UI.
+
+    The web profile is this checkout's own ``web`` profile (so it inherits the
+    model route from the same credential reference) and the workspace is the
+    worker's worktree, so the browser shows the worker's files, sessions and
+    task progress with the regular DSH interface.  Bound to loopback only.
+    """
+    from .loop import dsh_home_for, node_and_entry
+    path = worktree_path(name)
+    if not path.is_dir():
+        print(f"no worker named {name}; start it first", file=sys.stderr)
+        return 1
+    config_path, state = worker_config(name)
+    node, entry = node_and_entry(state)
+    dsh_home = dsh_home_for(state)
+    env = dict(os.environ)
+    env["DSH_HOME"] = str(dsh_home)
+    argv = [str(node), str(entry), "--profile", profile, "web", "--host", "127.0.0.1",
+            "--port", str(port)]
+    if not open_browser:
+        argv.append("--no-open")
+    print(f"worker '{name}' web UI: workspace {path}, profile {profile} ({dsh_home})")
+    print(f"loopback only: http://127.0.0.1:{port}/?token=... (the token is printed by dsh)")
+    return subprocess.call(argv, cwd=str(path), env=env, stdin=None, stdout=None, stderr=None)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="nova3-dsh-worker", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -242,11 +269,19 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status")
     p = sub.add_parser("stop")
     p.add_argument("name")
+    p = sub.add_parser("web")
+    p.add_argument("name")
+    p.add_argument("--port", type=int, default=8090)
+    p.add_argument("--profile", default="web")
+    p.add_argument("--no-open", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "start":
         return start(args.name, args.mission, args.max_minutes, args.pass_timeout, args.max_stuck)
     if args.command == "stop":
         return stop(args.name)
+    if args.command == "web":
+        return web(args.name, port=args.port, profile=args.profile,
+                   open_browser=not args.no_open)
     return status()
 
 
