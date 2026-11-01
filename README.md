@@ -1,8 +1,5 @@
 
-<<<<<<< HEAD
-<!-- NOVA3-WORKER-LAUNCHER -->
-## Run or contribute with the worker (DeepSeek Harness)
-=======
+
 <!-- NOVA3-WORKBENCH -->
 ## Decompile NOVA 3 — one command
 
@@ -17,11 +14,11 @@
 Full guide: [docs/DECOMPILE.md](docs/DECOMPILE.md) (workflow, evidence states,
 troubleshooting, and how incoming third-party source will be audited).
 The workbench only orchestrates existing scripts; it never modifies the
-reference inputs and never commits decompiler output.
+reference inputs and never commits decompiler output. It is the *analysis*
+entry point; the worker below is the *autonomous* one.
 
-<!-- NOVA3-EASY-LAUNCHER -->
-## Join or start the reconstruction worker
->>>>>>> c840ee2
+<!-- NOVA3-WORKER-LAUNCHER -->
+## Run or contribute with the worker (DeepSeek Harness)
 
 **One-click setup for Linux, macOS (Intel/Apple silicon) and Windows:**
 [download the worker release](https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction/releases),
