@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Sprint STATUS — Pass 12 of 12
 
 Sprint: 20261030-163856
@@ -151,7 +150,6 @@ full 32 bits form a data offset.  Our reconstruction preserves the high
 2. Whole-`.so` SHA equality not established (not attempted).
 3. Switch/jump-table functions show the largest codegen gap under clang.
 4. ADB has no attached device; Android APK build not tested.
-=======
 # Sprint status — NOV-3 heartbeats
 
 ## 2026-11-01 (seventh run) — CMatrix4<float>::getTransposed recovered, window byte-equal
@@ -639,4 +637,3 @@ only in-binary caller of DetectNeon. Decode it with Capstone, write the source
 with every constant/field labelled observed-or-INFERRED, add
 `tools/compare/driver_callback_init_pilot.py` and a CTest behaviour target, and
 record the disposition. Do not invent a type for its `void*` parameter.
->>>>>>> c840ee2
