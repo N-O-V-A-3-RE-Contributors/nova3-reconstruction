@@ -1,5 +1,29 @@
 # Next tasks
 
+## 2026-11-02 (LATEST) — source-assisted decompilation
+
+The pre-release source is materialised at `reference/nova3_source/` (private,
+ignored). Read `HANDOFF.md` first. Do these in order:
+
+1. **Correspondence table.** For each Premium `.symtab` function, locate its
+   defining source file/body; start with the 18 mapped units and 62 exports.
+   Write `coordination/source_correspondence.json` + a Markdown table with
+   `exact_body_found` / `same_file_different_revision` / `not_found`. Regenerate
+   the source index with
+   `.venv/bin/python -m tools.source_ref.index_source_reference --write`.
+2. **Recover the build recipe from the tree** (`NOVA3/extern/GLLegacyConfig/android_neon`,
+   `NOVA3/trunk/prj/AndroidPrj`, `Android.mk`/`Application.mk`, `UB_*.cpp`,
+   `.mk`/`.bat`): compiler, flags, defines, include order, TU grouping.
+3. **Source-verify the 18 implemented units** (`getInverse` 0xebb08,
+   `operator*` 0x6e7e60, `prepareCache` 0x73f0a4, constructors, `DetectNeon`,
+   `Init`, cpu-features), then re-run the existing pilots and
+   `tools/compare/gcc443_window_check.py`. Keep source presence, host tests,
+   ARM object and instruction-window match as separate claims.
+4. **Re-baseline** `coordination/progress_state.json` and
+   `python -m nova3_team.analysis`; the ETA is provisional until then.
+5. Continue expanding by subsystem from the source tree; no original executable
+   or source text may become a production input.
+
 ## Settled residuals — parser-checked facts (2026-11-02)
 
 The five settled residuals below are frozen in the JSON block, checked by

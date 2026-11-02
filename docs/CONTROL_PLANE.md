@@ -79,46 +79,69 @@ No reconstruction task will start until the owner gives the go-ahead and the pre
 
 Nothing in this hold affects the contributor release: the worker loop, the owner gate and the review gate are ready to use.
 
-## DSH plugin: `/nova` in any chat
+## DSH plugin: the Mission tab (replaces `/nova`)
 
-The repository ships a real DSH/cordis plugin at `dsh-plugins/nova3-control`. It registers one slash command in a DSH profile:
+The repository ships a DSH/cordis plugin at `dsh-plugins/nova3-control`. Its
+host half serves the Mission data and actions, and its browser half registers a
+**Mission** tab next to Chat / Trajectory / Context in every session. The old
+`/nova` slash command is gone.
 
-| Command | Runs |
+| Surface | Runs |
 | --- | --- |
-| `/nova` or `/nova status` | `nova3_team.dsh_status` (worker, queue, open requests) |
-| `/nova eta` | `nova3_team.analysis` (inventory, coverage, ETA scenarios) |
-| `/nova review <pr>` | `nova3_team.review` (read-only compliance verdict) |
-| `/nova fleet [task]` | `nova3_team.fleet` (model/host routing) |
-| `/nova toolchain [tier]` | `dsh_loop.toolchain --plan` (per-OS tool plan) |
+| `GET /nova3/api/mission` | cached JSON from `nova3_team.mission` (worker, queue, ETA, completion, source reference, automation state) |
+| `POST /nova3/api/automation` | `{enabled, auto_merge}` → audited `nova3_team.autopilot enable/off/configure` |
+| `POST /nova3/api/run` | one bounded autopilot pass now |
 
-It is read-only: every subcommand is one of the audited CLIs above, and it never merges, labels or reads credentials.
+The tab shows the dynamic, evidence-based ETA (recorded-inventory burn-down and
+the naive full-ELF floor with date ranges), completion statistics, elapsed time,
+worker/queue state, the pre-release source-reference status, and the persistent
+automation switch. It refreshes every 20 seconds; nothing is written by reading.
+
+Keyless web search lives in `dsh-plugins/nova3-websearch`: a DuckDuckGo provider
+(no API key, no account) registered as `duckduckgo` and selected by the profile's
+`web.searchProvider`. This replaces the unavailable `deepseek-official` provider
+on OpenRouter-routed machines.
 
 Install into a profile (a local checkout works; a published package is not required):
 
 ```bash
-# 1) make the package resolvable in the profile
+# 1) make both packages resolvable in the profile
 ln -s "$PWD/dsh-plugins/nova3-control" \
   "${DSH_HOME:-$HOME/.local/share/nova3-dsh/data}/profiles/web/node_modules/@nova3/dsh-control"
-# 2) add the loader row to that profile's cordis.patch.yml
+ln -s "$PWD/dsh-plugins/nova3-websearch" \
+  "${DSH_HOME:-$HOME/.local/share/nova3-dsh/data}/profiles/web/node_modules/@nova3/dsh-websearch"
+# 2) add the loader rows + search provider to that profile's cordis.patch.yml
+#    - id: web
+#      config: { searchProvider: duckduckgo, fetchProvider: http }
 #    - insert:
 #        - id: nova3-control
 #          name: '@nova3/dsh-control'
 #          config: { repo: /absolute/path/to/nova3_re }
+#        - id: nova3-websearch
+#          name: '@nova3/dsh-websearch'
 ```
 
-`dsh --profile web --dump-config` must show `id: nova3-control`. The plugin loads when that profile next boots; restarting the live web profile ends the current chat session, so do it when convenient (a reboot does it too).
+`dsh --profile web --dump-config` must show `id: nova3-control`, `id:
+nova3-websearch` and `searchProvider: duckduckgo`. The plugins load when that
+profile next boots; restarting the live web profile ends the current chat
+session, so do it when convenient (a reboot does it too).
 
-## Autopilot (owner grant, for unattended progress)
+## Autopilot (persistent switch, no expiry)
 
 By default the planner proposes and an owner/admin approves. **Autopilot** is the
-owner's explicit, time-boxed switch that lets a background timer approve safe
-proposals itself, so the worker keeps moving without a human in the loop.
+owner's explicit **persistent** switch that lets a background timer approve safe
+proposals and merge reviewed green pull requests itself. It has **no expiry
+timestamp and no task budget**: it keeps working while credit remains. The only
+automatic pause is depleted credit, mirrored from the supervisor's
+`WAITING_CREDITS` state; the switch stays on and the next tick resumes.
 
 ```bash
-python -m nova3_team.autopilot enable --hours 24 --max-tasks 6   # verifies live ADMIN
-python -m nova3_team.autopilot status
-python -m nova3_team.autopilot off                               # kill switch
-systemctl --user stop nova3-autopilot.timer                      # belt and braces
+python -m nova3_team.autopilot enable                       # verifies live ADMIN
+python -m nova3_team.autopilot enable --merge-mode off      # approvals only
+python -m nova3_team.autopilot configure --merge-mode on    # change merge only
+python -m nova3_team.autopilot status                       # on / paused_credits / off
+python -m nova3_team.autopilot off                          # kill switch
+systemctl --user stop nova3-autopilot.timer                 # belt and braces
 ```
 
 What it will and will not do:
@@ -127,12 +150,18 @@ What it will and will not do:
   whose `Allowed paths` stay inside the safe source trees, writing a normal
   approval record plus `nova:queued` and the locator — the same gate still
   verifies it at claim time.
+* **Will** merge a pull request only when the read-only compliance reviewer
+  returns `pass`, the PR is not a draft, and every GitHub check on its head
+  commit is green; at most two merges per tick.
 * **Will not** touch protected trees, binaries, credentials, CI or the queue
-  contract; will not merge, extend its own grant, or act after expiry/budget.
-* Every decision is appended to
-  `~/.cache/nova3-team/<repo>/autopilot/audit.jsonl`.
+  contract, and cannot extend its own switch or change policy.
+* **Pauses automatically** only when the supervisor reports `WAITING_CREDITS`
+  (a temporary state; the switch remains on and the next tick resumes).
+* Every approval is appended to
+  `~/.cache/nova3-team/<repo>/autopilot/audit.jsonl`; every merge decision to
+  `merge-audit.jsonl` in the same directory.
 
-`nova3-autopilot.timer` runs every 10 minutes (at most two approvals per tick).
-The grant is a 0600 file in the same cache directory; the CLI refuses to create
-one unless the authenticated account is a repository ADMIN. Deleting the file or
-running `off` stops it immediately.
+`nova3-autopilot.timer` runs every 10 minutes (at most two approvals and two
+merges per tick). The switch is a 0600 file in the same cache directory; the CLI
+refuses to enable it unless the authenticated account is a repository ADMIN.
+Running `off`, deleting the file, or stopping the timer stops it immediately.

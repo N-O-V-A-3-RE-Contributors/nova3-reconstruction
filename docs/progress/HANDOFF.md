@@ -1,5 +1,160 @@
 # Resume without chat history
 
+## 2026-11-02 (LATEST) — setup fixed, source materialised; start source-assisted decompilation
+
+This section supersedes the older resume notes below for the *next* session. Read
+it first, then `STATUS.md`, `NEXT.md`, `docs/decisions/{ARCHITECTURE,BLOCKERS}.md`.
+
+### What changed in the setup (owner instructions, implemented)
+
+1. **Automation is now a persistent switch, not a timed grant.**
+   `nova3_team/autopilot.py` (schema `nova3-autopilot/2`) has **no `expires_at`
+   and no `max_tasks`**. While enabled it approves safe planner proposals and
+   now also **merges pull requests that pass the read-only reviewer with all
+   GitHub checks green** (at most two per tick, audited to
+   `~/.cache/nova3-team/<repo>/autopilot/merge-audit.jsonl`). A v1 timed grant
+   is migrated on read with its expiry discarded.
+2. **The only automatic pause is depleted credit.** The supervisor's existing
+   `WAITING_CREDITS` state is mirrored as `autopilot.mode=paused_credits`; the
+   switch stays on and the next tick resumes by itself. Local hourly/daily/token
+   ceilings now default to **0 = unlimited** (`nova3_team/dsh_policy.py`), so a
+   wall-clock window or local quota cannot stop work while credit remains. The
+   per-task anti-loop cap (3 sessions) stays: it is quality control, not a time
+   limit. `tools/systemd/nova3-dsh-worker.service` was updated to
+   `NOVA3_DSH_SESSIONS_PER_HOUR=0`, `..._PER_DAY=0`, `..._TOKENS_PER_DAY=0`
+   (installed unit updated too; `daemon-reload` done, service restart pending).
+3. **`/nova` is replaced by a Mission tab in the Web UI.**
+   `dsh-plugins/nova3-control` is now a dual-face plugin: the host half serves
+   `GET /nova3/api/mission`, `POST /nova3/api/automation` and `POST
+   /nova3/api/run`; the client half (`lib/client.js`) registers a **Mission**
+   conversation tab (next to Chat / Trajectory / Context). It shows the dynamic,
+   evidence-based ETA (recorded-inventory burn-down and the naive full-ELF floor
+   with date ranges), completion statistics, elapsed time, worker/queue state,
+   the source-reference status, and the automation toggle (on/off + auto-merge).
+   It refreshes every 20 s; the only writes are the two explicit actions.
+4. **Keyless web search.** `web_search` was failing because the DeepSeek provider
+   needs an API key this OpenRouter machine does not have. New plugin
+   `dsh-plugins/nova3-websearch` registers a **DuckDuckGo** provider (no API key,
+   no account), selected as `web.searchProvider: duckduckgo`. Verified live (10
+   results) and unit-tested (`node --test dsh-plugins/nova3-websearch/test/`).
+5. **Validated PRs merged.** #181 (task #172) and #180 (task #174) were reviewed,
+   checks were green, and both were merged into `main` by the new autopilot path.
+6. **Restart required once.** The running Web profile still has the old plugin
+   set; a restart of `nova3-dsh.service` is what loads the Mission tab and the
+   DuckDuckGo provider (it also ends the chat that performed the setup). The
+   tab was verified beforehand on an isolated second instance: it renders next
+   to Chat / Trajectory / Context / Fleet and `/nova3/api/mission` returns 200.
+
+### The pre-release source is present (this is the big unlock)
+
+Owner-supplied input: `/home/jason/Downloads/NOVA3_DEV_SOURCECODE.zip`
+(11,922,012,346 B). It is **not** a plain zip of source: it contains six 2 GB
+7z volumes plus `NOVA 3/nova3 archive password.txt`.
+
+* Extracted volumes: `/home/jason/Downloads/nova3_dev/NOVA 3/` (11.9 GB).
+* Inner archive: `(www.51xyyx.com)NOVA3.7z.001..006`, password in the adjacent
+  `nova3 archive password.txt`; decompressed size **39,283,825,872 B**
+  (131,126 files, 11,670 folders). Solid archive, LZMA + BCJ + 7zAES.
+* **Do not extract the whole 39 GB** (the disk had ~31 GiB free). The source
+  subset was materialised to the ignored local tree
+  **`reference/nova3_source/`** (618 MiB, 41,955 files) using include patterns
+  for `NOVA3/trunk/{src,prj,docs,tools,build,lib}`, project files and all
+  source/header/shader/Java/C# extensions. The rest is assets (`data/game`,
+  `.svn` pristine copies, Windows binaries) and is not needed for the first
+  decompilation passes.
+* Tree shape: `NOVA3/trunk/src` (game/engine application), `NOVA3/extern/glitch`
+  (rendering/engine + `collada`), `NOVA3/extern/vox` (driver/NEON),
+  `NOVA3/extern/GLLegacy*` (Android port), `NOVA3/trunk/prj/AndroidPrj` (the
+  Android JNI + Java project), plus bullet/openssl/etc.
+
+**Evidence that it is the right branch (measured, not assumed):**
+`tools/source_ref/index_source_reference.py` extracted **813** source-path
+strings from the Premium ELF (`libNOVA3_neon.so`), resolved 808 against
+`Nova3data\trunk\src` / `Nova3data\extern`, and found **783 present in the
+extracted tree = 96.9%**. The 25 missing are generated UnityBuild files
+(`extern/GLLegacyConfig/android_neon/release/N.O.V.A.3/UB_*.cpp`) and a handful
+of renamed/moved files (`trunk/src/GamePlay/...` vs `Gameplay/...`,
+`LevelStatistics.cpp`, `ButtonMeshPreview.cpp`). This is evidence of the same
+branch/era, **not proof of a byte-identical commit** — re-verify each function.
+
+The index is local (not committed): `coordination/source_index.json`
+(manifest SHA-256 of the tree, per-extension counts, cross-check, and the source
+files that mention the already-touched symbols). Regenerate with:
+
+```sh
+.venv/bin/python -m tools.source_ref.index_source_reference --write
+```
+
+**Licensing/provenance rule:** this is proprietary source. It is reference-only:
+never commit it, never make it a production build input, never ship it. It is
+ignored by `/reference/` in `.gitignore`; do not move it into a tracked path.
+
+**Concrete first leads already located** (verify each against the ELF bytes):
+
+| Recovered unit | Source location in the reference tree |
+| --- | --- |
+| `CMatrix4<T>::getInverse` / `getInversePrimitive` | `NOVA3/extern/glitch/include/glitch/core/matrix4.h` (`getInverse` definition at line 1251; declarations at 379/384; `getInversePrimitive` at 1345) — header-only template, so instantiation/inlining is part of the build recipe |
+| `CSoftwareSkinTechnique::{checkAvailability,needOutputBuffer,attach,prepareCache}` | `NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp` + its header/fwd header |
+| `DriverCallbackSourceInterface::DetectNeon`, `DriverCallbackInterface::Init` | `NOVA3/extern/vox/src/vox_driver_callback_template.cpp` and `vox_driver_callback_template_neon.cpp` |
+| `cpu-features.c` TU | `NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c` |
+| `collada::SMatrix`, matrix operators | `NOVA3/extern/glitch/include/glitch/core/{matrix4,matrix4_ops,matrix4_gen_ops}.h` and `GeometryUtil.*` |
+
+### The next concrete step (source-assisted decompilation)
+
+The old plan was decompiler-first. With the source present, invert it:
+
+1. **Build the correspondence table first.** For each Premium `.symtab` function
+   (name, VA, size, ARM/Thumb), find the defining source file and the exact
+   function body in `reference/nova3_source`. Start with the 18 mapped units and
+   the 62 exported functions. Output `coordination/source_correspondence.json`
+   and a reviewable Markdown table. Distinguish `exact_body_found`,
+   `same_file_different_revision`, `not_found`.
+2. **Recover the build recipe from the tree**, not from guesses. The tree uses a
+   Gameloft Windows-hosted generator rather than plain `Android.mk`:
+   `NOVA3/trunk/prj/Android/NOVA3_Android.sln`,
+   `NOVA3/trunk/prj/AndroidPrj/GameSpecific/_project_VisualStudio/Android.vcproj`,
+   `NOVA3/trunk/prj/AndroidPrj/GameSpecific/{config,make,prebuild}.bat`,
+   `NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/{sln2gcc,sln2mk,sln2android}`,
+   and the UnityBuild generator behind `UB_*.cpp`. Cross-check against the
+   `.vcproj` file list, not a guessed glob. Record compiler (GCC 4.4.3 is already
+   installed via `tools/setup/fetch_gcc443.sh`), flags, defines, include order and
+   the exact translation-unit grouping before compiling anything large.
+3. **Source-verify before byte-matching.** For each already-IMPLEMENTED unit
+   (`getInverse` 0xebb08, `operator*` 0x6e7e60, `prepareCache` 0x73f0a4, the
+   constructors, `DetectNeon`, `Init`, cpu-features), replace reconstructed
+   guesses with the real source body, then re-run the existing pilots and
+   `tools/compare/gcc443_window_check.py`. Report source presence, host tests,
+   ARM object, and actual instruction-window match separately.
+4. **Then expand by subsystem from the source tree**, keeping the rule: source
+   is a reference, the final product is independently compiled from our source
+   plus permitted OSS dependencies, with no original executable at runtime.
+5. **Re-baseline after indexing:** update `coordination/progress_state.json`
+   and re-run `python -m nova3_team.analysis`. Current ETA is **provisional and
+   not a completion promise**.
+
+### Working state / commands
+
+```sh
+cd /home/jason/Projects/nova3_re
+systemctl --user status nova3-dsh-worker.service nova3-autopilot.timer nova3-dsh.service
+python -m nova3_team.dsh_status --json          # worker/queue/ETA payload
+python -m nova3_team.mission --json             # exactly what the Mission tab shows
+python -m nova3_team.autopilot status           # on / paused_credits / off
+python -m nova3_team.autopilot enable|off|run   # persistent switch, no expiry
+.venv/bin/python -m pytest -q nova3_team/tests/test_autopilot.py \
+  nova3_team/tests/test_unlimited_automation.py
+node --test dsh-plugins/nova3-control/test/ dsh-plugins/nova3-websearch/test/
+```
+
+Known test caveat: the full `nova3_team/tests` run has 13 **order-dependent**
+failures in `test_planning_memory.py` / `test_chatgpt_planner_auth.py`
+(`store-in-repo`); both modules pass in isolation and the failure is unrelated
+to the changed files. Do not chase it before the decompilation work unless it
+starts affecting a changed area.
+
+Disk: ~19 GiB free after the extraction (`df -h /`). RAM 7.6 GiB total, 4 cores;
+keep one heavyweight analyser at a time.
+
 Work at /home/jason/Projects/nova3_re; read AGENTS.md, STATUS.md, NEXT.md and docs/decisions/{ARCHITECTURE,BLOCKERS}.md. Owner jason(uid1000), shell may be root: use runuser -u jason for builds/analysis. Original inputs are read-only references, no originals changed, nothing uploaded. Do not execute original binaries at runtime or bundle original shader programs. Local Git identity works; commit verified milestones.
 
 ## Source-recovered native chain (2026-11-01, seventh run)

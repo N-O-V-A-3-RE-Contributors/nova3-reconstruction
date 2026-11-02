@@ -1,6 +1,24 @@
 # Status — source resource, mesh and texture reconstruction
 
-**At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: `python -m nova3_team.analysis` (or `/nova eta` in DSH).
+**At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: the **Mission tab** in the DSH Web UI (or `python -m nova3_team.mission`).
+
+## Pre-release source materialised; setup fixes (2026-11-02, latest)
+
+The owner's pre-release source drop is extracted as a **private reference** at
+`reference/nova3_source/` (595 MiB, 40,820 files; ignored by Git). The Premium
+ELF's DWARF source paths resolve to it at **783/808 = 96.9%**, which establishes
+the same engine branch (`glitch`/`vox`) without yet proving a byte-identical
+commit. Index/reproduce: `python -m tools.source_ref.index_source_reference --write`
+→ `coordination/source_index.json`.
+
+Setup changes: autopilot is now a persistent switch (no expiry, no task budget;
+automation pauses only on depleted credit, then resumes) and merges PRs only
+after the read-only review passes with green checks; local session/token ceilings
+default to unlimited; `/nova` is replaced by the **Mission** tab (host API +
+client plugin) showing ETA/completion/automation; keyless **DuckDuckGo** search
+replaces the unavailable DeepSeek search provider. PRs #180 and #181 were
+reviewed green and merged. See `HANDOFF.md` for the exact resume procedure.
+
 
 ## Where the reconstruction stands
 
