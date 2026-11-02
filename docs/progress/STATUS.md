@@ -2,6 +2,17 @@
 
 **At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: the **Mission tab** in the DSH Web UI (or `python -m nova3_team.mission`).
 
+## Unattended continuity fixed: standing waivers + renewal (2026-11-03)
+
+The worker was alive but idle: every queued task's approval record had expired
+(1 h gate window), so each cycle denied admission. Fixed with owner-authored
+**standing waivers** (live only while the persistent autopilot switch is on,
+pinned to exact task texts) and a 10-minute renewal timer that re-issues
+short-lived records for covered tasks. Live: #167 admitted and a DSH session
+started; #170 approved and queued. Details and revocation:
+`docs/progress/AUTO_CONTINUITY.md`. Tests: 17 new (`test_autoadmit_standing.py`);
+full `nova3_team/tests` 1223 passed.
+
 ## getInverse reconstructed; 776-byte window measured (2026-11-03)
 
 `glitch::core::CMatrix4<float>::getInverse` (0x000ebb08, 776 B) is now

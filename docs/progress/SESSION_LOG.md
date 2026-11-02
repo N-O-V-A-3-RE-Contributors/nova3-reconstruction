@@ -800,3 +800,21 @@ flight when this note was written; the outcome is appended below.
   DIFFERENT with a 4-op class delta (vmul +4, vfp_other -4) and first divergence
   at instruction 5. Recorded NOT MATCHED; pilot tool committed.
 - Commit `100744d`.
+
+## 2026-11-03 (00:15-00:35) — root cause of stalled sessions, fixed live
+
+- Read the worker journal: loop alive every 90 s, but every task denied
+  `invalid_or_unavailable_evidence`. GitHub check of #167's approval comment
+  (6575087651) showed `expires_at 11:40:11Z` against a 13:12Z clock: the one-hour
+  gate window is the cause, not a dead supervisor.
+- Implemented standing waivers, renewal of expired reservations (live ones never
+  re-issued), atomic reservations, and locator replacement in
+  `nova3_team/autoadmit.py`; 17 new tests; full suite 1223 passed.
+- Installed `nova3-autoadmit.timer` (10 min), enabled it, posted standing waiver
+  comments on #16 and ran `autoadmit admit`: #167/#170 approved, then the
+  supervisor logged `requested task #167` and `#167 working in …/167-b2c2db`.
+- Found and fixed a second live defect: renewal left the old approval locator
+  label in place, so the gate refused #167 as ambiguous
+  (`owner_approval_locator_required`). `_queue_labels` now replaces locators and
+  is idempotent; verified one label remains.
+- Also verified the previously order-dependent suite now passes: 1223 tests.
