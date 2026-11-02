@@ -87,6 +87,16 @@ files that mention the already-touched symbols). Regenerate with:
 never commit it, never make it a production build input, never ship it. It is
 ignored by `/reference/` in `.gitignore`; do not move it into a tracked path.
 
+**Concrete first leads already located** (verify each against the ELF bytes):
+
+| Recovered unit | Source location in the reference tree |
+| --- | --- |
+| `CMatrix4<T>::getInverse` / `getInversePrimitive` | `NOVA3/extern/glitch/include/glitch/core/matrix4.h` (`getInverse` definition at line 1251; declarations at 379/384; `getInversePrimitive` at 1345) — header-only template, so instantiation/inlining is part of the build recipe |
+| `CSoftwareSkinTechnique::{checkAvailability,needOutputBuffer,attach,prepareCache}` | `NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp` + its header/fwd header |
+| `DriverCallbackSourceInterface::DetectNeon`, `DriverCallbackInterface::Init` | `NOVA3/extern/vox/src/vox_driver_callback_template.cpp` and `vox_driver_callback_template_neon.cpp` |
+| `cpu-features.c` TU | `NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c` |
+| `collada::SMatrix`, matrix operators | `NOVA3/extern/glitch/include/glitch/core/{matrix4,matrix4_ops,matrix4_gen_ops}.h` and `GeometryUtil.*` |
+
 ### The next concrete step (source-assisted decompilation)
 
 The old plan was decompiler-first. With the source present, invert it:
