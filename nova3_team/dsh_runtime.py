@@ -97,6 +97,12 @@ EXACT_CODES = {
 PHRASE_CODES = (
     (re.compile(r'insufficient[\s_-]+(?:quota|balance|credits?)|quota[\s_-]+exceeded', re.I),
      WAITING_CREDITS),
+    # Provider adapters surface an account cap as a plain provider error code
+    # (observed live: PI_AI_ERROR / "Codex error: The usage limit has been
+    # reached"). That is a provider-level limit, not a task verdict: it must be
+    # eligible for approved-route failover instead of quarantining the task.
+    (re.compile(r'usage limit (?:has been )?reached|billing hard limit'
+                r'|credit balance|out of credits', re.I), WAITING_CREDITS),
     (re.compile(r'rate[\s_-]?limit|too many requests|\b429\b', re.I), RATE_LIMIT),
     (re.compile(r'\b401\b|unauthori[sz]ed|invalid api key|user not found', re.I), AUTH),
     (re.compile(r'ECONNREFUSED|ENOTFOUND|ETIMEDOUT|socket hang up|fetch failed|\b50[234]\b', re.I),
