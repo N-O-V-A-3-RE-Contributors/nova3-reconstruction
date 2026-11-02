@@ -1,5 +1,18 @@
 # Status — source resource, mesh and texture reconstruction
 
+**At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: `python -m nova3_team.analysis` (or `/nova eta` in DSH).
+
+## Where the reconstruction stands
+
+| Measure | Value |
+| --- | --- |
+| Functions recorded from the Premium ELF | 1,165 of 39,092 (3.0%) |
+| Functions with Ghidra exports | 62 |
+| Source mappings implemented | 18 (7 ARM-matched, 8 behavioural, 3 utilities) |
+| Source-owned engine modules | 13 |
+| End-to-end game behaviour | None verified yet |
+| Next dependency | Material/shader binding, scene transforms, renderer |
+
 ## Execution engine: DeepSeek Harness (2026-11-02)
 
 The autonomous autopilot now executes through **DeepSeek Harness** instead of a
