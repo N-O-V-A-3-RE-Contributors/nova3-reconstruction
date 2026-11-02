@@ -1,0 +1,21 @@
+{
+  "schema": "nova3-progress/1",
+  "updated_at": "2026-11-02",
+  "work_started": "2026-10-25",
+  "provenance": "docs/progress/STATUS.md (2026-11-01 checkpoint) and coordination/function_ledger.json; counts are mappings and boundaries, NOT whole-subsystem completion",
+  "functions_recorded": 1165,
+  "elf_functions": 39092,
+  "functions_with_exports": 62,
+  "inventory_complete": false,
+  "mappings_implemented": 18,
+  "mappings_matched_arm": 7,
+  "mappings_behavioural": 8,
+  "utilities_verified": 3,
+  "source_modules": 13,
+  "notes": [
+    "1165 is tool-identified function-boundary metadata in a 39,092-function ELF; it is not proof that those functions were reconstructed.",
+    "18 = 3 complete native utility mappings + 15 scoped address-to-source mappings recorded in STATUS.md.",
+    "The owner is supplying additional pre-release source; re-baseline this file after it is indexed, before trusting any ETA.",
+    "Update this file after each milestone so the analysis can measure a rate instead of assuming one."
+  ]
+}

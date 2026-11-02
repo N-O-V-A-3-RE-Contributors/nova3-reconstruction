@@ -71,6 +71,12 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
         requests = _requests(paths.state / 'requests.jsonl')
     last = state.get('last_outcome') or {}
     task = state.get('task') or {}
+    try:
+        from . import analysis as project_analysis
+        project_snapshot = project_analysis.snapshot(pathlib.Path.cwd())
+        project_estimate = project_analysis.estimate(project_snapshot)
+    except Exception:
+        project_snapshot, project_estimate = None, None
     return {
         'slot': slot,
         'state': state.get('state') or 'not started',
@@ -91,6 +97,7 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
         'open_requests': requests,
         'balance': balance,
         'state_file': str(state_file),
+        'project': {'snapshot': project_snapshot, 'estimate': project_estimate},
     }
 
 
@@ -194,6 +201,30 @@ def render(data: dict) -> str:
         lines.append(f'\n**Queue:** {queue.get("runnable")} runnable · '
                      f'{queue.get("claimed")} claimed · {queue.get("review")} in review · '
                      f'{queue.get("blocked")} blocked · {queue.get("open_prs")} open PRs')
+    project = data.get('project') or {}
+    snapshot, estimate = project.get('snapshot'), project.get('estimate')
+    if snapshot and estimate:
+        inv = snapshot.get('inventory') or {}
+        prog = snapshot.get('progress') or {}
+        lines += ['', '### Project']
+        coverage = inv.get('inventory_coverage')
+        lines.append(
+            f"Inventory: {inv.get('functions_recorded')} of {inv.get('elf_functions')} "
+            f"ELF functions"
+            + (f" ({coverage:.1%})" if isinstance(coverage, (int, float)) else '')
+            + f" · complete: {'yes' if inv.get('inventory_complete') else 'NO'}")
+        if prog.get('available'):
+            lines.append(f"Mappings: {prog.get('mappings_implemented')} · matched ARM "
+                         f"{prog.get('mappings_matched_arm')} · updated {prog.get('updated_at')}")
+        scenarios = estimate.get('scenarios') or {}
+        recorded = scenarios.get('recorded_inventory')
+        if estimate.get('state') == 'unavailable':
+            lines.append('ETA: unavailable — ' + '; '.join(estimate.get('reasons') or [])[:300])
+        elif recorded:
+            low, likely, high = recorded['days']
+            lines.append(f"ETA (provisional): recorded inventory ~{likely:.0f} days "
+                         f"({low:.0f}-{high:.0f}) at the measured mapping rate; re-baseline "
+                         'after the pre-release source is indexed.')
     lines += ['', f'_state file: `{data["state_file"]}`_']
     return '\n'.join(lines)
 
