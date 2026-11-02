@@ -673,9 +673,11 @@ class DshSupervisor:
             next_md_excerpt=_head(self.project / 'docs/progress/NEXT.md'), overrides=overrides)
         log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
         self._presence('PLANNING')
+        _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
         outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=self.project,
                                           log_path=log_path, timeout_s=plan_timeout_s(),
                                           cancel=lambda: bool(self.stop_signal))
+        _log(f'planner session finished: {outcome.status} in {int(outcome.elapsed_s)}s')
         self.ledger.append({'task': 'planner', 'status': outcome.status,
                             'error_code': outcome.error_code,
                             'input_tokens': outcome.input_tokens,
@@ -687,8 +689,19 @@ class DshSupervisor:
                                    consecutive_same_failure=1,
                                    control_dir=self.paths.state / 'control'))
             _log(f'planner session {outcome.status} -> {decision.state} ({decision.reason})')
-            self.state.save(state=decision.state, reason=f'planner: {decision.reason}',
-                            next_check_unix=int(time.time()) + decision.delay_s,
+            # Budget exhaustion is not a planning verdict: whatever the human was
+            # already asked to approve is still waiting for them.
+            previous = self.state.load()
+            if (decision.reason.startswith(('hourly session cap', 'daily session cap',
+                                             'daily token cap'))
+                    and previous.get('state') == dsh_policy.WAITING_APPROVAL):
+                state, reason, delay = (dsh_policy.WAITING_APPROVAL,
+                                        previous.get('reason') or 'awaiting human decision',
+                                        PLAN_RECHECK_S)
+            else:
+                state, reason, delay = decision.state, f'planner: {decision.reason}', decision.delay_s
+            self.state.save(state=state, reason=reason,
+                            next_check_unix=int(time.time()) + delay,
                             last_outcome=outcome.summary())
             if decision.request:
                 self._request(**decision.request, task='planner')
