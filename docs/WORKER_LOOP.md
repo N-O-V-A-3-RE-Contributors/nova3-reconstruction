@@ -1,5 +1,7 @@
 # The NOVA3 worker loop (DeepSeek Harness)
 
+> Runs on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`), docs at [deepseek-harness.github.io](https://deepseek-harness.github.io/deepseek-harness/).
+
 This document describes the contributor-facing automated setup and the
 unattended worker loop in `tools/dsh_loop/`. It replaces the previous
 PyInstaller `launcher-v6` bundles, which packaged `nova3_easy.py` and drove the

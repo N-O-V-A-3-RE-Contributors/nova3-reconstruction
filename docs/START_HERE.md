@@ -1,52 +1,70 @@
-# Start contributing to the N.O.V.A. 3 source reconstruction
+# Start here
 
-> **Updated 2026-11-02:** the recommended route is now the **DeepSeek Harness
-> worker loop** — see [WORKER_LOOP.md](WORKER_LOOP.md). Download your
-> platform's launcher from the Releases page (or the source-only
-> `nova3-source.tar.gz`) and run `START.sh` / `START.command` / `START.cmd`;
-> it installs everything and asks for your own API key. The Codex/Claude/
-> Gemini route below still works and remains useful for interactive work.
+This is the ten-minute path from "I have a computer" to "a worker is helping". If you would rather read the architecture first, see [CONTROL_PLANE](CONTROL_PLANE.md) and [WORKER_LOOP](WORKER_LOOP.md).
 
+## What do you want to do?
 
-**Repository:** https://github.com/crjase/nova3-reconstruction
+| Goal | Go to |
+| --- | --- |
+| Donate my computer's spare time to the project | [Run a worker](#run-a-worker) |
+| Write or fix C++/Java myself | [Work locally](#work-locally) |
+| Administer the queue and the AI | [Owner commands](#owner-commands) |
 
-Each contributor uses **their own** GitHub account and one of **Codex CLI, Claude Code, or Gemini CLI**. The ordinary ChatGPT/Claude/Gemini website chat is not a substitute for the corresponding coding CLI. No one shares AI account credentials. A VPS is not required.
+## Run a worker
 
-## First-time setup: choose your operating system
+You need: a 64-bit Linux, macOS (Intel or Apple silicon) or Windows 10/11 machine; a GitHub account with **read** access to this repository; your own DeepSeek or OpenRouter API key.
 
-**Get repository access first.** This repository starts private. Ask the maintainer for an invitation and accept it. On the GitHub page, select **Code → Download ZIP**, extract the archive, and open its folder. Or, if `gh` is already installed, run `gh repo clone crjase/nova3-reconstruction`.
+1. **Get access.** Ask an owner for a read invitation and accept it.
+2. **Download.** Open [Releases](https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction/releases) and take the archive for your platform. If you cannot use Git, the `nova3-source.tar.gz` asset works the same way.
+3. **Unpack and start.**
+* Linux: `tar xzf Nova3-Linux-x64.tar.gz`, then `./START.sh`
+* macOS: unzip, then double-click `START.command`
+* Windows: unzip, then double-click `START.cmd`
+4. **Answer the wizard.** It checks the machine, installs the worker under your own user account, signs in with your GitHub account, and asks for your AI key. The key is used from your shell/profile, never uploaded.
+5. **Leave it running.** It claims one scoped task at a time and opens a pull request when finished.
 
-| Platform | Start | Initial prerequisites if asked |
-| --- | --- | --- |
-| **Windows** | Double-click `START-WINDOWS.cmd` | Install Python, Git, GitHub CLI, CMake and Ninja using `winget` as prompted. Install Visual Studio C++ Build Tools for C++ jobs. Open the launcher again after installing. |
-| **macOS** | Double-click `START-MAC.command` or run `bash START-MAC.command` | With Homebrew: `brew install git gh python cmake ninja node`; `xcode-select --install` for C++ tools. |
-| **Linux** | Run `bash START-LINUX.sh` | Arch: `sudo pacman -S --needed git github-cli python cmake ninja gcc nodejs npm`. Debian/Ubuntu: `sudo apt update && sudo apt install -y git gh python3 cmake ninja-build build-essential nodejs npm`. |
-
-The first launch will:
-1. Check Git, GitHub CLI and repository permissions; guide you through GitHub login if needed.
-2. Check your Git commit identity, offering a GitHub private/noreply email if it is not set.
-3. Ask which AI CLI you use (Codex / Claude / Gemini), optionally install it with npm, and guide provider sign-in.
-4. Start the continuous worker, which claims GitHub tasks, uses bounded AI sessions, runs checks and opens pull requests.
-
-**Next time:** launch the same `START-*` file again. The provider choice is remembered. Keep the terminal open and computer awake while contributing. **Ctrl+C** stops it. It may consume subscription limits or billable API usage.
-
-## Commands for anyone who prefers the terminal
+Useful commands afterwards:
 
 ```bash
-python3 nova3_start.py                  # menu first time, remembered thereafter
-python3 nova3_start.py --choose         # change provider
-python3 nova3_start.py --once           # just one task attempt
-python3 nova3_start.py --status         # queue status without AI
+nova3-dsh            # start / resume the worker
+nova3-dsh status     # queue, claim, current task
+nova3-dsh logs       # recent activity
+nova3-dsh doctor     # repair a broken install
 ```
 
-On Windows, use `py -3` instead of `python3` if needed.
+Stop with `Ctrl+C`. Nothing runs while the machine is off; claims expire and are returned to the queue. Your provider usage is your own.
 
-## Known limitations
+## Work locally
 
-- **Private-fork permissions:** GitHub may prevent private forks or PRs, particularly from a personal-account private repository. GitHub repository access alone does not guarantee the automated PR flow. If you hit `fork` or `pull request` permission errors, report them to the maintainer; do not try to work around access controls. A GitHub organisation with appropriately configured fork permissions is usually a better choice for a larger team.
-- **Reference binaries:** Original APKs, OBBs, native libraries, copyrighted assets and large decompiler dumps are *not* included. Contributors need their own lawfully acquired local reference files for original machine-code matching. Infrastructure and source-only testing tasks do not require them.
-- **Verification:** A successful build or test does not prove source is machine-code matched. PRs must label matching evidence correctly. No auto-merge is enabled.
-- **Provider subscriptions:** Headless coding CLI access and usage limits depend on each provider/account. Provider availability does not guarantee unattended operation.
-- **OS and compilers:** C++ reconstruction tests can require native compilers and extra dependencies. Windows-specific toolchain compatibility is not yet validated end-to-end.
+```bash
+git clone https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction.git
+cd nova3-reconstruction
+cmake -S . -B build/host -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure
+```
 
-Official provider installation references: [Codex](https://github.com/openai/codex), [Claude Code](https://code.claude.com/docs/en/quickstart), [Gemini CLI](https://geminicli.com/docs/get-started/installation/).
+For analysis of the original binaries, run `./nova3 doctor` first; see [DECOMPILE](DECOMPILE.md). Reference game files are never included and never uploaded.
+
+## Owner commands
+
+```bash
+python -m nova3_team.dsh_status              # phone-readable worker status
+python -m nova3_team.analysis                # inventory, coverage, ETA
+python -m nova3_team.review --repo … --pr N  # compliance verdict for a PR
+python -m tools.dsh_loop.toolchain --tier project --plan
+```
+
+Inside DeepSeek Harness, the `/nova` plugin exposes the same controls: `/nova status`, `/nova eta`, `/nova review <pr>`, `/nova fleet`, `/nova toolchain`. Details, roles and the release process: [CONTROL_PLANE](CONTROL_PLANE.md).
+
+## If something goes wrong
+
+| Symptom | Fix |
+| --- | --- |
+| `Cannot access repository` | Accept the GitHub invitation; ask for read access. |
+| Provider key rejected | Re-run the wizard or re-save it in the DSH Models page. |
+| No tasks | The queue is empty or paused for the owner's decision. Wait; the worker polls. |
+| Task blocked | The issue is quarantined for a maintainer; the checkout is preserved. |
+| Installer wants a tool | Re-run with network access and accept the package install, or install it with your OS package manager. |
+
+Do not disable security features or install software from an unfamiliar source. If a warning looks suspicious, ask an owner before continuing.
