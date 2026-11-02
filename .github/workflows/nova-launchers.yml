@@ -153,7 +153,7 @@ jobs:
           "$env:NOVA3_REPO" | Set-Content release/NOVA3-REPO.txt
           Compress-Archive -Path release/* -DestinationPath "${{ matrix.name }}.zip"
       - name: Assemble release archive (macOS)
-        if: runner.os == 'mac'
+        if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p release
