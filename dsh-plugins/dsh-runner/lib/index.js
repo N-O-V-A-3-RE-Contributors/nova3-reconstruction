@@ -214,6 +214,30 @@ export function apply(ctx, config = {}) {
     return reply(res, { sessionId, live })
   }
 
+  const promptSession = async (req, res) => {
+    if (!sameMachine(req)) return refuse(res, 403, 'forbidden', 'local browser only')
+    let body
+    try { body = await readJson(req) } catch {
+      return refuse(res, 400, 'invalid_json', 'the body is not JSON')
+    }
+    try {
+      const sessionId = text(body.sessionId, 'sessionId', 200)
+      const prompt = text(body.text, 'text', MAX_PROMPT)
+      if (!sessionId || !prompt) {
+        return refuse(res, 400, 'invalid_request', 'sessionId and text are required')
+      }
+      await call('session', 'prompt', {
+        sessionId,
+        requestId: 'dsh-runner-' + crypto.randomUUID(),
+        mode: 'queue',
+        content: [{ type: 'text', text: prompt }],
+      })
+      return reply(res, { sessionId, prompted: true })
+    } catch (error) {
+      return refuse(res, 502, error.code || 'prompt_failed', String(error.message || error))
+    }
+  }
+
   ctx.effect(() => {
     // Exact routes only: this Host's webServer route kinds are proven for
     // `exact` by @nova3/dsh-control; a prefix route is what silently kept this
@@ -224,14 +248,19 @@ export function apply(ctx, config = {}) {
           if (req.method !== 'POST') return refuse(res, 405, 'method_not_allowed', 'POST only')
           return createSession(req, res)
         } }),
+      ctx.webServer.register({ kind: 'exact', path: '/dsh-runner/api/prompt',
+        handler: (req, res) => {
+          if (req.method !== 'POST') return refuse(res, 405, 'method_not_allowed', 'POST only')
+          return promptSession(req, res)
+        } }),
       ctx.webServer.register({ kind: 'exact', path: '/dsh-runner/api/session/status',
         handler: (req, res) => {
           if (req.method !== 'GET') return refuse(res, 405, 'method_not_allowed', 'GET only')
           return sessionStatus(req, res)
         } }),
     ]
-    console.info('[dsh-runner] mounted /dsh-runner/api/session (POST) and '
-      + '/dsh-runner/api/session/status (GET)')
+    console.info('[dsh-runner] mounted /dsh-runner/api/session (POST), '
+      + '/dsh-runner/api/prompt (POST), /dsh-runner/api/session/status (GET)')
     return () => { for (const dispose of disposers) dispose() }
   }, 'dsh-runner: session routes')
 }

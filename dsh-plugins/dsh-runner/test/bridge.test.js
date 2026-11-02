@@ -85,6 +85,20 @@ test('fails closed when permission services are absent', async () => {
   assert.equal(res.body.code, 'PERMISSION_UNAVAILABLE')
 })
 
+test('prompts an existing session (this is how a restarted chat resumes)', async () => {
+  const { calls, routes } = harness()
+  const res = response()
+  await routes.get('/dsh-runner/api/prompt')(request({
+    sessionId: 'session-chat', text: 'continue' }), res)
+  assert.equal(res.status, 200)
+  assert.equal(res.body.prompted, true)
+  const call = calls.at(-1)
+  assert.equal(call.namespace + '.' + call.method, 'session.prompt')
+  assert.equal(call.args.request.sessionId, 'session-chat')
+  assert.equal(call.args.request.content[0].text, 'continue')
+  assert.equal(call.args.request.mode, 'queue')
+})
+
 test('status reports whether the Host still holds the session', async () => {
   const { routes } = harness({ agents: new Map([['s-1', {}]]) })
   const live = response()
