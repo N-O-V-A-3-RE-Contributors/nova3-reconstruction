@@ -182,6 +182,45 @@ class ClaimOwnershipTests(unittest.TestCase):
                          'a task the supervisor already owns is never claimed again')
         self.assertEqual(calls['work_claimed'], 1, 'work runs on the existing lease')
 
+    def test_saved_task_without_a_lease_is_reclaimed_before_work(self):
+        """A saved pointer is not a lease: #171 ran on a cleared lease, produced
+        verified committed work and then could not publish it."""
+        from nova3_team import dsh_supervisor as sup
+        gh = _CoordinatorLikeGitHub()          # body carries NO lease
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        supervisor = _fake_supervisor(sup, gh, state_dir)
+        supervisor.state.save(task={'number': 1, 'token': 'stale-token',
+                                    'title': 'T', 'claimed_unix': int(time.time())})
+        claims = []
+        real_comment = gh.comment
+
+        def counting(number, text):
+            if text.startswith('/nova claim'):
+                claims.append(text)
+            return real_comment(number, text)
+
+        gh.comment = counting
+        ran = []
+        with mock.patch.object(worker, 'work_claimed',
+                               side_effect=lambda *a, **k: ran.append(1) or True):
+            supervisor.run_task(gh.issue(1))
+        self.assertEqual(len(claims), 1, 'the dead lease must be replaced before work')
+        self.assertEqual(len(ran), 1, 'work runs only after a fresh lease')
+
+    def test_task_is_dropped_when_the_lease_cannot_be_obtained(self):
+        from nova3_team import dsh_supervisor as sup
+        gh = _CoordinatorLikeGitHub()
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        supervisor = _fake_supervisor(sup, gh, state_dir)
+        supervisor.state.save(task={'number': 1, 'token': 'stale-token',
+                                    'title': 'T', 'claimed_unix': int(time.time())})
+        with mock.patch.object(supervisor, '_claim', return_value=None), \
+                mock.patch.object(worker, 'work_claimed',
+                                  side_effect=AssertionError('must not run without a lease')):
+            supervisor.run_task(gh.issue(1))
+        self.assertIsNone(supervisor.state.load().get('task'),
+                         'an unclaimable task must not stay attached to the supervisor')
+
     def test_supervisor_claiming_a_new_task_claims_exactly_once(self):
         """claim_first=True performs the single claim and does not re-claim."""
         from nova3_team import dsh_supervisor as sup
@@ -598,6 +637,75 @@ class ControlPlaneTests(unittest.TestCase):
     def test_dsh_loop_refuses_to_be_a_second_loop(self):
         from tools.dsh_loop import cli
         self.assertIn('enabled', cli._live_queue_owner().lower() + ' enabled')
+
+
+class SessionCountingTests(unittest.TestCase):
+    """A per-task summary row mirrors a session; it is never another session."""
+
+    def test_summary_rows_do_not_count_as_sessions(self):
+        now = 1793602000
+        with tempfile.TemporaryDirectory() as folder:
+            ledger = dsh_policy.SpendLedger(pathlib.Path(folder) / 'spend.jsonl')
+            for offset, summary in ((10, False), (9, True), (8, False), (7, True)):
+                ledger.append({'at': now - offset, 'task': '7', 'status': 'COMPLETED',
+                               'phase': 'session' if not summary else 'blocked',
+                               'summary': summary})
+            self.assertEqual(ledger.sessions_last_hour(now=now), 2)
+            self.assertEqual(ledger.sessions_today(now=now), 2)
+            self.assertEqual(ledger.sessions_for_task('7'), 2,
+                             'the per-task cap must count sessions, not their summaries')
+
+
+class TaskVerificationCommandTests(unittest.TestCase):
+    """The supervisor must run the task's own Verification commands."""
+
+    def test_only_the_verification_section_is_collected(self):
+        body = ('Priority: 2\nAllowed paths: x/\n\n## Objective\n'
+                '- not a command\n\n'
+                '## Verification (run these; record exit codes)\n'
+                '- `python -m pytest -q reconstruction/tests/test_x.py`\n'
+                '- python tools/compare/y.py\n\n'
+                '## Next\n- ignored\n')
+        self.assertEqual(
+            worker.verification_commands(body),
+            ['python -m pytest -q reconstruction/tests/test_x.py',
+             'python tools/compare/y.py'])
+
+    def test_project_venv_interpreter_maps_to_the_running_python(self):
+        argv = worker._verify_argv('.venv/bin/python -m pytest -q reconstruction/tests/x.py')
+        self.assertEqual(argv[0], sys.executable)
+        self.assertEqual(argv[1:], ['-m', 'pytest', '-q', 'reconstruction/tests/x.py'])
+
+    def test_shell_syntax_is_refused(self):
+        for command in ('python x.py && rm -rf /',
+                        'python x.py; echo done',
+                        'python x.py | tee out'):
+            with self.assertRaises(ValueError, msg=command):
+                worker._verify_argv(command)
+
+    def test_empty_body_has_no_task_commands(self):
+        self.assertEqual(worker.verification_commands('Priority: 2'), [])
+
+    def test_verify_fails_when_the_task_command_fails(self):
+        seen = []
+
+        class _CP:
+            def __init__(self, code):
+                self.returncode = code
+                self.stdout = ''
+                self.stderr = ''
+
+        def fake_run(argv, cwd=None, timeout=None, check=False):
+            seen.append(list(argv))
+            return _CP(0 if 'discover' in argv else 3)
+
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(worker, 'run', side_effect=fake_run):
+            ok, detail = worker.verify(
+                folder, '## Verification\n- python -m pytest -q x.py\n')
+        self.assertFalse(ok, detail)
+        self.assertTrue(any(any('x.py' in part for part in argv) for argv in seen),
+                        'the task command must actually be executed')
 
 
 if __name__ == '__main__':

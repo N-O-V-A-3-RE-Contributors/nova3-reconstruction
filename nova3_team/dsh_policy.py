@@ -176,10 +176,25 @@ class SpendLedger:
         return sum(int(r.get('input_tokens') or 0) + int(r.get('output_tokens') or 0)
                    for r in self.records() if float(r.get('at') or 0) >= start)
 
+    def session_records(self, *, since: float | None = None) -> list[dict]:
+        """One row per model session; the per-task summary row mirrors one.
+
+        Counting summary rows as sessions made three real sessions look like
+        six, which tripped the hourly cap and refused to publish an
+        already-verified commit (task #171). Token accounting was fixed the
+        same way earlier; sessions must be filtered identically.
+        """
+        return [r for r in self.records()
+                if not r.get('summary')
+                and (since is None or float(r.get('at') or 0) >= float(since))]
+
+    def sessions_last_hour(self, *, now: float | None = None) -> int:
+        now = time.time() if now is None else now
+        return len(self.session_records(since=now - 3600))
+
     def sessions_today(self, *, now: float | None = None) -> int:
         now = time.time() if now is None else now
-        start = _local_midnight(now)
-        return sum(1 for r in self.records() if float(r.get('at') or 0) >= start)
+        return len(self.session_records(since=_local_midnight(now)))
 
     def sessions_for_task(self, task: str, *, since: float | None = None) -> int:
         """Sessions spent on one task, optionally only after a checkpoint.
@@ -188,9 +203,8 @@ class SpendLedger:
         task requeued by a human after a genuine fix starts with a fresh budget,
         while an automatic loop that keeps re-reaching the same task does not.
         """
-        return sum(1 for r in self.records()
-                   if str(r.get('task')) == str(task)
-                   and (since is None or float(r.get('at') or 0) >= float(since)))
+        return sum(1 for r in self.session_records(since=since)
+                   if str(r.get('task')) == str(task))
 
 
 def _local_midnight(now: float) -> float:
@@ -266,7 +280,7 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
                             'Raise NOVA3_DSH_SESSIONS_PER_DAY, or wait until tomorrow; '
                             'the supervisor resumes automatically at the next count window.',
                             'Higher API spend on the configured model route.'))
-    if not ignore_hourly_cap and len(ledger.window(now=now, seconds=3600)) >= budget.sessions_per_hour:
+    if not ignore_hourly_cap and ledger.sessions_last_hour(now=now) >= budget.sessions_per_hour:
         return Decision(BACKOFF, f'hourly session cap reached ({budget.sessions_per_hour})',
                         delay_s=300, retry_same_task=True)
     if ledger.tokens_today(now=now) >= budget.tokens_per_day:

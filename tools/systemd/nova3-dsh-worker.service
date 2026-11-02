@@ -52,7 +52,11 @@ Environment=DSH_HOME=%h/.local/share/nova3-dsh/data
 Environment=NOVA3_SLOT=dsh
 # Budgets (sessions/tokens) are enforced by the supervisor, not by systemd.
 Environment=NOVA3_AI_SESSION_TIMEOUT=1200
-Environment=NOVA3_DSH_MAX_STEPS=120
+# 240 steps is what fits inside NOVA3_AI_SESSION_TIMEOUT (20 min): 120 was
+# consumed by reading a 30k-line repository before the deliverable was
+# written (task #169, STEP_LIMIT). Still a bounded session, and the
+# per-task session cap still prevents a loop.
+Environment=NOVA3_DSH_MAX_STEPS=240
 Environment=NOVA3_DSH_SESSIONS_PER_HOUR=6
 Environment=NOVA3_DSH_SESSIONS_PER_DAY=48
 Environment=NOVA3_DSH_TOKENS_PER_DAY=6000000

@@ -86,7 +86,7 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
         'budget': state.get('budget') or {},
         'sessions_today': ledger.sessions_today(now=now),
         'tokens_today': ledger.tokens_today(now=now),
-        'sessions_last_hour': len(ledger.window(now=now, seconds=3600)),
+        'sessions_last_hour': ledger.sessions_last_hour(now=now),
         'assessment': state.get('assessment') or {},
         'open_requests': requests,
         'balance': balance,

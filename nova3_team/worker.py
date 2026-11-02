@@ -713,9 +713,20 @@ def dsh_session_prompt(issue,round_num,prior,allowed,binary_root):
 
 DEEPSEEK HARNESS SESSION CONTRACT
 - The supervisor, not you, decides whether this task succeeded. After this
-  session it runs the scope guard, then `bash tools/check_all.sh` (or the
-  project's documented checks) and refuses to publish on failure. Make that
-  check pass locally before you finish: run it yourself and fix what you broke.
+  session it runs, in order: the scope guard (only the allowed paths above may
+  change; scratch directories and extra fixture files are refused), `python -m
+  unittest discover -s nova3_team/tests`, a fresh CMake build + `ctest` when
+  CMakeLists.txt is present, and the task's own `Verification` commands listed
+  in the issue body. Any non-zero exit blocks publication. Make the task's
+  `Verification` command pass before you finish.
+- This session is bounded to about 240 model steps and 20 minutes, whichever
+  comes first. Budget it: create the deliverable file within the first ~15
+  steps, then iterate on it. Read only what the objective needs; do not explore
+  unrelated modules or the whole filesystem.
+- If the objective names a tool or reference that is absent (for example a
+  specific NDK/GCC or a reference binary), implement the documented skip or
+  refusal path and stop. Do not hunt for the tool: the acceptance criteria say
+  what to do when it is missing.
 - Report only what the commands actually showed. If a test failed, say so and
   stop; do not describe intended work as done.
 - Separate states stay separate and must be written explicitly:
@@ -732,7 +743,47 @@ DEEPSEEK HARNESS SESSION CONTRACT
 '''
 
 
-def verify(workdir):
+def verification_commands(body):
+    """Commands listed under the issue's `Verification` heading, in order.
+
+    The issue contract says "run these; record exit codes". They were previously
+    only run by the model inside its own session, so the supervisor's
+    independent check ignored the task's own acceptance command. Bounded to
+    six entries; the caller runs them without a shell.
+    """
+    import re
+    lines = str(body or '').splitlines()
+    commands, active = [], False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'^#{1,6}\s*Verification\b', stripped, re.I):
+            active = True
+            continue
+        if active and re.match(r'^#{1,6}\s', stripped):
+            break
+        if active and stripped[:1] in ('-', '*'):
+            command = stripped[1:].strip().strip('`').strip()
+            if command:
+                commands.append(command)
+    return commands[:6]
+
+
+def _verify_argv(command):
+    """Split one verification command; never a shell, never an absolute binary."""
+    import shlex
+    argv = shlex.split(command)
+    if not argv:
+        raise ValueError('empty verification command')
+    if any(token in command for token in (';', '&&', '||', '|', '>', '<', '$(', '`')):
+        raise ValueError(f'refusing shell syntax in verification command: {command[:80]}')
+    if argv[0].startswith('.venv/') or argv[0] == '.venv/bin/python':
+        # Task contracts name the project venv; the disposable checkout has no
+        # .venv, so the running interpreter is the equivalent.
+        argv[0] = sys.executable
+    return argv
+
+
+def verify(workdir, body=''):
     """Independent bounded checks, all build artifacts outside the tracked checkout."""
     root=pathlib.Path(workdir)
     checks=[[sys.executable,'-m','unittest','discover','-s','nova3_team/tests','-v']]
@@ -752,6 +803,16 @@ def verify(workdir):
             if cp.returncode:return False,'\n'.join(feedback)
         except (OSError,subprocess.TimeoutExpired) as e:
             feedback.append(f'Command failed: {cmd}: {e}')
+            return False,'\n'.join(feedback)
+    for command in verification_commands(body):
+        try:
+            argv=_verify_argv(command)
+            cp=run(argv,cwd=root,timeout=480,check=False)
+            feedback.append(f'TASK VERIFY: {command}\nEXIT: {cp.returncode}\n'
+                            f'{(cp.stdout or "")[-1500:]}\n{(cp.stderr or "")[-1500:]}')
+            if cp.returncode:return False,'\n'.join(feedback)
+        except (OSError,ValueError,subprocess.TimeoutExpired) as e:
+            feedback.append(f'Task verification command refused or failed: {command}: {e}')
             return False,'\n'.join(feedback)
     return True,'\n'.join(feedback)
 
@@ -877,7 +938,7 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
                     and git(work,'status','--short',check=False).stdout.strip()):
                 existing_files = validate_scope(work,allowed)
                 if existing_files:
-                    verified,checklog=verify(work)
+                    verified,checklog=verify(work,issue.get('body',''))
                     recovered_ready = True
                     note(f'#{n} reusing completed AI output: {len(existing_files)} files; '
                          f'independent tests: {"PASS" if verified else "FAIL (draft PR)"}')
@@ -940,7 +1001,7 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
                 handoff=record_handoff(work,k,cmd,cp,paths,streamed=True)
                 recovery.update(root,n,phase='checkpoint',round=k)
                 if paths:
-                    verified,checklog=verify(work)
+                    verified,checklog=verify(work,issue.get('body',''))
                     handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
                 if provider == 'dsh' and dsh_last.get('status') in _DSH_TERMINAL:
                     # No credits, a rejected credential or a cancel cannot be

@@ -610,11 +610,27 @@ class DshSupervisor:
         number = issue['number']
         started = time.time()
         saved = self.state.load().get('task') or {}
-        if claim_first or saved.get('number') != number:
+        # A saved pointer is not a lease. The coordinator clears the lease when
+        # a task is blocked or released, so the supervisor must re-establish the
+        # lease before any session: running on a dead lease produced verified,
+        # committed work that could never be published (task #171).
+        held, _free = self._lease_status(issue)
+        if claim_first or saved.get('number') != number or not held:
             if self._claim(number, issue.get('title', '')) is None:
+                self.state.save(task=None, state=dsh_policy.RUNNING,
+                                reason='lease not held; task returned to the queue')
                 return
             saved = self.state.load().get('task') or saved
-        if not self._session_allowed(str(number), started=float(saved.get('claimed_unix') or 0) or None):
+        # Publishing already-verified work is not a model session: it must not
+        # be refused by the session budget (task #171 had a verified commit and
+        # was told "hourly session cap reached" while merely needing a push).
+        try:
+            phase_now = str(recovery.load(self.paths.state, number).get('phase') or '')
+        except Exception:
+            phase_now = ''
+        publish_only = phase_now in ('committed', 'pushed', 'pr_created')
+        if not publish_only and not self._session_allowed(
+                str(number), started=float(saved.get('claimed_unix') or 0) or None):
             return
         try:
             self.state.save(state=dsh_policy.RUNNING, reason='')
@@ -1084,7 +1100,7 @@ class DshSupervisor:
             budget = dsh_policy.Budget.from_env()
             return (ledger.sessions_today() < budget.sessions_per_day
                     and ledger.tokens_today() < budget.tokens_per_day
-                    and len(ledger.window(seconds=3600)) < budget.sessions_per_hour)
+                    and ledger.sessions_last_hour() < budget.sessions_per_hour)
         if kind == 'publish':
             number = int(str(record.get('task') or '0') or 0)
             if not number:
