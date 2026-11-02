@@ -221,3 +221,28 @@ Then: integrate SB readers into owned seekable/memory archive mounts, preserving
 Saved Ghidra generated/ghidra/premium.gpr/.rep, exports generated/ghidra/exports/<ELFhash>/<ELFVA>.json. Run tools/ghidra/export_batch.py with JAVA_HOME=/usr/lib/jvm/java-21-openjdk JAVA_TOOL_OPTIONS=-Xmx1400m and --addresses/--limit. Only one process may open project; no current job remains. Exporter skips completed records and validates original bytes; Ghidra image base+0x10000 is stored separately from ELFVA. Full autoanalysis/other ELF imports pending. Do not re-export valid batches unnecessarily. Last .cache/logs/ghidra-scrambled-archive.log DONE failures0.
 
 Index checks `.venv/bin/python tools/index/check_index.py`; record scoped source evidence tools/index/record_stage2.py. Inventory regeneration preserves function states; never run concurrently with Ghidra writes. JNI/lifecycle map research/android/STARTUP.md, JADX/apktool offline outputs generated/. rev.ng pinned public-demo installed .cache/revng-c865bc3 but90/30sec actual probes timed out with0C outputs (research/architecture/REVNG.md); don't blindly retry. Agent quota interrupted independent review; lead continued, no replacement agents spawned to evade quota. Keep concurrency moderate. Disk31GiB free at latest check.
+
+## Current automation state (2026-11-02 late)
+
+- Only `nova3-dsh-worker.service` (supervisor, slot `dsh`) is a worker; the legacy
+  `nova3-worker.service` is stopped and disabled. Rollback:
+  `tools/systemd/rollback-to-codex.sh` (nothing is deleted; the DSH slot is separate).
+- Installed user units match `tools/systemd/*` byte for byte and `Linger=yes`, so the DSH
+  worker and the status timer start at boot without a login.
+- Auto-admission: `python3 -m nova3_team.autoadmit admit --repo ... --holder 16` reads the
+  newest `NOVA3_AUTOADMIT_WAIVER` COMMENT on #16 (not its body), posts one approval record
+  per waived issue and applies the queue labels. A waiver is live only for
+  `MAX_APPROVAL_AGE` (3600 s) from the comment's creation; the approval record has its own
+  3600 s window.
+- Durable state: `~/.cache/nova3-team/<repo>/.nova-slots/dsh/state/` (`supervisor.json`,
+  `spend.jsonl`, `requests.jsonl`, `requests.open.json`, `.nova-state/<issue>.json`).
+  Operator view: `python3 -m nova3_team.dsh_status`.
+- Known open: #169 is quarantined (`SOURCE_GUARD_FAILURE`: out-of-scope `.scratch169/` and
+  `reconstruction/tests/fixtures/`). A retry needs the cause fixed, the cooldown reset and
+  a requeue; its approval record expires 2026-11-02T07:04:38Z, so a fresh owner waiver is
+  needed afterwards.
+- Proven end-to-end on #171 (2026-11-02): approval record 6570323390 -> queue ->
+  coordinator lease -> DSH session -> independent verify (unittest suite + CTest 39/39
+  + the task's own pytest, 6 passed with NDK r8e GCC 4.4.3) -> commit 81be143 ->
+  PR #176 (non-draft) -> `/nova submitted` -> `nova:review`. Owner review/merge remains;
+  the worker never merges. The migration branch is PR #175.

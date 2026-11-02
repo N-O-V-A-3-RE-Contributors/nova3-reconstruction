@@ -26,7 +26,7 @@ class RegistryTests(unittest.TestCase):
     def test_registry_is_typed_ordered_immutable_and_has_vendor_guidance(self):
         self.assertEqual(runtime.provider_ids(),
                          ('codex', 'claude', 'gemini', 'kimi', 'qwen', 'opencode', 'copilot',
-                          'hermes'))
+                          'hermes', 'dsh'))
         self.assertEqual(runtime.get_provider('codex').display_name, 'ChatGPT (Codex CLI)')
         self.assertNotIn('chatgpt', runtime.PROVIDERS)
         for provider, spec in runtime.PROVIDERS.items():
@@ -262,6 +262,8 @@ class ProbeTests(unittest.TestCase):
         with mock.patch.object(runtime.shutil, 'which', return_value=None), \
                 mock.patch.object(runtime, '_probe') as probe:
             for provider in runtime.provider_ids():
+                if not runtime.get_provider(provider).argv_compatible:
+                    continue    # adapter-owned providers resolve their own runtime
                 result = runtime.probe_provider(provider)
                 self.assertEqual(result.state, runtime.RuntimeState.MISSING)
                 self.assertIn('Install locally:', result.reason)
@@ -270,6 +272,8 @@ class ProbeTests(unittest.TestCase):
     def test_capability_gate_not_an_invented_minimum_version(self):
         for provider in runtime.provider_ids():
             spec = runtime.get_provider(provider)
+            if not spec.argv_compatible:
+                continue    # DSH readiness is its adapter's bounded probe
             help_text = ' '.join(spec.required_help) + ' --json'
             # Providers that do not advertise a semantic version are gated on
             # help capability tokens alone; no invented minimum version.

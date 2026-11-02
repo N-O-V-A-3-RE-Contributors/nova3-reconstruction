@@ -1,0 +1,1266 @@
+"""Continuous DSH supervisor: the durable process that keeps reconstruction alive.
+
+One supervisor owns one slot. It reuses everything the project already trusts
+and adds only the DSH execution backend plus a durable state machine:
+
+    queue (GitHub issues + coordinator leases)   <- unchanged authority
+    checkout + scope guard + verify()            <- unchanged (nova3_team.worker)
+    DSH headless session per bounded pass        <- nova3_team.dsh_runtime
+    supervisor state machine + budgets           <- nova3_team.dsh_policy
+    evidence planner when the queue runs low     <- nova3_team.dsh_planner
+
+Lifetime of one cycle (every step is checkpointed before it can be repeated):
+
+1. read durable state, honour STOP/RESUME, re-arm WAITING_* states on a timer;
+2. re-validate the DSH endpoint locally (no model call);
+3. refresh the queue and the GitHub lease for our task (``/nova heartbeat``);
+4. if the queue is thin, run a bounded planning pass (also a DSH session, also
+   budgeted) and file proposal issues for owner review;
+5. otherwise claim the next safe task exactly as the Codex worker does
+   (``work_one`` -> ``prepare_checkout`` -> ``validate_scope`` -> ``verify`` ->
+   commit -> PR, never merge), but execute the AI session through DSH;
+6. classify the objective outcome, persist spend + task checkpoints, and choose
+   the next state. A credit pause is a STATE, never an exit.
+
+Nothing here creates labels, edits licences, force-pushes, merges, or touches
+another machine's lease. Every mutable path is the slot's own 0700 directory.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import re
+import signal
+import sys
+import time
+import uuid
+
+from . import dsh_planner, dsh_policy, dsh_runtime, recovery
+from .common import GitHub, label_names, lease_active, lease_get
+from .coordinator import EvidenceUnavailable, build_gate
+
+DEFAULT_POLL_S = 90
+DEFAULT_PLAN_TIMEOUT_S = 900
+# How long to wait before planning again when proposals are already awaiting
+# review. Re-planning every poll would spend 2-3 sessions an hour on the same
+# evidence, since the queue stays empty until a human approves something.
+PLAN_RECHECK_S = 3600
+# Empty-queue settle checks before the supervisor declares COMPLETE (each one
+# is a cheap read of the queue, no model call).
+COMPLETE_SETTLES = 3
+COMPLETE_IDLE_S = 1800
+HEARTBEAT_EVERY_S = 20 * 60
+
+STATUSES = frozenset({
+    dsh_runtime.COMPLETED, dsh_runtime.RATE_LIMIT, dsh_runtime.WAITING_CREDITS,
+    dsh_runtime.AUTH, dsh_runtime.PROVIDER_OUTAGE, dsh_runtime.SESSION_TIMEOUT,
+    dsh_runtime.STEP_LIMIT, dsh_runtime.EXECUTION_ERROR, dsh_runtime.CANCELLED,
+})
+
+
+class SupervisorExit(RuntimeError):
+    """A deliberate, recorded stop (never a silent restart loop)."""
+
+    def __init__(self, code: int, cause: str) -> None:
+        super().__init__(cause)
+        self.code = int(code)
+        self.cause = cause
+
+
+# ---------------------------------------------------------------------------
+# Durable state
+# ---------------------------------------------------------------------------
+
+class SupervisorState:
+    """Atomic JSON checkpoint: survives SIGKILL, reboot and re-imaging."""
+
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = pathlib.Path(path)
+
+    def load(self) -> dict:
+        try:
+            data = json.loads(self.path.read_text(encoding='utf-8'))
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save(self, **changes) -> dict:
+        data = self.load()
+        data.update(changes)
+        data['updated_unix'] = int(time.time())
+        data['version'] = 1
+        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp = self.path.with_name(self.path.name + f'.{os.getpid()}.tmp')
+        with open(tmp, 'w', encoding='utf-8') as handle:
+            json.dump(data, handle, sort_keys=True, indent=2)
+            handle.write('\n')
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, self.path)
+        return data
+
+
+# ---------------------------------------------------------------------------
+# Wiring helpers (all reuse the existing worker; nothing is duplicated)
+# ---------------------------------------------------------------------------
+
+def _worker():
+    from . import worker
+    return worker
+
+
+def endpoint_from_env(project: pathlib.Path, overlay_path: pathlib.Path) -> dsh_runtime.DshEndpoint:
+    home = dsh_runtime.discover_home()
+    binary = dsh_runtime.discover_binary(project, home=home)
+    if not binary:
+        raise dsh_runtime.DshUnavailable(
+            'No DSH runtime found (set NOVA3_DSH_BIN or install the NOVA3 launcher).')
+    env = os.environ
+    try:
+        max_steps = max(10, min(400, int(env.get('NOVA3_DSH_MAX_STEPS', '120'))))
+    except ValueError:
+        max_steps = 120
+    return dsh_runtime.DshEndpoint(
+        binary=binary, home=home, profile=env.get('NOVA3_DSH_PROFILE', 'headless'),
+        # Approved alternatives, e.g. NOVA3_DSH_FALLBACK=openrouter-alt:model.",
+        # Parsed here so readiness, overlay and failover agree on one list.
+        patch=overlay_path, route=env.get('NOVA3_DSH_ROUTE', dsh_runtime.DEFAULT_ROUTE),
+        model=env.get('NOVA3_DSH_MODEL', dsh_runtime.DEFAULT_MODEL),
+        base_url=env.get('NOVA3_DSH_BASE_URL', dsh_runtime.DEFAULT_BASE_URL),
+        key_ref=env.get('NOVA3_DSH_KEY_REF', dsh_runtime.DEFAULT_KEY_REF),
+        max_steps=max_steps)
+
+
+def _bounded_env_int(name: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return max(low, min(high, value))
+
+
+def task_timeout_s() -> int:
+    return _bounded_env_int('NOVA3_AI_SESSION_TIMEOUT', 1200, 300, 1800)
+
+
+def plan_timeout_s() -> int:
+    return _bounded_env_int('NOVA3_DSH_PLAN_TIMEOUT', DEFAULT_PLAN_TIMEOUT_S, 120, 1800)
+
+
+def _log(message: str) -> None:
+    print(f'[{time.strftime("%H:%M:%S")}] {message}', flush=True)
+
+
+def _redact(text: object) -> str:
+    try:
+        from . import provider_runtime
+        return provider_runtime.redact_diagnostic(text)
+    except Exception:
+        return str(text)
+
+
+# ---------------------------------------------------------------------------
+# The supervisor
+# ---------------------------------------------------------------------------
+
+class DshSupervisor:
+    def __init__(self, *, repo: str | None = None, slot: str | None = None,
+                 project: pathlib.Path | None = None, once: bool = False,
+                 plan_only: bool = False, no_plan: bool = False,
+                 poll: int = DEFAULT_POLL_S) -> None:
+        self.worker = _worker()
+        self.project = pathlib.Path(project or os.environ.get('NOVA3_PROJECT_ROOT') or
+                                    pathlib.Path.cwd()).resolve()
+        self.slot = self.worker.validate_slot_id(slot or os.environ.get('NOVA3_SLOT', 'dsh'))
+        self.repo = repo
+        self.once = bool(once)
+        self.plan_only = bool(plan_only)
+        self.no_plan = bool(no_plan)
+        self.poll = max(30, int(poll))
+        self.gh = None
+        self.upstream = ''
+        self.user = ''
+        self.paths = None
+        self.state = None
+        self.ledger = None
+        self.reporter = None
+        self.endpoint = None
+        self.gate = None
+        self.guard = None
+        self.stop_signal = ''
+        self._last_heartbeat = 0.0
+
+    # -- setup ---------------------------------------------------------------
+    def setup(self) -> None:
+        worker = self.worker
+        self.upstream = worker.get_repo(self.repo)
+        self.gh = GitHub(self.upstream)
+        self.user = self.gh.me()
+        repository_root = worker.state_root(self.upstream)
+        self.paths = worker.slot_paths(repository_root, self.slot, create=True)
+        self.state = SupervisorState(self.paths.state / 'supervisor.json')
+        self.ledger = dsh_policy.SpendLedger(self.paths.state / 'spend.jsonl')
+        control = self.paths.state / 'control'
+        control.mkdir(parents=True, exist_ok=True, mode=0o700)
+        overlay = self.paths.state / 'dsh-overlay.yml'
+        self.endpoint = endpoint_from_env(self.project, overlay)
+        self._fallbacks = dsh_runtime.parse_fallback_routes(os.environ.get('NOVA3_DSH_FALLBACK', ''))
+        self._overlay = overlay
+        dsh_runtime.write_overlay(overlay, self.endpoint, fallbacks=self._fallbacks)
+        try:
+            from . import presence
+            self.reporter = presence.Reporter(self.upstream, self.user, 'dsh',
+                                              slot_id=self.slot)
+            self.reporter.start()
+        except Exception as exc:
+            self.reporter = None
+            _log(f'presence reporter unavailable ({type(exc).__name__}); continuing')
+        try:
+            self.gate = build_gate(self.gh)
+        except EvidenceUnavailable as exc:
+            raise SupervisorExit(6, f'owner/admin approval gate unavailable: {exc}') from exc
+        self.guard = worker.CheckoutGuard(repository_root, self.slot)
+        self._install_signals()
+        probe = dsh_runtime.probe_endpoint(self.endpoint)
+        self.state.save(slot=self.slot, repo=self.upstream, account=self.user,
+                        endpoint={k: probe.get(k) for k in
+                                  ('ok', 'reason', 'version', 'profile', 'route', 'model',
+                                   'key_ref')},
+                        overlay=str(overlay), project=str(self.project),
+                        supervisor_pid=os.getpid(),
+                        supervisor_started_unix=int(time.time()),
+                        budget=dsh_policy.Budget.from_env().as_dict())
+        _log('DSH supervisor: repo=%s account=%s slot=%s profile=%s route=%s model=%s dsh=%s'
+             % (self.upstream, self.user, self.slot, self.endpoint.profile,
+                self.endpoint.route, self.endpoint.model, probe.get('version')))
+        if self._fallbacks:
+            _log('approved fallback routes (in order): '
+                 + ', '.join(f.name for f in self._fallbacks))
+        else:
+            _log('no approved fallback route configured (NOVA3_DSH_FALLBACK); a provider outage '
+                 'will pause instead of switching')
+        _log(f'local endpoint probe: {probe.get("reason")}')
+        if not probe.get('ok'):
+            self.state.save(state=dsh_policy.WAITING_APPROVAL,
+                            reason=f'endpoint probe: {probe.get("reason")}')
+            raise SupervisorExit(8, f'DSH endpoint is not usable: {probe.get("reason")}')
+        if not dsh_runtime.credential_present(self.endpoint.home, self.endpoint.key_ref):
+            _log(f'credential reference {self.endpoint.key_ref} is absent from the DSH store; '
+                 'staying in WAITING_CREDITS and rechecking on a timer (no restart needed)')
+            self.state.save(state=dsh_policy.WAITING_CREDITS,
+                            reason='credential_reference_absent')
+            self._request('credential', 'the DSH credential store does not name '
+                          f'{self.endpoint.key_ref}',
+                          'Save the provider key on the DSH Web Models page (it writes '
+                          '$DSH_HOME/.credentials.yaml), or set NOVA3_DSH_KEY_REF to a '
+                          'reference the store already has.', 'No session can start.')
+
+    def _install_signals(self) -> None:
+        def handler(signum, _frame):
+            self.stop_signal = signal.Signals(signum).name
+            _log(f'received {self.stop_signal}; finishing the current step cleanly')
+        for name in ('SIGINT', 'SIGTERM'):
+            sig = getattr(signal, name, None)
+            if sig is not None:
+                try:
+                    signal.signal(sig, handler)
+                except (OSError, ValueError):
+                    pass
+
+    # -- helpers -------------------------------------------------------------
+    def _issues(self) -> list:
+        return list(self.gh.issues())
+
+    def _assessment(self) -> dsh_planner.Assessment:
+        try:
+            max_pending = int(os.environ.get('NOVA3_DSH_MAX_PENDING_PROPOSALS',
+                                             dsh_planner.DEFAULT_MAX_PENDING_PROPOSALS))
+        except ValueError:
+            max_pending = dsh_planner.DEFAULT_MAX_PENDING_PROPOSALS
+        return dsh_planner.assess(issues=self._issues(), ledger_root=self.project,
+                                  checkpoint_root=self.paths.state / '.nova-state',
+                                  spend_records=self.ledger.records(),
+                                  max_pending=max(0, max_pending))
+
+    def _our_task(self, issues) -> dict | None:
+        number = (self.state.load().get('task') or {}).get('number')
+        if not number:
+            return None
+        for issue in issues:
+            if issue.get('number') == number:
+                return issue
+        return None
+
+    def _lease_status(self, issue) -> tuple[bool, bool]:
+        """(we hold an active lease, the lease is inactive/absent)."""
+        token = (self.state.load().get('task') or {}).get('token')
+        lease = lease_get(issue.get('body'))
+        if lease and lease_active(lease) and lease.get('owner') == self.user \
+                and token and lease.get('token') == token:
+            return True, False
+        return False, (lease is None or not lease_active(lease))
+
+    def _heartbeat(self, issue, *, force: bool = False) -> None:
+        token = (self.state.load().get('task') or {}).get('token')
+        if not token:
+            return
+        if not force and time.time() - self._last_heartbeat < HEARTBEAT_EVERY_S:
+            return
+        try:
+            self.gh.comment(issue['number'], f'/nova heartbeat {token}')
+            self._last_heartbeat = time.time()
+        except Exception as exc:
+            _log(f'heartbeat failed (will retry): {_redact(exc)[:200]}')
+
+    def _presence(self, status: str, issue=None) -> None:
+        if self.reporter is None:
+            return
+        message = f'#{issue} {status}' if issue else status
+        try:
+            self.reporter.signal_from_log(message)
+        except Exception:
+            pass
+
+    def _consume_resume_for_cycle(self) -> bool:
+        """True once per operator RESUME; the file is removed when consumed."""
+        control = self.paths.state / 'control'
+        if not dsh_policy.resume_requested(control):
+            return False
+        try:
+            (control / 'RESUME').unlink()
+        except OSError:
+            return False
+        self.state.save(resume_for_cycle=int(time.time()))
+        return True
+
+    def _ledger_append(self, record: dict) -> dict:
+        return self.ledger.append(record)
+
+    def _session_for_task(self, prompt: str, cwd, log_path, timeout_s: int):
+        """The task-session callable handed to worker.work_one.
+
+        Routing every session through _run_with_failover keeps one policy for
+        the planner and for engineering work alike.
+        """
+        return self._run_with_failover(prompt, cwd=pathlib.Path(cwd),
+                                       log_path=pathlib.Path(log_path), timeout_s=timeout_s)
+
+    def _consume_resume_consent(self) -> bool:
+        """One-shot: true if the next session may exceed the hourly cap.
+
+        Consumed exactly when a session is about to start, so an idle or capped
+        cycle does not silently throw the operator's request away.
+        """
+        stamp = int(self.state.load().get('resume_for_cycle') or 0)
+        if not stamp:
+            return False
+        self.state.save(resume_for_cycle=None, resume_used_unix=stamp)
+        return True
+
+    def _session_allowed(self, task: str, *, started: float | None = None) -> bool:
+        """Admit one session, or leave a WAITING_APPROVAL state explaining why not."""
+        ledger = self.ledger
+        budget = dsh_policy.Budget.from_env()
+        consent = self._consume_resume_consent()
+        if consent:
+            _log('operator RESUME consent applies to this session (hourly cap waived)')
+        context = dsh_policy.Context(task=task, budget=budget, control_dir=None,
+                                     attempt_started=started, budget_consent=consent)
+        decision = dsh_policy.decide(_no_failure(), ledger, context)
+        if decision.state == dsh_policy.RUNNING:
+            return True
+        if consent:      # do not burn a consent that could not be used
+            self.state.save(resume_for_cycle=int(time.time()))
+        _log(f'not starting a session for {task}: {decision.state} ({decision.reason})')
+        # A budget guard refusing a session is a WAIT, not a task verdict: keep
+        # the task link so the next claim attempt is the same task, and do not
+        # let a stale reason survive once the window resets.
+        state_now = self.state.load()
+        self.state.save(state=(dsh_policy.BACKOFF if decision.state == dsh_policy.BLOCKED
+                               else decision.state),
+                        reason=decision.reason,
+                        next_check_unix=int(time.time()) + max(decision.delay_s, 300),
+                        task=(state_now.get('task') if task == 'planner' or
+                              str((state_now.get('task') or {}).get('number')) == str(task)
+                              else state_now.get('task')))
+        if decision.request:
+            self._request(**decision.request, task=task)
+        return False
+
+    def _wait(self, seconds: int, why: str) -> str:
+        """Sleep, watching the control files. Returns 'elapsed' | 'resume' | 'stop'."""
+        seconds = max(0, int(seconds))
+        self.state.save(next_check_unix=int(time.time()) + seconds, wait_reason=why)
+        _log(f'{why}; next check in {seconds}s (state is durable; no restart needed)')
+        end = time.time() + seconds
+        control = self.paths.state / 'control'
+        while time.time() < end:
+            if self.stop_signal:
+                return 'stop'
+            if dsh_policy.stop_requested(control):
+                return 'stop'
+            if dsh_policy.resume_requested(control):
+                _log('RESUME file found; rechecking now')
+                try:
+                    (control / 'RESUME').unlink()
+                except OSError:
+                    pass
+                # The file is gone from disk, but the consent it expressed must
+                # reach the point where a session is actually admitted.
+                self.state.save(resume_for_cycle=int(time.time()))
+                return 'resume'
+            time.sleep(min(15, max(1, end - time.time())))
+        return 'elapsed'
+
+    # -- the loop ------------------------------------------------------------
+    def run(self) -> int:
+        while not self.stop_signal:
+            try:
+                state = self.state.load()
+                current = state.get('state') or dsh_policy.RUNNING
+                next_check = int(state.get('next_check_unix') or 0)
+                if current in (dsh_policy.BACKOFF, dsh_policy.WAITING_CREDITS,
+                               dsh_policy.WAITING_APPROVAL):
+                    pending = self._approved_and_awaiting_claim(state)
+                    if pending is not None:
+                        # The honoured WAITING state no longer describes reality:
+                        # a human approved work into the queue. Resume at once.
+                        _log(f'{pending} approved task(s) in the queue; leaving {current}')
+                        self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
+                        continue
+                    if next_check > time.time():
+                        self._wait(next_check - time.time(),
+                                   f'{current}: {state.get("reason", "")}')
+                        continue
+                if current == dsh_policy.COMPLETE:
+                    # IDLE, not an exit: exiting here would be restarted by the
+                    # unit forever. Loop back into this same branch so the wait,
+                    # RESUME handling and work detection live in one place.
+                    self._idle_complete(state)
+                    continue
+                if current == dsh_policy.BLOCKED:
+                    _log('previous task was BLOCKED; moving on to different work')
+                    self.state.save(state=dsh_policy.RUNNING, task=None, reason='')
+                self.cycle()
+            except SupervisorExit:
+                raise
+            except KeyboardInterrupt:
+                self.stop_signal = 'SIGINT'
+                break
+            except Exception as exc:          # one bad cycle never kills the loop
+                _log(f'cycle error: {type(exc).__name__}: {_redact(exc)[:400]}')
+                count = int(self.state.load().get('cycle_errors') or 0) + 1
+                self.state.save(cycle_errors=count, state=dsh_policy.BACKOFF,
+                                reason=f'cycle error: {type(exc).__name__}')
+                if count >= 8:
+                    self._request('environment',
+                                  'eight consecutive supervisor cycle errors',
+                                  'Inspect journalctl --user -u nova3-dsh-worker -n 200, fix '
+                                  'the cause, then restart the unit.',
+                                  'No spend occurs while the loop cannot run.')
+                    self._wait(1800, 'repeated cycle errors; backing off')
+                else:
+                    self._wait(dsh_policy.backoff_delay(count), 'cycle error backoff')
+                continue
+            if self.once or self.plan_only:
+                return 0
+            self._wait(self.poll, 'polling for work')
+
+    def cycle(self) -> None:
+        self.state.save(cycle_errors=0)
+        # Requests are resolved one by one, when their own condition is met
+        # (see _resolve_requests). A cycle that makes progress does not answer a
+        # question a human still owes us, and certainly does not cancel one.
+        self._resolve_requests()
+        issues = self._issues()
+        our = self._our_task(issues)
+        if our is not None:
+            labels = label_names(our)
+            if (our.get('state') or 'open') != 'open' or 'nova:review' in labels \
+                    or 'nova:blocked' in labels:
+                _log(f'task #{our["number"]} left the working set (labels={labels}); '
+                     'dropping its checkpoint link (the GitHub lease stays authoritative)')
+                self.state.save(task=None, state=dsh_policy.RUNNING)
+                our = None
+            elif self._lease_status(our)[0]:
+                self._heartbeat(our)
+
+        assessment = self._assessment()
+        self.state.save(assessment=assessment.as_dict())
+        _log(' | '.join(assessment.evidence))
+        self._presence('VERIFYING' if our else 'ONLINE', (our or {}).get('number'))
+
+        if self.plan_only:
+            # --plan-only is a diagnostic for planning alone: it must not claim,
+            # execute or publish anything, even when tasks are available.
+            self.plan()
+            return
+        if our is not None:
+            self.run_task(our)
+            return
+        candidates = self._claimable(issues)
+        if candidates:
+            self.run_task(candidates[0], claim_first=True)
+            return
+        if assessment.proposal_suppressed:
+            # Planning now would spend a session to re-confirm an answer that is
+            # already waiting for a human. Stay in WAITING_APPROVAL (no session,
+            # no tokens) and check back on the normal cadence.
+            _log(f'planning suppressed: {len(assessment.pending)} proposal(s) already await an '
+                 'owner decision ' + ', '.join(f'#{n}' for n in assessment.pending[:8]))
+            self.state.save(state=dsh_policy.WAITING_APPROVAL,
+                            reason=f'{len(assessment.pending)} planner proposal(s) awaiting '
+                                   'owner decision',
+                            next_check_unix=int(time.time()) + PLAN_RECHECK_S)
+            self._request('approval',
+                          'planner proposals are waiting for a decision; planning is paused '
+                          'so no further tokens are spent proposing duplicates',
+                          ', '.join(f'#{n}' for n in assessment.pending[:8])
+                          + ' — approve each with the owner approval label plus `nova:queued`, '
+                            'or close it to reject. Planning resumes automatically once fewer '
+                            'than the cap remain.',
+                          'Nothing is approved by the planner itself; no spend while paused.',
+                          task='planner')
+            return
+        if not self.no_plan and assessment.needs_planning():
+            self.plan()
+            return
+        self.state.save(state=dsh_policy.RUNNING, reason='no claimable task; idling')
+        _log('no claimable task; polling the coordinator queue')
+
+    def _idle_complete(self, state: dict) -> None:
+        """Wait in COMPLETE, watching for work that a human or schedule adds.
+
+        `_wait` returns early on RESUME and only then, so a RESUME found here is
+        an explicit human instruction to re-check now.
+        """
+        if self.stop_signal:
+            return
+        control = self.paths.state / 'control'
+        if dsh_policy.stop_requested(control):
+            self._wait(COMPLETE_IDLE_S, 'COMPLETE; STOP file present')
+            return
+        woke = self._wait(COMPLETE_IDLE_S, 'COMPLETE: no queued or plannable work remains '
+                                            '(idle; RESUME or new work resumes it)')
+        if woke != 'resume':
+            return
+        # An explicit human request beats a planner verdict: leave COMPLETE, run
+        # a full cycle (queue first, then one fresh planning pass) and let that
+        # cycle decide whether COMPLETE still holds.
+        _log('RESUME: leaving COMPLETE for one full cycle')
+        self.state.save(state=dsh_policy.RUNNING, reason='operator resume',
+                        complete_settles=0, resume_requested=int(time.time()))
+        try:
+            if self._approved_and_awaiting_claim({'proposed': [1]}):
+                _log('queued work appeared; leaving COMPLETE')
+                self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
+        except Exception:
+            pass
+
+    def _approved_and_awaiting_claim(self, state: dict) -> int | None:
+        """Count runnable tasks when a wait state is waiting on the human.
+
+        Covers both cases: proposals awaiting approval (an approver may have
+        queued one) and BACKOFF (a human may have queued work while the
+        provider was failing). One cheap list call per wait cycle.
+        """
+        if not state.get('proposed') and state.get('state') != dsh_policy.BACKOFF:
+            return None
+        try:
+            runnable = [i for i in self._issues()
+                        if (i.get('state') or 'open') == 'open'
+                        and 'nova:queued' in label_names(i)
+                        and not i.get('pull_request')]
+        except Exception:
+            return None
+        return len(runnable) or None
+
+    def _claimable(self, issues) -> list:
+        worker = self.worker
+        pool = []
+        for issue in worker._solo_eligible_issues(issues):
+            if 'nova:queued' not in label_names(issue):
+                continue
+            if worker.parse_priority(issue.get('body', '')).error:
+                continue
+            pool.append(issue)
+        admitted = worker.admit_queue(self.gate, pool, self.paths.state)
+        binary_root = self._binary_root()
+        if not binary_root:
+            admitted = [i for i in admitted if 'Reference SHA256:' not in (i.get('body') or '')]
+        admitted.sort(key=lambda i: worker.priority_sort_key(i, claimed=False))
+        return admitted
+
+    def _binary_root(self) -> str:
+        candidate = pathlib.Path(os.environ.get('NOVA3_REFERENCE_ROOT') or
+                                 (self.project / 'analysis'))
+        if not candidate.is_dir():
+            return ''
+        try:
+            from .discovery import find_elfs
+            return str(candidate.resolve()) if find_elfs(self.project, candidate) else ''
+        except OSError:
+            return ''
+
+    # -- one task ------------------------------------------------------------
+    def run_task(self, issue: dict, *, claim_first: bool = False) -> None:
+        worker = self.worker
+        number = issue['number']
+        started = time.time()
+        saved = self.state.load().get('task') or {}
+        # A saved pointer is not a lease. The coordinator clears the lease when
+        # a task is blocked or released, so the supervisor must re-establish the
+        # lease before any session: running on a dead lease produced verified,
+        # committed work that could never be published (task #171).
+        held, _free = self._lease_status(issue)
+        if claim_first or saved.get('number') != number or not held:
+            if self._claim(number, issue.get('title', '')) is None:
+                self.state.save(task=None, state=dsh_policy.RUNNING,
+                                reason='lease not held; task returned to the queue')
+                return
+            saved = self.state.load().get('task') or saved
+        # Publishing already-verified work is not a model session: it must not
+        # be refused by the session budget (task #171 had a verified commit and
+        # was told "hourly session cap reached" while merely needing a push).
+        try:
+            phase_now = str(recovery.load(self.paths.state, number).get('phase') or '')
+        except Exception:
+            phase_now = ''
+        publish_only = phase_now in ('committed', 'pushed', 'pr_created')
+        if not publish_only and not self._session_allowed(
+                str(number), started=float(saved.get('claimed_unix') or 0) or None):
+            return
+        try:
+            self.state.save(state=dsh_policy.RUNNING, reason='')
+            self._presence('VERIFYING', number)
+            # The supervisor already owns the lease; publish re-runs (and any
+            # other resume) call the same post-claim entry point, which never
+            # issues a second `/nova claim`.
+            token = (self.state.load().get('task') or {}).get('token')
+            worker._dsh_ledger = self._ledger_append   # per-session spend sink
+            worker._dsh_session = self._session_for_task
+            try:
+                result = worker.work_claimed(self.gh, self.upstream, self.user, issue, 'dsh',
+                                             self.paths.state, 1, self._binary_root(), token,
+                                             provider_status=None, gate=self.gate)
+            finally:
+                worker._dsh_ledger = None
+                worker._dsh_session = None
+        except SystemExit as exc:            # work_one stops deliberately on fatal causes
+            raise SupervisorExit(int(exc.code or 1), 'worker requested a deliberate stop') from exc
+        except Exception as exc:
+            result = exc
+            _log(f'task #{number}: worker error {_redact(exc)[:300]}')
+        task_state = recovery.load(self.paths.state, number)
+        spend = task_state.get('dsh_spend') or {}
+        outcome = dsh_runtime.SessionOutcome(
+            status=self._task_status(task_state, result),
+            exit_code=task_state.get('provider_exit'),
+            session_id=task_state.get('dsh_session'),
+            turn_reason=task_state.get('dsh_turn_reason'),
+            error_code=task_state.get('dsh_error_code'),
+            error_message=str(task_state.get('dsh_error_message') or ''),
+            steps=int(task_state.get('dsh_steps') or 0), tool_calls=0,
+            elapsed_s=float(time.time() - started),
+            input_tokens=int(spend.get('input_tokens') or 0),
+            output_tokens=int(spend.get('output_tokens') or 0))
+        lease_inactive = False
+        try:
+            fresh = self.gh.issue(number)
+            if (fresh.get('state') or 'open') == 'open':
+                _, lease_inactive = self._lease_status(fresh)
+            if 'nova:review' in label_names(fresh):
+                lease_inactive = False       # submitted+released is a healthy end state
+        except Exception:
+            pass
+        if outcome.ok and not task_state.get('provider_exit') and result is not True:
+            # `work_one` did not do the job even though the session completed
+            # (no admissible change, a scope violation, a publish failure it
+            # could not resume). Reporting COMPLETED here would reset every
+            # failure counter and hide a real defect -- exactly what the dry run
+            # caught: 165k tokens spent, nothing committed, state 'RUNNING'.
+            reason = str(task_state.get('last_error') or task_state.get('failure_code') or '')
+            if not reason:
+                reason = (str(result)[:200] if isinstance(result, Exception)
+                          else f'work returned {result!r}')
+            outcome = dsh_runtime.SessionOutcome(
+                status=dsh_runtime.EXECUTION_ERROR, exit_code=outcome.exit_code,
+                session_id=outcome.session_id, turn_reason=outcome.turn_reason,
+                error_code='NO_EFFECT', error_message=reason,
+                steps=outcome.steps, tool_calls=outcome.tool_calls,
+                elapsed_s=outcome.elapsed_s, input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens)
+            _log(f'task #{number}: session COMPLETED but the task did not progress; '
+                 f'recording NO_EFFECT ({reason[:160]})')
+        if outcome.ok and lease_inactive:
+            # The session spent real quota but the lease it produced work under
+            # is gone (lost to an expiry, another worker, or a coordinator
+            # hiccup). Recording that as COMPLETED would reset the failure
+            # counters and hide it; it is a coordination failure.
+            outcome = dsh_runtime.SessionOutcome(
+                status=dsh_runtime.EXECUTION_ERROR, exit_code=outcome.exit_code,
+                session_id=outcome.session_id, turn_reason=outcome.turn_reason,
+                error_code='LEASE_LOST', error_message='lease was not active after the session',
+                steps=outcome.steps, tool_calls=outcome.tool_calls,
+                elapsed_s=outcome.elapsed_s, input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens)
+        previous = self.state.load().get('same_failure') or {}
+        same = 1 + int(previous.get('count') or 0) if previous.get('status') == outcome.status else 1
+        prior_ok_inactive = int(self.state.load().get('ok_with_inactive_lease') or 0)
+        ok_inactive = prior_ok_inactive + 1 if (outcome.ok and lease_inactive) else 0
+        context = dsh_policy.Context(
+            task=str(number), budget=dsh_policy.Budget.from_env(),
+            consecutive_same_failure=same, ok_with_inactive_lease=ok_inactive,
+            lease_inactive=lease_inactive,
+            control_dir=self.paths.state / 'control',
+            attempt_started=float(saved.get('claimed_unix') or 0) or None)
+        decision = dsh_policy.decide(outcome, self.ledger, context)
+        # The per-session attempts were already written by work_one; this is a
+        # SUMMARY of the whole task attempt and deliberately carries no tokens,
+        # so budgets count real spend once and never double-count it.
+        self.ledger.append({'task': str(number), 'status': outcome.status,
+                            'error_code': outcome.error_code,
+                            'elapsed_s': outcome.summary()['elapsed_s'],
+                            'phase': task_state.get('phase'), 'summary': True,
+                            'sessions': task_state.get('dsh_attempts_used'),
+                            'task_tokens': int(task_state.get('session_spent') or 0),
+                            'result': None if result is None else bool(result)})
+        if result is not True and task_state.get('verified'):
+            # The model finished AND the independent checks passed; what failed
+            # was our own publish plumbing (push/PR/network), not the work. That
+            # must never consume the task's session budget or block the task:
+            # only a provider or work failure counts against it.
+            recovered = self._resume_publish(number, issue, task_state, result)
+            if recovered:
+                _log(f'task #{number}: publish recovered without another AI session')
+                return
+            _log(f'task #{number}: verified work is committed locally but publishing failed; '
+                 f'checkout preserved at {task_state.get("work")}')
+        _log(f'task #{number}: {outcome.status} -> {decision.state} ({decision.reason})')
+        self.state.save(state=decision.state, reason=decision.reason,
+                        next_check_unix=int(time.time()) + decision.delay_s,
+                        last_outcome=outcome.summary(),
+                        same_failure={'status': outcome.status, 'count': same},
+                        ok_with_inactive_lease=ok_inactive,
+                        last_decision=decision.as_dict())
+        if decision.request:
+            self._request(**decision.request, task=str(number))
+        if decision.state in (dsh_policy.BLOCKED, dsh_policy.WAITING_CREDITS) \
+                or not decision.retry_same_task:
+            self.state.save(task=None)
+        self._presence('REVIEW' if task_state.get('phase') == 'review' else 'ONLINE', number)
+
+    def _run_with_failover(self, prompt: str, *, cwd: pathlib.Path, log_path: pathlib.Path,
+                           timeout_s: int):
+        """One bounded session, moving to an APPROVED route only when the
+        primary's failure is provider-level (credits, auth, rate limit, outage).
+
+        An execution error is the model's or the task's problem and is never
+        retried on another route: that would just spend the alternative on the
+        same failure. Without an approved route the outcome is returned as-is so
+        the caller pauses in the right state.
+        """
+        outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=cwd, log_path=log_path,
+                                          timeout_s=timeout_s,
+                                          cancel=lambda: bool(self.stop_signal))
+        if outcome.status not in dsh_runtime.FAILOVER_STATUSES or not self._fallbacks:
+            return outcome
+        base = self.endpoint
+        used = list(self.state.load().get('failover_used') or [])
+        for route in self._fallbacks:
+            if route.name in used:
+                continue
+            endpoint = base.with_route(route.name, route.final_model(base))
+            probe = dsh_runtime.probe_endpoint(endpoint)
+            if not probe.get('ok'):
+                _log(f'fallback route {route.name} unusable ({probe.get("reason")}); skipped')
+                continue
+            _log(f'primary route {outcome.status} ({outcome.error_code}); failing over to '
+                 f'approved route {route.name}')
+            self.state.save(failover_used=used + [route.name],
+                            failover_reason=f'{outcome.status}:{outcome.error_code}')
+            fallback = dsh_runtime.run_session(endpoint, prompt, cwd=cwd,
+                                               log_path=log_path.with_name(
+                                                   log_path.stem + f'-{route.name}.log'),
+                                               timeout_s=timeout_s,
+                                               cancel=lambda: bool(self.stop_signal))
+            if fallback.ok:
+                # The alternative is now the working route: make it the
+                # primary for the next session instead of re-failing every time.
+                self.endpoint = endpoint
+                dsh_runtime.write_overlay(
+                    self._overlay, endpoint,
+                    fallbacks=tuple(f for f in self._fallbacks if f.name != route.name))
+                self.state.save(endpoint={k: getattr(endpoint, k)
+                                          for k in ('profile', 'route', 'model', 'key_ref')},
+                                reason=f'using approved fallback route {route.name}')
+                _log(f'fallback route {route.name} succeeded and is now primary')
+            return fallback
+        return outcome
+
+    def _project_goal_met(self) -> bool:
+        """Independently checkable acceptance criteria for the WHOLE project.
+
+        Deliberately conservative and offline: each criterion is a fact about
+        this checkout, not a model's opinion. Until all hold, the supervisor may
+        never declare COMPLETE.
+        """
+        project = self.project
+        checks = {
+            # A built, source-only Android application package exists and is
+            # produced by our sources (the end-state in AGENTS.md).
+            'android_apk_built': bool(list((project / 'build').rglob('*.apk'))),
+            # The source-only verification tool passes over the built app.
+            'source_only_verified': (project / 'tools/verify_source_only.py').is_file()
+                                    and (project / 'build').is_dir(),
+            # The reconstruction source tree is non-empty and tracked.
+            'reconstruction_source': any((project / 'reconstruction/engine').glob('**/*.c*'))
+                                     or any((project / 'reconstruction/android').glob('**/*')),
+            # End-to-end behavioural evidence exists (real gameplay scenarios).
+            'behavioural_evidence': any((project / 'reconstruction/tests').glob('**/*behaviour*'))
+                                    or (project / 'docs/progress/BEHAVIOURAL.md').is_file(),
+        }
+        self.state.save(acceptance=checks)
+        return all(checks.values())
+
+    def _resume_publish(self, number: int, issue: dict, task_state: dict, error) -> bool:
+        """Retry only the publish half of `work_one` for already-verified work.
+
+        `work_one` is resumable by design: with phase `committed`/`pushed` it
+        skips the AI session entirely and repeats push -> PR -> submitted. The
+        supervisor calls it again with the same checkpoint; if the phase has
+        already reached `review` there is nothing left to do.
+        """
+        phase = task_state.get('phase')
+        if phase not in ('committed', 'pushed'):
+            return False
+        if int(self.state.load().get('publish_attempts') or 0) >= 2:
+            self._request('publish', f'verified work for #{number} cannot be published',
+                          f'Push the branch in {task_state.get("work")} manually or fix the '
+                          'credential/network error; the commits and verification are kept.',
+                          'Nothing is merged automatically either way.', task=str(number))
+            return False
+        self.state.save(publish_attempts=int(self.state.load().get('publish_attempts') or 0) + 1)
+        try:
+            token = (self.state.load().get('task') or {}).get('token')
+            self.worker._dsh_ledger = self._ledger_append
+            self.worker._dsh_session = self._session_for_task
+            try:
+                self.worker.work_claimed(self.gh, self.upstream, self.user, issue, 'dsh',
+                                         self.paths.state, 1, self._binary_root(), token,
+                                         provider_status=None, gate=self.gate)
+            finally:
+                self.worker._dsh_ledger = None
+                self.worker._dsh_session = None
+        except Exception as exc:              # keep the original, more useful error
+            _log(f'task #{number}: publish retry failed: {_redact(exc)[:200]}')
+            return False
+        return recovery.load(self.paths.state, number).get('phase') == 'review'
+
+    def _claim(self, number: int, title: str) -> str | None:
+        """The exact coordinator handshake the Codex worker uses: one lease."""
+        token = str(uuid.uuid4())
+        self.gh.comment(number, f'/nova claim {token}')
+        _log(f'requested task #{number}; waiting for the coordinator lease')
+        until = time.monotonic() + 100
+        while time.monotonic() < until:
+            if self.stop_signal:
+                return None
+            current = self.gh.issue(number)
+            lease = lease_get(current.get('body'))
+            if lease and lease.get('owner') == self.user and lease.get('token') == token \
+                    and lease_active(lease):
+                self.state.save(task={'number': number, 'token': token, 'title': title,
+                                      'claimed_unix': int(time.time())})
+                recovery.update(self.paths.state, number, repo=self.upstream, user=self.user,
+                                token=token)
+                return token
+            if 'nova:review' in label_names(current):
+                break
+            if lease and lease_active(lease):
+                break
+            time.sleep(5)
+        _log(f'no lease for #{number} (coordinator disabled or another worker owns it)')
+        return None
+
+    def _task_status(self, task_state: dict, result) -> str:
+        status = task_state.get('dsh_status')
+        if status in STATUSES:
+            return status
+        if task_state.get('provider_exit') == 124:
+            return dsh_runtime.SESSION_TIMEOUT
+        if result is True:
+            return dsh_runtime.COMPLETED
+        return dsh_runtime.EXECUTION_ERROR
+
+    # -- planning ------------------------------------------------------------
+    def plan(self) -> None:
+        if not self._session_allowed('planner'):
+            return
+        _log('queue is at the low-water mark; running a bounded planning pass')
+        issues = self._issues()
+        assessment = self._assessment()
+        existing = dsh_planner.issue_texts(
+            [i for i in issues if (i.get('state') or 'open') == 'open']) + \
+            dsh_planner.issue_texts([i for i in issues if (i.get('state') or '') == 'closed'][-40:])
+        rejected = list(self.state.load().get('rejected_proposals') or [])
+        # Proposals filed by this supervisor are deliberately queued WITHOUT a
+        # label so a human decides; that also makes them invisible to the open-
+        # issue text used above. Feed them back explicitly or the next pass
+        # would re-propose its own unanswered work.
+        filed = []
+        for number in self.state.load().get('proposed') or []:
+            try:
+                issue = self.gh.issue(number)
+                if (issue.get('state') or 'open') == 'open':
+                    filed.append({'title': issue.get('title') or '', 'body': issue.get('body') or ''})
+            except Exception:
+                continue
+        existing += dsh_planner.issue_texts(filed)
+        overrides_file = self.project / '.local' / 'dsh-loop' / 'prompt-overrides.md'
+        try:
+            overrides = overrides_file.read_text(encoding='utf-8') if overrides_file.is_file() else ''
+        except OSError:
+            overrides = ''
+        prompt = dsh_planner.planner_prompt(
+            assessment, existing=existing, rejected=rejected,
+            next_md_excerpt=_head(self.project / 'docs/progress/NEXT.md'), overrides=overrides)
+        log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
+        self._presence('PLANNING')
+        _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
+        outcome = self._run_with_failover(prompt, cwd=self.project, log_path=log_path,
+                                          timeout_s=plan_timeout_s())
+        _log(f'planner session finished: {outcome.status} in {int(outcome.elapsed_s)}s')
+        self.ledger.append({'task': 'planner', 'status': outcome.status,
+                            'error_code': outcome.error_code,
+                            'input_tokens': outcome.input_tokens,
+                            'output_tokens': outcome.output_tokens})
+        if outcome.status != dsh_runtime.COMPLETED:
+            decision = dsh_policy.decide(
+                outcome, self.ledger,
+                dsh_policy.Context(task='planner', budget=dsh_policy.Budget.from_env(),
+                                   consecutive_same_failure=1,
+                                   control_dir=self.paths.state / 'control'))
+            _log(f'planner session {outcome.status} -> {decision.state} ({decision.reason})')
+            # Budget exhaustion is not a planning verdict: whatever the human was
+            # already asked to approve is still waiting for them.
+            previous = self.state.load()
+            if (decision.reason.startswith(('hourly session cap', 'daily session cap',
+                                             'daily token cap'))
+                    and previous.get('state') == dsh_policy.WAITING_APPROVAL):
+                state, reason, delay = (dsh_policy.WAITING_APPROVAL,
+                                        previous.get('reason') or 'awaiting human decision',
+                                        PLAN_RECHECK_S)
+            else:
+                state, reason, delay = decision.state, f'planner: {decision.reason}', decision.delay_s
+            self.state.save(state=state, reason=reason,
+                            next_check_unix=int(time.time()) + delay,
+                            last_outcome=outcome.summary())
+            if decision.request:
+                self._request(**decision.request, task='planner')
+            return
+        self.state.save(resume_requested=None)   # consumed by this pass
+        proposals, bad = dsh_planner.parse_proposals(_final_text(outcome),
+                                                     evidence=assessment.evidence)
+        proposals = dsh_planner.deduplicate(proposals, existing_texts=existing,
+                                            rejected_keys=rejected)
+        for title, reason in bad:
+            _log(f'planner rejected a proposal ({reason}): {title}')
+        self._presence('ONLINE')
+        operator_resume = bool(self.state.load().get('resume_requested'))
+        if not proposals:
+            working = _working(issues)
+            complete = assessment.queue.runnable == 0 and not working and not operator_resume
+            _log('planner produced no acceptable new task; '
+                 + ('nothing remains queued' if complete else
+                    f'{len(working)} task(s) still in flight elsewhere'))
+            if complete and not self._project_goal_met():
+                # An empty queue and an exhausted planner are NOT completion of
+                # a whole-game source reconstruction. The project is
+                # EVIDENCE_NEEDED until the acceptance criteria in
+                # _project_goal_met() pass in this checkout.
+                _log('nothing queued and nothing plannable, but project acceptance is not met; '
+                     'entering EVIDENCE_NEEDED (human decision required)')
+                self.state.save(state=dsh_policy.WAITING_APPROVAL, complete_settles=0,
+                                reason='evidence needed: project acceptance criteria not met')
+                self._request('evidence',
+                              'the queue is empty, the planner found no honest new task, and the '
+                              'project acceptance criteria are not met',
+                              'Run the discovery timer for new function evidence, approve one of '
+                              'the open planner proposals, or narrow a blocked task. The '
+                              'supervisor is idle and safe; it resumes as soon as work appears.',
+                              'No work is guessed to fill the queue and no completion is claimed.',
+                              task='planner')
+                return
+            self.state.save(state=dsh_policy.COMPLETE if complete else dsh_policy.RUNNING,
+                            reason='planner: no honest task derived from evidence',
+                            complete_settles=0 if not complete else None)
+            if complete:
+                self._request('evidence', 'the planner found no honest, non-duplicate task',
+                              'Run the discovery timer for new evidence, or narrow a blocked '
+                              'task. The supervisor resumes as soon as evidence exists.',
+                              'Autonomous progress is paused until then.', task='planner')
+            return
+        numbers = []
+        for proposal in proposals:
+            try:
+                created = self.gh.post('issues', dsh_planner.write_proposal_issue_payload(proposal))
+                numbers.append(created.get('number'))
+                _log(f'filed planner proposal #{created.get("number")}: {proposal.title}')
+            except Exception as exc:
+                _log(f'could not file proposal: {_redact(exc)[:200]}')
+                self.state.save(rejected_proposals=(rejected + [proposal.key])[-50:])
+        if not numbers:
+            self.state.save(state=dsh_policy.BACKOFF, reason='proposal filing failed',
+                            next_check_unix=int(time.time()) + 600)
+            return
+        self.state.save(proposed=numbers, state=dsh_policy.WAITING_APPROVAL,
+                        reason='planner proposals await owner approval into the queue',
+                        next_check_unix=int(time.time()) + PLAN_RECHECK_S)
+        self._request('approval', 'planner filed new task proposals',
+                      ', '.join(f'#{n}' for n in numbers)
+                      + ' need owner review: apply the owner approval label plus `nova:queued` '
+                        'to approve, or close them to reject.',
+                      'Unapproved proposals are never claimed and cost nothing.',
+                      task='planner')
+
+    # -- human requests ------------------------------------------------------
+    def _request(self, kind: str, detail: str, action: str, risk: str = '',
+                 task: str | None = None) -> None:
+        """Append an actionable request AND maintain the current open set.
+
+        requests.jsonl is the append-only history. requests.open.json is what an
+        operator should see NOW: a fast-advancing condition (like the newest
+        proposal numbers) supersedes its own previous entry instead of piling
+        up, so the status page and `dsh_status` never show work that was
+        already done. Entries are cleared when the state that caused them ends.
+        """
+        path = self.paths.state / 'requests.jsonl'
+        record = {'at': int(time.time()), 'kind': kind, 'task': task,
+                  'detail': detail[:800], 'action': action[:800], 'risk': risk[:400],
+                  'slot': self.slot}
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            with open(path, 'a', encoding='utf-8') as handle:
+                handle.write(json.dumps(record, sort_keys=True) + '\n')
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+        self._update_open_requests(record)
+        _log(f'ACTION REQUIRED ({kind})' + (f' for #{task}' if task else '')
+             + f': {action} -- {detail}')
+
+    def _resolve_requests(self) -> None:
+        """Drop a request only when the condition that raised it is satisfied."""
+        open_set = _read_json_list(self.paths.state / 'requests.open.json')
+        if not open_set:
+            return
+        keep = []
+        for record in open_set:
+            try:
+                if self._request_satisfied(record):
+                    _log(f'request resolved ({record.get("kind")}): '
+                         f'{str(record.get("detail"))[:80]}')
+                    continue
+            except Exception:
+                pass
+            keep.append(record)
+        if len(keep) != len(open_set):
+            self._write_open_requests(keep)
+
+    def _request_satisfied(self, record: dict) -> bool:
+        kind = str(record.get('kind') or '')
+        if kind == 'approval':
+            # Satisfied when none of the proposals named in the request is still
+            # awaiting a decision (each was labelled or closed by a human).
+            numbers = [int(n) for n in re.findall(r'#(\d+)', str(record.get('detail') or ''))]
+            if not numbers:
+                return False
+            for number in numbers:
+                issue = self.gh.issue(number)
+                if (issue.get('state') or 'open') == 'open' \
+                        and not ({'nova:queued', 'nova:claimed', 'nova:review', 'nova:blocked'}
+                                 & set(label_names(issue))):
+                    return False
+            return True
+        if kind == 'credits' or kind == 'credential':
+            try:
+                return bool(dsh_runtime.probe_endpoint(self.endpoint).get('ok')) and \
+                    dsh_runtime.credential_present(self.endpoint.home, self.endpoint.key_ref)
+            except Exception:
+                return False
+        if kind == 'evidence':
+            return bool([i for i in self._issues()
+                         if (i.get('state') or 'open') == 'open'
+                         and 'nova:queued' in label_names(i)])
+        if kind == 'budget':
+            ledger = self.ledger
+            budget = dsh_policy.Budget.from_env()
+            return (ledger.sessions_today() < budget.sessions_per_day
+                    and ledger.tokens_today() < budget.tokens_per_day
+                    and ledger.sessions_last_hour() < budget.sessions_per_hour)
+        if kind == 'publish':
+            number = int(str(record.get('task') or '0') or 0)
+            if not number:
+                return False
+            return recovery.load(self.paths.state, number).get('phase') == 'review'
+        if kind == 'failure' or kind == 'replan':
+            number = int(str(record.get('task') or '0') or 0)
+            if not number:
+                return False
+            issue = self.gh.issue(number)
+            # A human requeued it (nova:queued) after fixing the cause.
+            return 'nova:queued' in label_names(issue) or \
+                (issue.get('state') or 'open') != 'open'
+        return False
+
+    def _write_open_requests(self, open_set: list) -> None:
+        path = self.paths.state / 'requests.open.json'
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = path.with_name(path.name + '.tmp')
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump(open_set, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    def _update_open_requests(self, record: dict | None, *, clear: bool = False,
+                              open_set: list | None = None) -> None:
+        path = self.paths.state / 'requests.open.json'
+        try:
+            if open_set is not None:
+                pass
+            elif clear:
+                open_set = []
+            else:
+                open_set = _read_json_list(path)
+                open_set = [r for r in open_set
+                            if not (r.get('kind') == record.get('kind')
+                                    and str(r.get('task')) == str(record.get('task')))]
+                open_set.append(record)
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = path.with_name(path.name + '.tmp')
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump(open_set[-8:], handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+
+def _read_json_list(path: pathlib.Path) -> list:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def _no_failure() -> dsh_runtime.SessionOutcome:
+    """A synthetic 'nothing failed yet' outcome: used only to ask the policy
+    "may a session start now?", never to decide that a session succeeded."""
+    return dsh_runtime.SessionOutcome(status=dsh_runtime.COMPLETED, exit_code=None,
+                                      session_id=None, turn_reason=None, error_code=None,
+                                      error_message='', steps=0, tool_calls=0, elapsed_s=0.0)
+
+
+def _head(path: pathlib.Path, limit: int = 9000) -> str:
+    try:
+        return path.read_text(encoding='utf-8')[:limit]
+    except OSError:
+        return ''
+
+
+def _final_text(outcome: dsh_runtime.SessionOutcome) -> str:
+    for event in reversed(outcome.events):
+        if event.get('type') == 'final':
+            return str(event.get('text') or '')
+    return ''
+
+
+def _working(issues) -> list:
+    return [i for i in issues if (i.get('state') or 'open') == 'open'
+            and {'nova:queued', 'nova:claimed', 'nova:review'} & set(label_names(i))]
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog='python -m nova3_team.dsh_supervisor',
+        description='Continuous DSH-backed N.O.V.A. 3 reconstruction supervisor')
+    p.add_argument('command', nargs='?', default='run', choices=('run', 'status', 'probe'))
+    p.add_argument('--repo', help='OWNER/REPO (defaults to the current repository)')
+    p.add_argument('--slot', default=os.environ.get('NOVA3_SLOT', 'dsh'),
+                   help='slot id; each slot owns its own state, logs and checkouts')
+    p.add_argument('--project', default=str(pathlib.Path.cwd()),
+                   help='project checkout used for planning and as the base for state paths')
+    p.add_argument('--once', action='store_true', help='run one cycle and exit')
+    p.add_argument('--plan-only', action='store_true', help='run only a planning pass')
+    p.add_argument('--no-plan', action='store_true', help='never plan; execute the queue only')
+    p.add_argument('--poll', type=int, default=DEFAULT_POLL_S)
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    project = pathlib.Path(args.project).resolve()
+    if args.command == 'probe':
+        endpoint = endpoint_from_env(project, project / '.local' / 'dsh' / 'overlay.yml')
+        print(json.dumps(dsh_runtime.probe_endpoint(endpoint), indent=2))
+        return 0
+    worker = _worker()
+    upstream = worker.get_repo(args.repo)
+    if args.command == 'status':
+        paths = worker.slot_paths(worker.state_root(upstream), args.slot)
+        state = SupervisorState(paths.state / 'supervisor.json').load()
+        ledger = dsh_policy.SpendLedger(paths.state / 'spend.jsonl')
+        print(json.dumps({
+            'slot': args.slot, 'state': state.get('state'), 'reason': state.get('reason'),
+            'task': state.get('task'), 'last_outcome': state.get('last_outcome'),
+            'assessment': state.get('assessment'), 'endpoint': state.get('endpoint'),
+            'updated_unix': state.get('updated_unix'),
+            'next_check_unix': state.get('next_check_unix'),
+            'sessions_today': ledger.sessions_today(), 'tokens_today': ledger.tokens_today(),
+            'requests': _tail_requests(paths.state / 'requests.jsonl')}, indent=2))
+        return 0
+    supervisor = DshSupervisor(repo=args.repo, slot=args.slot, project=project,
+                               once=args.once, plan_only=args.plan_only,
+                               no_plan=args.no_plan, poll=args.poll)
+    try:
+        supervisor.setup()
+        return supervisor.run()
+    except (SupervisorExit, dsh_runtime.DshUnavailable) as exc:
+        code = int(getattr(exc, 'code', 8))
+        cause = getattr(exc, 'cause', str(exc))
+        payload = worker.record_worker_failure(worker.state_root(upstream), code, cause)
+        _log(f'exit {code}: {payload.get("cause")}')
+        return code
+
+
+def _tail_requests(path: pathlib.Path, limit: int = 8) -> list:
+    try:
+        lines = path.read_text(encoding='utf-8', errors='replace').splitlines()[-limit:]
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            continue
+    return out
+
+
+if __name__ == '__main__':
+    sys.exit(main())

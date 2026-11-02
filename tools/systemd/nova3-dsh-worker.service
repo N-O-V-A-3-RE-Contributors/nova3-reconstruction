@@ -1,0 +1,85 @@
+# NOVA3 DeepSeek Harness worker: continuous, durable autonomous reconstruction.
+#
+# Install: tools/systemd/install-units.sh   (no sudo; user units only)
+#
+# Why this unit is shaped differently from nova3-worker.service:
+#   * The OLD unit carried `RestartPreventExitStatus=3`, i.e. a deliberate
+#     "credits/attempts exhausted" exit made systemd STOP restarting. That
+#     turned a temporary billing pause into a permanently dead worker that
+#     needed a human `systemctl start`. A pause is now a STATE inside the
+#     process (`WAITING_CREDITS`), the process stays alive, rechecks on a
+#     timer and resumes by itself. The only non-zero exits here are genuine
+#     configuration faults, and those are recorded in worker-failure.json.
+#   * Restart=on-failure + a start-rate limit: a crash (non-zero exit, OOM,
+#     signal) restarts promptly, but a crash LOOP backs off, and a clean
+#     `systemctl stop` (SIGTERM -> exit 0) stays stopped. `Restart=always`
+#     was tried and is WRONG here: a deliberate, meaningful exit 0 (state
+#     COMPLETE) got respawned every 30 s. A provider pause is not an exit at
+#     all -- it is the in-process WAITING_CREDITS state -- so no exit code is
+#     ever used to signal "wait"
+#   * CPUQuota/MemoryMax keep the Celeron responsive while one DSH session and
+#     its build steps run; OOMPolicy=stop + Restart re-arms cleanly after a
+#     kill instead of leaving a half-dead unit.
+#   * TimeoutStopSec is longer than one session's graceful kill so a systemctl
+#     stop never orphans tool subprocesses (the supervisor kills its own
+#     process group on SIGTERM first).
+[Unit]
+Description=NOVA3 DSH autonomous reconstruction supervisor
+Documentation=file:%h/Projects/nova3_re/docs/DSH_WORKER.md
+Wants=network-online.target
+After=network-online.target
+# A crash loop backs off instead of spinning -- but a start-limit-hit also
+# blocks a MANUAL `systemctl start`, which is a recovery trap (see the old
+# worker's RestartPreventExitStatus=3). Keep the automatic burst small and rely
+# on RestartSec for pacing; recovery instructions include reset-failed because
+# a limit hit always needs it.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Projects/nova3_re
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=%h/Projects/nova3_re
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+# Pinned deployment identity (public IDs, never secrets); the approval gate
+# fails closed (exit 6) without them.
+Environment=NOVA3_REPOSITORY_ID=1433565792
+Environment=NOVA3_OWNER_ID=347984779
+# DSH home: where the credential store and the Web UI's logins live.
+Environment=DSH_HOME=%h/.local/share/nova3-dsh/data
+Environment=NOVA3_SLOT=dsh
+# Budgets (sessions/tokens) are enforced by the supervisor, not by systemd.
+Environment=NOVA3_AI_SESSION_TIMEOUT=1200
+# 240 steps is what fits inside NOVA3_AI_SESSION_TIMEOUT (20 min): 120 was
+# consumed by reading a 30k-line repository before the deliverable was
+# written (task #169, STEP_LIMIT). Still a bounded session, and the
+# per-task session cap still prevents a loop.
+Environment=NOVA3_DSH_MAX_STEPS=240
+Environment=NOVA3_DSH_SESSIONS_PER_HOUR=6
+Environment=NOVA3_DSH_SESSIONS_PER_DAY=48
+Environment=NOVA3_DSH_TOKENS_PER_DAY=6000000
+
+ExecStart=/usr/bin/python3 -u -m nova3_team.dsh_supervisor run --slot dsh --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction
+
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=240
+KillMode=mixed
+# Resource envelope for a 4-core / ~8 GiB machine: one AI session plus its
+# build at a time, never starving the desktop or the Web UI.
+CPUQuota=200%
+CPUWeight=40
+MemoryAccounting=yes
+MemoryHigh=3G
+MemoryMax=5G
+MemorySwapMax=1G
+TasksMax=512
+OOMPolicy=stop
+Nice=5
+IOWeight=50
+UMask=0077
+
+[Install]
+WantedBy=default.target

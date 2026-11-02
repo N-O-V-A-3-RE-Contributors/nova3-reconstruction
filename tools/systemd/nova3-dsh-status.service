@@ -1,0 +1,16 @@
+# NOVA3 DSH status publisher: renders the supervisor's durable state and posts
+# it to the project status issue, so the owner can read it from a phone.
+[Unit]
+Description=Publish NOVA3 DSH worker status to the project status issue
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/nova3_re
+Environment=PYTHONPATH=%h/Projects/nova3_re
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NOVA3_SLOT=dsh
+ExecStart=/usr/bin/python3 -m nova3_team.dsh_status --slot dsh --publish
+TimeoutStartSec=120
+Nice=10

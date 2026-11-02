@@ -343,6 +343,13 @@ def main(argv: list[str] | None = None) -> int:
     if not args.command:
         parser.print_help()
         return 2
+    if args.command in ("run", "loop"):
+        conflict = _live_queue_owner()
+        if conflict:
+            print(conflict, file=sys.stderr)
+            print("Use 'nova3-dsh stop' to pause it, or run the Codex worker instead; "
+                  "no second autonomous loop was started.", file=sys.stderr)
+            return 3
     try:
         return handlers[args.command](args)
     except KeyboardInterrupt:
@@ -351,6 +358,37 @@ def main(argv: list[str] | None = None) -> int:
     except installer.InstallError as exc:
         print("\nSETUP ERROR: " + str(exc), file=sys.stderr)
         return 1
+
+
+def _live_queue_owner() -> str:
+    """Refuse to run a SECOND autonomous loop against this checkout.
+
+    Two loops here would be two paid AI sessions over one worktree: `dsh_loop`
+    never writes GitHub (no claim, no PR), and this supervisor never pushes
+    either, so neither would notice the other -- the cost is duplicated spend
+    and interleaved commits, not a queue conflict. Checked with the OS (an
+    enabled or running systemd unit, or a live process), never with a lock file
+    that a crashed run could leave behind.
+    """
+    units = ("nova3-dsh-worker.service", "nova3-worker.service")
+    try:
+        probe = subprocess.run(["systemctl", "--user", "is-enabled", "--quiet", *units],
+                               capture_output=True, timeout=5)
+        if probe.returncode == 0:
+            return ("another autonomous worker is enabled on this machine "
+                    "(nova3-dsh-worker.service or nova3-worker.service); "
+                    "this loop is a second AI process over the same checkout.")
+    except (OSError, subprocess.SubprocessError):
+        pass
+    try:
+        ps = subprocess.run(["ps", "-eo", "args"], capture_output=True, text=True, timeout=5)
+        for line in (ps.stdout or "").splitlines():
+            if ("nova3_team.dsh_supervisor" in line or "nova3_team.worker run" in line) \
+                    and "ps -eo" not in line:
+                return f"an autonomous worker process is already running: {line.strip()[:160]}"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return ""
 
 
 def _spec(spec: list | tuple) -> tuple[str | None, Path]:

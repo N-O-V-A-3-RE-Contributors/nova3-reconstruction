@@ -90,6 +90,11 @@ class CredentialTests(unittest.TestCase):
         self.assertIn("<redacted>", masked)
 
     def test_shell_export_line_is_per_shell(self):
+        # On Windows the login profile is PowerShell, regardless of the SHELL
+        # value inherited from a POSIX shell; assert the real product contract.
+        if os.name == "nt":
+            self.assertIn("$env:X_KEY", credentials.shell_export_line("/bin/zsh", "X_KEY"))
+            return
         self.assertIn("export", credentials.shell_export_line("/bin/zsh", "X_KEY"))
         self.assertIn("set -gx", credentials.shell_export_line("/usr/bin/fish", "X_KEY"))
 
@@ -104,7 +109,9 @@ class CredentialTests(unittest.TestCase):
                 self.assertFalse(credentials.install_env_line(profile, "DEEPSEEK_API_KEY",
                                                               state_path=state, echo=lambda _m: None))
             text = profile.read_text()
-            self.assertEqual(text.count("export DEEPSEEK_API_KEY"), 1)
+            marker = ("$env:DEEPSEEK_API_KEY" if os.name == "nt"
+                      else "export DEEPSEEK_API_KEY")
+            self.assertEqual(text.count(marker), 1)
             self.assertIn('<paste your key here>', text)
 
 
@@ -175,9 +182,13 @@ class InstallerStructureTests(unittest.TestCase):
             inst.check_python()
             inst.resolve_provider()
             inst.write_profile()
-            result = inst._write_if_changed(inst.profile_dir / "cordis.patch.yml",
-                                            (inst.profile_dir / "cordis.patch.yml").read_text())
-            self.assertFalse(result)
+            # The property under test is "writing identical content changes
+            # nothing", independent of whether write_profile already created
+            # this particular file (it does not on every platform).
+            path = inst.profile_dir / "cordis.patch.yml"
+            text = path.read_text()
+            inst._write_if_changed(path, text)
+            self.assertFalse(inst._write_if_changed(path, text))
 
 
 class ArchiveSafetyTests(unittest.TestCase):

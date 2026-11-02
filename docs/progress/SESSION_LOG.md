@@ -595,3 +595,133 @@ Verification after cleanup: `bash tools/check_all.sh` exit 0 (host CTest 39/39,
 Python 31/31), `nova3_team.guard --all` passed (627 files), `./nova3 doctor`
 15 pass / 1 warn (only the cleared index, with its fix command) / 0 fail.
 Disk free rose from 30 GB to 44 GB.
+
+## 2026-11-02 — the autopilot moved from Codex CLI execution to DeepSeek Harness
+
+**What was found before changing anything.** `nova3-worker.service` ran
+`python3 -m nova3_team.worker run --provider codex` — a direct `codex exec`
+CLI call — and carried `RestartPreventExitStatus=3`, so its deliberate
+"3 consecutive failures / 3 unclaimed" exit made systemd *stop restarting it*.
+`nova3-discovery.timer` was installed but **disabled** (last run 2026-10-30);
+the only discovery evidence is an up-to-date status file claiming
+"0 NEW functions from 2 local original ELF(s)" while `analysis/` holds four.
+`tools/dsh_loop` had already stopped with `preflight failed:
+OPENROUTER_API_KEY is not set`, and its one recorded pass was
+`AUTH: 401 User not found`. No open claims, no unmerged PRs, no running AI
+sessions, no worktrees with work. The GitHub queue was **empty**, and the
+last autofeed run said `WAITING_FOR_DISCOVERY: known functions already
+assigned`.
+
+**Root cause of "the worker does nothing".** Not a worker bug: the ledger's
+1165 functions are all covered by tasks that were already merged, discovery is
+disabled, and autofeed consequently creates nothing. A worker alone cannot
+advance the project in that state; something must *plan*.
+
+**DSH credential finding (verified, not assumed).** The shipped `headless`
+profile disables the managed credential store, so a key saved in the Web UI is
+invisible to it: a real no-op session failed with
+`MISSING_CREDENTIAL: ... route "deepseek-official"`. A `--patch` overlay that
+re-enables `credentials`/`authorization`/`deepseek-account` and declares the
+OpenRouter route makes the same session return `PONG`/`COMPLETED`. The key is
+referenced by NAME (`OPENROUTER_API_KEY`); the value stays only in
+`$DSH_HOME/.credentials.yaml`. Nothing secret was copied or printed.
+
+**Implemented** (`nova3_team/dsh_runtime.py`, `dsh_policy.py`, `dsh_planner.py`,
+`dsh_supervisor.py`, `dsh_status.py`; `worker.py` `dsh` branch;
+`provider_runtime.py` `dsh` provider; `tools/systemd/*`; `docs/DSH_WORKER.md`).
+The queue, coordinator leases, checkouts, scope guard, `verify()` and publish
+path are untouched. Commits `9f7d6d2`, `d575231`.
+
+**Verified with commands, not prose:**
+
+| Check | Result |
+| --- | --- |
+| no-op headless session through the overlay | `COMPLETED`, exit 0, session id persisted |
+| resume the same `--session-id` | `COMPLETED`, same id |
+| tool-using session in a git worktree | 3 steps, 2 tool calls, file written by the model |
+| 5 s bound on a longer task | `SESSION_TIMEOUT`, elapsed 5.8 s, killed exit status suppressed |
+| cancellation callable | `CANCELLED`, 3.3 s, no orphan `dsh-subprocess` |
+| mocked `QUOTA` failure | recorded `WAITING_CREDITS`; policy decides `WAITING_CREDITS`, **no exit** |
+| unknown `--session-id` | loud failure, no silent empty session |
+| `worker.verify()` on a clean clone of `d575231` | 4 commands, all exit 0, CTest 39/39 |
+| full unit suite | 1094 tests OK (36 new DSH tests, no runtime/network/model) |
+| `python -m nova3_team.worker providers --check-auth` | `dsh available`, credential reference present |
+
+**First real supervised cycle** (`nova3-dsh-worker.service`, slot `dsh`): queue
+empty → planner session ran in 70 s → filed proposal **#163** (a GCC 4.4.3
+per-function window matrix with acceptance criteria and a self-checking test)
+and rejected two proposals that listed `.cache/` paths. The rejections were
+correct; the second exposed a real gap (the top-level `CMakeLists.txt` was not
+an allowed path), fixed in `d575231`, together with a fix for verification
+commands being truncated to 200 characters.
+
+**Not yet done, deliberately:** the Codex unit was left running and enabled —
+two workers would race for the same leases. Cutover waits for this work to be
+on `origin/main` (see the blocker below), and the rollback path
+(`tools/systemd/rollback-to-codex.sh`) keeps every DSH checkpoint.
+
+## 2026-11-02 (late) — DSH cutover, auto-admission repair, first supervised claims
+
+**Observed now** (commands run in this session; re-check before relying):
+
+- `python3 -m nova3_team.autoadmit admit --holder 16` returned `no_waiver` while a valid
+  owner/admin waiver comment existed on #16. Cause: `run()` selected the waiver from the
+  holder's COMMENTS and then passed the holder's BODY (a live status board) to `admit()`,
+  which only scanned bodies. The unit test built the holder with the waiver in its body,
+  so production was never exercised.
+- Fixed in `085f35a`: explicit `waiver_source`; tolerant comment timestamp parsing;
+  `state_dir.mkdir(parents=True, exist_ok=True)` before any write; approval/waiver TTLs use
+  the gate's `MAX_APPROVAL_AGE` (the old 300 s record could not survive claim + a bounded
+  session + pre-publish revalidation); `nova:queued` and `nova:approved:<comment-id>`
+  labels are applied after the approval comment (without them the supervisor never saw the
+  issue and the coordinator could not locate the record); label failures are retried from
+  the durable reservation; a failed POST releases its one-shot reservation.
+- Real admission, verified with `gh api`: #169 approval comment `6570322941` and #171
+  comment `6570323390`, each carrying `nova:queued` + `nova:approved:<id>`.
+- The supervisor left `WAITING_APPROVAL` on its next 90 s poll, passed the local
+  `QueueApprovalGate`, posted `/nova claim`, received the coordinator lease (the issue body
+  then carried `approval_binding`, `approval_id`, `task_text_sha256`) and ran #169.
+- #169 session 1 ended `STEP_LIMIT` (120 steps, 568 s, 128,692/62,811 tokens) and left
+  out-of-scope artifacts (`.scratch169/`, `reconstruction/tests/fixtures/`). The scope guard
+  failed closed: `SOURCE_GUARD_FAILURE`, `/nova block`, `nova:blocked`, checkout retained,
+  no PR. That is a correct quarantine, not a reconstruction result.
+- The legacy `nova3-worker.service` is stopped (it was already disabled at boot); only the
+  DSH supervisor process (PID 602443) runs. `nova3-dsh-status.timer` was enabled but not
+  started; started now (next trigger 17:35).
+- CI on PR #175 exposed two real defects, both fixed: `run_dsh()` resolved a local DSH
+  endpoint even when the supervisor injected the session runner, so the round-loop tests saw
+  zero sessions on a runner without DSH; and `tools/compare/gcc443_explain.py` imported
+  pyelftools/capstone at load time, breaking the pure opcode-classifier test. PR #175 is
+  green as of run `41398715674` (commit `b7930c4`).
+
+**Not yet proven:** a complete DSH publish (independent verify + commit + PR). #171 was in
+flight when this note was written; the outcome is appended below.
+
+### Task #171: the first complete DSH publish (observed now)
+
+- Approval record `6570323390` -> `nova:queued` + `nova:approved:6570323390`; the
+  supervisor claimed, the coordinator wrote the lease and captured `approval_binding`
+  / `approval_id` / `task_text_sha256` in the issue body.
+- Session 1 (the old 120-step budget) ended `STEP_LIMIT` with no deliverable and was
+  quarantined `NO_SOURCE_PROGRESS`. The ceiling and a prompt that misdescribed the
+  supervisor's checks were the causes, not the task: the budget is now 240 steps
+  (what fits in the 20-minute session timeout) and the prompt names the real checks
+  and asks for the deliverable within ~15 steps.
+- Session 2 wrote `reconstruction/tests/test_gcc443_window_diff_thumb.py`
+  (403 lines, 6 tests) and removed its own scratch tree before finishing.
+- Independent verification: `python -m unittest discover -s nova3_team/tests`, a fresh
+  CMake build (`CTest 39/39`) and the task's own
+  `.venv/bin/python -m pytest -q reconstruction/tests/test_gcc443_window_diff_thumb.py`
+  (exit 0, 6 passed) using the NDK r8e GCC 4.4.3 at `~/.local/opt/android-ndk-r8e`.
+  The same pytest was re-run independently afterwards: 6 passed.
+- Commit `81be143` was pushed as `nova/issue-171-21d204`; PR **#176** opened non-draft;
+  `/nova submitted` made the coordinator apply `nova:review` (run 41401193215 succeeded).
+- Defects found by doing this and fixed in the same session: a session could run after
+  its lease was cleared (verified work that could never publish); summary rows were
+  counted as extra sessions (three sessions looked like six and tripped the hourly
+  cap); the publish-only path was refused by that same cap; `verify()` did not run the
+  task's own Verification commands; the status page counted summaries too.
+- #169 remains quarantined (`SOURCE_GUARD_FAILURE`: out-of-scope `.scratch169/` and
+  `reconstruction/tests/fixtures/`). Its approval record expires
+  `2026-11-02T07:04:38Z`; a retry needs the checkout cleaned, the local cooldown reset,
+  a requeue, and (after that expiry) a fresh owner waiver.

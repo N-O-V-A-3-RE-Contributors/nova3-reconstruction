@@ -226,6 +226,150 @@ def run_provider(cmd, cwd, log, timeout, activity=None, env=None):
 def note(s):
     s = provider_runtime.redact_diagnostic(s)
     print(f'[{datetime.now().strftime("%H:%M:%S")}] {s}', flush=True)
+
+
+# NOVA3_DSH_PROVIDER_V1 -------------------------------------------------------
+# DeepSeek Harness is an execution provider IN this worker architecture, not a
+# second worker: it reuses this module's claim, checkout, scope, verify, commit
+# and publish path, and differs only in how one bounded AI session is launched
+# and classified. The whole DSH call is stashed in `dsh_last` so `work_one` can
+# persist objective counters (status, session id, steps, tokens) as soon as the
+# session ends -- before any later step could crash and lose them.
+#
+# Why `dsh_last` instead of changing every return type: `run_provider` is an
+# established seam with 1000+ tests behind the surrounding flow; adding one
+# module-level record keeps the change reviewable and keeps the Codex path
+# byte-for-byte unchanged.
+
+def dsh_endpoint(work=None, root=None):
+    """Resolve the DSH endpoint for one session (profile, patch, route)."""
+    from . import dsh_runtime
+    from . import dsh_supervisor
+    base = pathlib.Path(root or (state_root(get_repo(None)) / '.nova-slots' / DEFAULT_SLOT
+                                 / 'state'))
+    overlay = base / 'dsh-overlay.yml'
+    endpoint = dsh_supervisor.endpoint_from_env(pathlib.Path.cwd(), overlay)
+    dsh_runtime.write_overlay(overlay, endpoint)
+    return endpoint
+
+
+def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
+    """One bounded DSH session, reduced to objective counters.
+
+    Contract with `work_one`, which is unchanged:
+      * exit 0    -> DSH reported a completed turn; `work_one` then applies the
+                     unchanged scope guard, independent `verify()` and publish.
+      * exit 124  -> wall-clock timeout; the caller quarantines as PROVIDER_TIMEOUT.
+      * exit 1    -> the turn failed. The failure is already recorded locally as
+                     `dsh_status`, so the supervisor routes credits/auth/backoff
+                     instead of repeating an identical session; `work_one`'s
+                     bounded retry then sees fresh context.
+    """
+    from . import dsh_runtime
+    global dsh_last
+    log = pathlib.Path(log)
+    if os.name == 'posix':
+        log.parent.chmod(0o700)
+    activity = activity or activity_feed.ActivityFeed(log, structured=True)
+    _publish_activity(activity, force=True)
+    try:
+        if _dsh_session is not None:
+            # The supervisor injected the runner (it owns the approved route
+            # list and the state). Resolving a LOCAL endpoint here would make
+            # the injected path fail on a machine with no DSH install, and it
+            # would repeat work the supervisor already did.
+            binary = str(os.environ.get('NOVA3_DSH_BIN') or 'dsh')
+            profile = str(os.environ.get('NOVA3_DSH_PROFILE') or 'headless')
+            outcome = _dsh_session(prompt, cwd, log, int(timeout))
+        else:
+            endpoint = dsh_endpoint(cwd, root)
+            binary, profile = endpoint.binary, endpoint.profile
+            outcome = dsh_runtime.run_session(
+                endpoint, prompt, cwd=pathlib.Path(cwd), log_path=log, timeout_s=int(timeout),
+                cancel=lambda: False)
+    except (dsh_runtime.DshUnavailable, dsh_runtime.DshLaunchError) as exc:
+        dsh_last = {'status': dsh_runtime.EXECUTION_ERROR, 'reason': str(exc)[:300]}
+        raise provider_runtime.ProviderUnavailable(str(exc)) from None
+    summary = outcome.summary()
+    dsh_last = {**summary, 'spend': {'input_tokens': outcome.input_tokens,
+                                     'output_tokens': outcome.output_tokens}}
+    note(f'DSH session: status={outcome.status} exit={outcome.exit_code} '
+         f'session={outcome.session_id} steps={outcome.steps} tools={outcome.tool_calls} '
+         f'tokens={outcome.input_tokens}/{outcome.output_tokens} '
+         f'elapsed={int(outcome.elapsed_s)}s')
+    code = 0 if outcome.ok else (124 if outcome.status == dsh_runtime.SESSION_TIMEOUT else 1)
+    _publish_activity(activity, force=True, returncode=code)
+    return subprocess.CompletedProcess(
+        [binary, '--profile', profile, 'headless', '--json', '-'],
+        code, stdout=_tail_file(log),
+        stderr='' if outcome.ok else f'{outcome.status}: {outcome.error_code or ""} '
+                                     f'{provider_runtime.redact_diagnostic(outcome.error_message)}')
+
+
+dsh_last = {}
+# Supervisor-supplied sink for per-session spend; None for the Codex worker,
+# which never runs a DSH session.
+_dsh_ledger = None
+# Supervisor-supplied session runner. Needed because provider failover belongs
+# to the supervisor (it owns the approved-route list and the state), while the
+# prompt belongs to work_one. None keeps the plain single-route behaviour.
+_dsh_session = None
+
+
+def record_dsh_checkpoint(root, number):
+    """Persist DSH counters immediately after a session, before anything else."""
+    if not dsh_last or root is None or number is None:
+        return
+    try:
+        recovery.update(root, number,
+                        dsh_status=dsh_last.get('status'),
+                        dsh_session=dsh_last.get('session_id'),
+                        dsh_turn_reason=dsh_last.get('turn_reason'),
+                        dsh_error_code=dsh_last.get('error_code'),
+                        dsh_error_message=dsh_last.get('error_message'),
+                        dsh_steps=dsh_last.get('steps'),
+                        dsh_spend=dsh_last.get('spend'))
+    except Exception:
+        pass
+
+
+def dsh_account_session(ledger_append, task, round_num, checkpoint_root, number):
+    """Record ONE DSH attempt the moment it ends (NOVA3_DSH_PER_SESSION_ACCOUNTING_V1).
+
+    `work_one` may run several DSH sessions per task and the supervisor only
+    writes its own ledger entry after `work_one` returns, so accounting once per
+    return under-counts real spend and hides failed rounds from the budgets.
+    The attempt is written here, by the component that spent it.
+    """
+    if not dsh_last:
+        return
+    spend = dsh_last.get('spend') or {}
+    try:
+        ledger_append({'task': str(task), 'status': dsh_last.get('status'),
+                       'error_code': dsh_last.get('error_code'),
+                       'attempt': int(round_num), 'phase': 'session',
+                       'session_id': dsh_last.get('session_id'),
+                       'elapsed_s': dsh_last.get('elapsed_s'),
+                       'input_tokens': int(spend.get('input_tokens') or 0),
+                       'output_tokens': int(spend.get('output_tokens') or 0)})
+    except Exception:
+        pass
+    try:
+        attempts = recovery.load(checkpoint_root, number).get('dsh_attempts') or []
+        if not isinstance(attempts, list):
+            attempts = []
+        attempts = (attempts + [{'round': int(round_num),
+                                 'status': dsh_last.get('status'),
+                                 'error_code': dsh_last.get('error_code'),
+                                 'input_tokens': int(spend.get('input_tokens') or 0),
+                                 'output_tokens': int(spend.get('output_tokens') or 0),
+                                 'at': int(time.time())}])[-20:]
+        recovery.update(checkpoint_root, number, dsh_attempts=attempts,
+                        dsh_attempts_used=len(attempts),
+                        session_spent=sum(int(x.get('input_tokens') or 0) +
+                                          int(x.get('output_tokens') or 0) for x in attempts))
+    except Exception:
+        pass
     # NOVA3_WORKER_PRESENCE_V1: nonblocking best-effort status; never logs credentials.
     reporter = globals().get('_nova_presence')
     if reporter is not None:
@@ -555,7 +699,91 @@ At session end create or update docs only if docs/worker-notes/ is allowed. Othe
 Do not start nested AI sessions. End after this bounded slice; supervisor handles further sessions.'''
 
 
-def verify(workdir):
+def dsh_session_prompt(issue,round_num,prior,allowed,binary_root):
+    """DSH session text: the Codex prompt plus the objective-check contract.
+
+    DSH runs the full depth of a checkout, so the prompt states what the
+    supervisor will independently verify afterwards and makes the evidence
+    rules explicit where a generic coding agent would otherwise assume that a
+    passing build proves a match. It never forbids reading the repository; it
+    bounds what may be *claimed* and *published*.
+    """
+    base=session_prompt(issue,round_num,prior,allowed,binary_root)
+    return base+f'''
+
+DEEPSEEK HARNESS SESSION CONTRACT
+- The supervisor, not you, decides whether this task succeeded. After this
+  session it runs, in order: the scope guard (only the allowed paths above may
+  change; scratch directories and extra fixture files are refused), `python -m
+  unittest discover -s nova3_team/tests`, a fresh CMake build + `ctest` when
+  CMakeLists.txt is present, and the task's own `Verification` commands listed
+  in the issue body. Any non-zero exit blocks publication. Make the task's
+  `Verification` command pass before you finish.
+- This session is bounded to about 240 model steps and 20 minutes, whichever
+  comes first. Budget it: create the deliverable file within the first ~15
+  steps, then iterate on it. Read only what the objective needs; do not explore
+  unrelated modules or the whole filesystem.
+- If the objective names a tool or reference that is absent (for example a
+  specific NDK/GCC or a reference binary), implement the documented skip or
+  refusal path and stop. Do not hunt for the tool: the acceptance criteria say
+  what to do when it is missing.
+- Report only what the commands actually showed. If a test failed, say so and
+  stop; do not describe intended work as done.
+- Separate states stay separate and must be written explicitly:
+  COMPILES | TESTED | BEHAVIOURALLY COMPARED | INSTRUCTION-WINDOW MATCHED |
+  VERIFIED. Anything you did not independently check is NOT MATCHED / UNKNOWN.
+- Synthetic objects or assembly extracted from a linked .so are never original
+  .o files; never describe them as such.
+- Do not modify files outside the allowed paths above, even if a fix seems
+  obvious: report it in your final handoff instead.
+- If the task cannot be done honestly with the evidence present (missing
+  reference bytes, unknown semantics, a tool that is not installed), say which
+  evidence is missing and stop. That is a successful session outcome; a guess
+  is not.
+'''
+
+
+def verification_commands(body):
+    """Commands listed under the issue's `Verification` heading, in order.
+
+    The issue contract says "run these; record exit codes". They were previously
+    only run by the model inside its own session, so the supervisor's
+    independent check ignored the task's own acceptance command. Bounded to
+    six entries; the caller runs them without a shell.
+    """
+    import re
+    lines = str(body or '').splitlines()
+    commands, active = [], False
+    for line in lines:
+        stripped = line.strip()
+        if re.match(r'^#{1,6}\s*Verification\b', stripped, re.I):
+            active = True
+            continue
+        if active and re.match(r'^#{1,6}\s', stripped):
+            break
+        if active and stripped[:1] in ('-', '*'):
+            command = stripped[1:].strip().strip('`').strip()
+            if command:
+                commands.append(command)
+    return commands[:6]
+
+
+def _verify_argv(command):
+    """Split one verification command; never a shell, never an absolute binary."""
+    import shlex
+    argv = shlex.split(command)
+    if not argv:
+        raise ValueError('empty verification command')
+    if any(token in command for token in (';', '&&', '||', '|', '>', '<', '$(', '`')):
+        raise ValueError(f'refusing shell syntax in verification command: {command[:80]}')
+    if argv[0].startswith('.venv/') or argv[0] == '.venv/bin/python':
+        # Task contracts name the project venv; the disposable checkout has no
+        # .venv, so the running interpreter is the equivalent.
+        argv[0] = sys.executable
+    return argv
+
+
+def verify(workdir, body=''):
     """Independent bounded checks, all build artifacts outside the tracked checkout."""
     root=pathlib.Path(workdir)
     checks=[[sys.executable,'-m','unittest','discover','-s','nova3_team/tests','-v']]
@@ -575,6 +803,16 @@ def verify(workdir):
             if cp.returncode:return False,'\n'.join(feedback)
         except (OSError,subprocess.TimeoutExpired) as e:
             feedback.append(f'Command failed: {cmd}: {e}')
+            return False,'\n'.join(feedback)
+    for command in verification_commands(body):
+        try:
+            argv=_verify_argv(command)
+            cp=run(argv,cwd=root,timeout=480,check=False)
+            feedback.append(f'TASK VERIFY: {command}\nEXIT: {cp.returncode}\n'
+                            f'{(cp.stdout or "")[-1500:]}\n{(cp.stderr or "")[-1500:]}')
+            if cp.returncode:return False,'\n'.join(feedback)
+        except (OSError,ValueError,subprocess.TimeoutExpired) as e:
+            feedback.append(f'Task verification command refused or failed: {command}: {e}')
             return False,'\n'.join(feedback)
     return True,'\n'.join(feedback)
 
@@ -603,8 +841,19 @@ def pause_failed_task(gh, root, number, token, provider, user, error):
     """Fail-closed, externally visible state without retry/comment storms.
 
     Never delete local checkouts. GitHub coordinator is the sole label writer.
+    The cause is recorded in the task checkpoint (`last_error`), and when the
+    provider session itself succeeded the record says so, because
+    'NO_SOURCE_PROGRESS after a completed session' is a different defect from
+    'the provider failed'.
     """
     error = provider_runtime.redact_diagnostic(error)
+    try:
+        if dsh_last.get('status') == 'COMPLETED':
+            recovery.update(root, number,
+                            dsh_completed_no_change=True,
+                            dsh_completed_reason=str(error)[:600])
+    except Exception:
+        pass
     previous = recovery.load(root, number)
     decision = reliability.failure_decision(previous, error)
     recovery.update(root, number,
@@ -644,6 +893,23 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
     prior=recovery.load(root,n)
     token=claim(gh,issue,user,saved=prior)
     if token is None:return None
+    return work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
+                        provider_status=provider_status,gate=gate)
+
+
+def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
+                 provider_status=None,gate=None):
+    """Everything after a GRANTED lease, for a caller that already owns one.
+
+    NOVA3_DSH_CLAIM_OWNERSHIP_V1: the coordinator refuses a second `/nova claim`
+    while a lease is active, so a supervisor that claims first and then calls
+    `work_one` would see its own live lease, wait the full claim timeout, find
+    no lease for its NEW token and skip the task it had just won. The claim step
+    is therefore split out and exactly one component performs it: `work_one`
+    for the Codex worker, the supervisor for the DSH worker -- both then hand
+    the granted token to this function, which never claims again.
+    """
+    n=issue['number']
     recovery.update(root,n,repo=upstream,user=user,token=token)
     allowed=allowed_from_issue(issue.get('body',''))
     if not allowed:
@@ -672,7 +938,7 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                     and git(work,'status','--short',check=False).stdout.strip()):
                 existing_files = validate_scope(work,allowed)
                 if existing_files:
-                    verified,checklog=verify(work)
+                    verified,checklog=verify(work,issue.get('body',''))
                     recovered_ready = True
                     note(f'#{n} reusing completed AI output: {len(existing_files)} files; '
                          f'independent tests: {"PASS" if verified else "FAIL (draft PR)"}')
@@ -684,12 +950,26 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                                 provider_calls=current_calls+1,
                                 provider_started_unix=int(time.time()),
                                 provider_exit=None)
-                prompt=session_prompt(issue,k,handoff,allowed,binary_root)
+                prompt=(dsh_session_prompt(issue,k,handoff,allowed,binary_root)
+                        if provider == 'dsh' else session_prompt(issue,k,handoff,allowed,binary_root))
                 log=private_round_log(work,k)
                 # Bounded agent/profile files live beside the private log only.
                 aux_dir=log.parent/'provider-aux'
                 provider_env_extra={}
-                if provider == 'hermes':
+                if provider == 'dsh':
+                    # NOVA3_DSH_PROVIDER_V1: the DSH headless session reads the
+                    # prompt from stdin (never argv), keeps one persistent
+                    # session id in the checkpoint, and is classified from its
+                    # structured event stream, not from prose.
+                    dsh_last.clear()
+                    cp=run_dsh(provider,prompt,work,log,timeout=ai_session_timeout(),root=root)
+                    record_dsh_checkpoint(root,n)
+                    if _dsh_ledger is not None:
+                        dsh_account_session(_dsh_ledger, n, k, root, n)
+                    timed_out_session = cp.returncode == 124
+                    session_failed = cp.returncode != 0
+                    cmd=[provider_runtime.PROVIDERS['dsh'].executable,'--profile','headless','--json','-']
+                elif provider == 'hermes':
                     # File-based adapter: prompt stays in a private 0600 file.
                     invocation=hermes_command(prompt,work,aux_dir,provider_status)
                     cmd=list(invocation.argv)
@@ -698,14 +978,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                     provider_runtime.prepare_aux_files(provider,aux_dir)
                     cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
                 note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
-                structured=provider == 'codex' and '--json' in cmd[2:-1]
-                activity=activity_feed.ActivityFeed(log, structured=structured)
-                provider_env={**os.environ, **provider_runtime.build_environment(provider),
-                              **provider_env_extra}
-                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
-                                env=provider_env)
+                if provider != 'dsh':
+                    structured=provider == 'codex' and '--json' in cmd[2:-1]
+                    activity=activity_feed.ActivityFeed(log, structured=structured)
+                    provider_env={**os.environ, **provider_runtime.build_environment(provider),
+                                  **provider_env_extra}
+                    cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
+                                    env=provider_env)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
+                if provider == 'dsh':
+                    activity=activity_feed.ActivityFeed(log, structured=True)
                 try:
                     gh.comment(n,f'/nova heartbeat {token} AI_FINISHED')
                 except Exception as exc:
@@ -718,8 +1001,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                 handoff=record_handoff(work,k,cmd,cp,paths,streamed=True)
                 recovery.update(root,n,phase='checkpoint',round=k)
                 if paths:
-                    verified,checklog=verify(work)
+                    verified,checklog=verify(work,issue.get('body',''))
                     handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
+                if provider == 'dsh' and dsh_last.get('status') in _DSH_TERMINAL:
+                    # No credits, a rejected credential or a cancel cannot be
+                    # fixed by another identical round: stop spending now and let
+                    # the supervisor choose WAITING_CREDITS / AUTH / backoff.
+                    note(f'ALERT #{n}: DSH session ended {dsh_last.get("status")} '
+                         f'({dsh_last.get("error_code") or "no code"}); not starting another round')
+                    return pause_failed_task(
+                        gh,root,n,token,provider,user,
+                        RuntimeError(f'DSH terminal provider state: {dsh_last.get("status")}'))
                 if cp.returncode==124:
                     note(f'ALERT #{n}: AI provider TIMEOUT; private output and any local edits '
                          f'are retained. Quarantining instead of repeating a stalled session.')
@@ -730,6 +1022,9 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                 if cp.returncode!=0:note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
             paths=validate_scope(work,allowed)
             if not paths:
+                if provider == 'dsh' and dsh_last.get('status') == 'COMPLETED':
+                    note(f'#{n}: the DSH session completed but changed nothing admissible; '
+                         'this is a task-scope or model-outcome failure, not a provider failure')
                 return pause_failed_task(gh,root,n,token,provider,user,
                                          RuntimeError('No source changes after bounded AI sessions'))
             git(work,'add','--',*paths)
@@ -864,6 +1159,8 @@ _SECRET_RE = re.compile(
     r'|bearer\s+[A-Za-z0-9._-]{12,})')
 _RATE_LIMIT = ('429', 'rate limit', 'rate_limit', 'quota', 'too many requests',
                'insufficient_quota', 'usage limit')
+# DSH statuses where another identical round cannot help.
+_DSH_TERMINAL = ('WAITING_CREDITS', 'AUTH', 'CANCELLED')
 
 
 class SlotError(RuntimeError):

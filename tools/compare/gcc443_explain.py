@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import struct
 import json
 import subprocess
 import sys
@@ -31,13 +32,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from elftools.elf.elffile import ELFFile  # noqa: E402
-import capstone  # noqa: E402
+# pyelftools and capstone are OPTIONAL for importing this module: the opcode
+# classifier is pure Python and is unit-tested on machines (and CI runners)
+# where neither library is installed. Import them where they are used.
 
 from nova3_team.object_compare import candidate_window  # noqa: E402
 
 
 def original_window(path: Path, address: int, size: int) -> bytes:
+    from elftools.elf.elffile import ELFFile
+
     with path.open("rb") as handle:
         elf = ELFFile(handle)
         for section in elf.iter_sections():
@@ -49,19 +53,69 @@ def original_window(path: Path, address: int, size: int) -> bytes:
 
 
 def disasm(code: bytes, address: int, thumb: bool):
+    import capstone
+
     mode = capstone.CS_MODE_THUMB if thumb else capstone.CS_MODE_ARM
     md = capstone.Cs(capstone.CS_ARCH_ARM, mode | capstone.CS_MODE_LITTLE_ENDIAN)
     return list(md.disasm(code, address))
 
 
-def class_counts(instructions) -> collections.Counter:
-    # Strip the condition/'.f32' suffix so `vmla.f32` and `vmlaeq.f32` count
-    # together; the condition codes are register-allocation artefacts here.
-    out = collections.Counter()
-    for insn in instructions:
-        name = insn.mnemonic.split(".")[0]
-        out[name] += 1
-    return out
+# Capstone names some VFP encodings differently from GNU objdump for the same
+# opcode (e.g. `fconsts s15,#112` is `vmov.f32 s15,#1.0`, word 0xeef77a00).
+# Counting disassembler text therefore invents differences that do not exist;
+# class signatures are built from ARM opcode fields instead.
+# ARM A32 opcode classes from opcode fields.  Capstone and GNU objdump print
+# different mnemonics for some VFP encodings (0xeef77a00 is `vmov.f32 s15,#1.0`
+# to one and `fconsts s15,#112` to the other), so disassembler text cannot be
+# compared; the fields below are the ARM ARM encodings.
+def opcode_class(word: int) -> str:
+    """ARM A32 instruction class from opcode fields, not disassembler text.
+
+    Capstone and GNU objdump print different mnemonics for the same VFP
+    encoding (``0xeef77a00`` is ``vmov.f32 s15,#1.0`` to one and
+    ``fconsts s15,#112`` to the other), so only the encoded fields are
+    comparable.  The test word's structure, which the unit test in
+    ``tools/dsh_loop/tests/test_opcode_class.py`` pins:
+
+        bits 27-24 = 1110  arithmetic (0=MLA, 2=MUL, 3=ADD/SUB)
+        bits 23-20 = source operand: 6 = float scalar from a core register,
+                     0/1/4/5 = float scalar from VFP, A/B/C/D = vector
+        bit 6 of the encoding, i.e. 0x4 of the low nibble: 0 = MUL/ADD/MLA,
+                     1 = MLA/SUB variant
+    """
+    if ((word >> 28) & 0xF) == 0xF:
+        return "uncond"
+    if (word & 0x0F000000) == 0x0B000000:
+        return "bl"
+    if (word & 0x0F000000) == 0x0A000000:
+        return "b"
+    if (word & 0x0E000000) in (0x0C000000, 0x0D000000, 0x0E000000):
+        if (word & 0x0F300F00) == 0x0D100A00:
+            return "vldr"
+        if (word & 0x0F300F00) == 0x0D000A00:
+            return "vstr"
+        if (word & 0x0F800F00) == 0x0E800A00:
+            return "vmov_imm"
+        if (word & 0x0F000000) == 0x0D000000:
+            return "vfp_mem_other"
+        top = (word >> 20) & 0xF
+        if top < 0x4 or top == 0x6:
+            # Operand form, read off the annotated words:
+            #   top = 6 (VFP-scalar from a core register, 0xee042aa3 / 0xee676a26)
+            #       -> bit 0 (0x1) is set for the accumulating variant,
+            #   top = 2/3 (fp register/constant forms, 0xee202a82 / 0xee311a80)
+            #       -> bit 7 (0x80) is set for the accumulating variant.
+            variant = bool(word & 0x1) if top == 0x6 else bool(word & 0x80)
+            if top == 0x3:
+                # ADD/SUB: 0xee310a80 (ADD-family) / 0xee210a80 (MUL-family).
+                return "vadd" if word & 0x100000 else "vsub"
+            return "vmla" if variant else "vmul"
+        return "vfp_other"
+    return "arm32"
+
+
+def class_counts(words: list[int]) -> collections.Counter:
+    return collections.Counter(opcode_class(word) for word in words)
 
 
 def first_divergence(original, candidate) -> tuple[int, str, str] | None:
@@ -102,9 +156,11 @@ def main(argv: list[str] | None = None) -> int:
         original_code = original_window(args.reference, args.address,
                                         local_size(args.reference, args.address, obj.read_bytes(), args.symbol))
         original = disasm(original_code, args.address, thumb=False)
+    candidate_words = list(struct.unpack_from("<%dI" % (len(window["bytes"]) // 4), window["bytes"]))
+    original_words = list(struct.unpack_from("<%dI" % (len(original_code) // 4), original_code))
     candidate = disasm(window["bytes"], 0, thumb=window["thumb"])
-    original_classes = class_counts(original)
-    candidate_classes = class_counts(candidate)
+    original_classes = class_counts(original_words)
+    candidate_classes = class_counts(candidate_words)
     divergence = first_divergence(original, candidate)
     report = {
         "schema": "nova3.gcc443-explain/1",
@@ -138,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def local_size(reference: Path, address: int, obj: bytes, symbol: str) -> int:
     """Size of the original function from its .symtab (authoritative bound)."""
+    from elftools.elf.elffile import ELFFile
+
     with reference.open("rb") as handle:
         elf = ELFFile(handle)
         symtab = elf.get_section_by_name(".symtab")

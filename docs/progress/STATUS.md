@@ -1,5 +1,75 @@
 # Status — source resource, mesh and texture reconstruction
 
+## Execution engine: DeepSeek Harness (2026-11-02)
+
+The autonomous autopilot now executes through **DeepSeek Harness** instead of a
+direct Codex CLI call. This is a delivery change: the reconstruction grades
+below are untouched, and no reconstruction claim is upgraded by it.
+
+| Piece | State |
+| --- | --- |
+| `dsh` provider in `nova3_team` (bounded headless sessions, JSON events, session-id checkpoints) | IMPLEMENTED + TESTED (36 unit tests; real no-op, resume, tool-use, timeout, cancel, quota sessions executed) |
+| Durable supervisor state machine (RUNNING / BACKOFF / WAITING_CREDITS / WAITING_APPROVAL / BLOCKED / COMPLETE) | IMPLEMENTED + TESTED |
+| Evidence planner (queue + ledger + checkpoints → validated proposals as owner-reviewed issues) | IMPLEMENTED + TESTED; first live run filed #163 |
+| `nova3-dsh-worker.service` (+ status timer) | INSTALLED + ENABLED; running slot `dsh` |
+| Codex worker | still the only worker whose code is on `origin/main`; not yet replaced (see BLOCKERS) |
+
+The queue was empty when this started: all 1165 ledger boundaries were covered
+by merged tasks and discovery had been disabled since 2026-10-30, so the worker
+had nothing to do. Progress therefore depends on the planner producing honest
+new tasks, not on more worker capacity.
+
+**Planner output, reviewed.** Seven proposals were filed (#163–#174) and are
+open for owner approval. They are evidence-grounded (GCC 4.4.3 window-matrix
+data files, a Thumb-mode coverage test for the window checker, a
+driver-number adversary, STATUS↔`.symtab` freshness gates). One claim in #171
+was **checked and found wrong**: it said STATUS contains the typo `0xebba84`;
+`grep` finds no occurrence and the Premium `.symtab` gives `getTransposed` at
+`0x000eba84` (132 B). The atomicity idea is still useful, the stated reason is
+not — proposals are leads, not facts.
+
+**A verified end-to-end run.** A full task path was rehearsed against a fake
+GitHub (real clone, real DSH session, real scope guard, real `verify()`): the
+model made 8 tool calls, created the file, the guard accepted it, `verify()`
+passed (CTest 39/39) and the task was committed. The publish step failed only
+because the fake had no PR plumbing — and that exposed a real defect: a
+publish failure had been charged against the task's session budget, so the
+supervisor now resumes only the publish half for already-verified work.
+
+## GCC 4.4.3 result: CMatrix4 constructor and the transpose are compiler-verified (2026-11-02)
+
+With the real compiler (`tools/setup/fetch_gcc443.sh`, GCC 4.4.3) the
+constructor at `0x108c54` stops being "close": it is **identical in every
+instruction**, and its single call is explained by the linker.
+
+| Function | Original | GCC 4.4.3 build | Flags | Result |
+| --- | --- | --- | --- | --- |
+| `CMatrix4<float>::CMatrix4(eConstructor)` @0x108c54 | 56 B | 56 B | `-std=gnu++98 -marm -mfpu=vfpv3-d16 -mfloat-abi=softfp -O2 -fPIC -fno-rtti -fno-exceptions` | **MATCHED_NORMALIZED_CALLS** (`.cache/gcc443-sweep/ctor-window.json`) |
+| `operator*<float, collada::SMatrix>` @0x6e7e60 | 564 B | 552 B | same + `-funroll-loops` | 6 redundant loads removed; residue is register-allocation CSE (see below) |
+
+Two measurement corrections, both now encoded in tooling rather than prose:
+
+1. `fconsts s15,#112` and `vmov.f32 s15,#1.0` are **the same encoding**
+   (`0xeef77a00`). Capstone decodes the original as `vmov.f32`; GNU objdump
+   decodes the 4.4.3 output as `fconsts`, which had made an exact match look
+   like a divergence. Compare opcodes numerically, not by disassembler text
+   (`tools/compare/gcc443_explain.py` now compares ARM opcode fields).
+2. A function with a call can never be byte-equal as a relocatable object: the
+   displacement is the linker's job. `tools/compare/gcc443_window_check.py`
+   reports `MATCHED_NORMALIZED_CALLS` and verifies the ARM link formula
+   `((S+A)|1 - P) >> 2` reproduces the original `bl` from its linked target.
+
+The constructor now also proves its identity constant numerically: the original
+word `0xeef77a00` *is* `vmov.f32 #1.0`, matching the source's `1.0f`.
+
+`operator*` residual: the original keeps three VFP registers (`s14/s15/s12`)
+aliased across the translation-row add (`out[12] = b[12]*a[0] + b[13]*a[4] +
+b[14]*a[8]; out[12] += a[12];` reusing the multiply destination), while GCC
+4.4.3 gives each store its own register. Twelve source spellings were measured
+(`.cache/gcc443-sweep/mm/`); the best, now committed, writes the last row as a
+product followed by three read-modify-write adds. This is recorded as an
+UNRESOLVED compiler difference, not as "source unknown".
+
 ## Compiler identity established; byte-equality pass under way (2026-11-02)
 
 Android NDK r8e (GCC 4.4.3, the version named in the engine's `.comment`)
