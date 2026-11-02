@@ -35,6 +35,7 @@ import re
 import signal
 import sys
 import time
+import traceback
 import uuid
 
 from . import dsh_planner, dsh_policy, dsh_runtime, recovery
@@ -451,6 +452,10 @@ class DshSupervisor:
                 break
             except Exception as exc:          # one bad cycle never kills the loop
                 _log(f'cycle error: {type(exc).__name__}: {_redact(exc)[:400]}')
+                if os.environ.get('NOVA3_DEBUG', '').lower() in ('1', 'true', 'yes'):
+                    # A bare "TypeError" with an empty message is undiagnosable;
+                    # opt-in tracebacks make the next occurrence actionable.
+                    _log('traceback:\n' + traceback.format_exc()[:4000])
                 count = int(self.state.load().get('cycle_errors') or 0) + 1
                 self.state.save(cycle_errors=count, state=dsh_policy.BACKOFF,
                                 reason=f'cycle error: {type(exc).__name__}')
