@@ -1,0 +1,60 @@
+# NOVA3 reconstruction — first profile of the generic runner.
+# Everything project-specific lives in this file plus nova3_team/ (queue,
+# approval gate, scope guard, independent verify, PR publication). The runner
+# mechanics (session, backend, routing, observation) are dsh_runner.
+schema: dsh-runner-project/1
+name: nova3
+repo: N-O-V-A-3-RE-Contributors/nova3-reconstruction
+workspace: /home/jason/Projects/nova3_re
+
+execution:
+  # `headless` keeps the current production behaviour: one bounded child per
+  # task in its own git worktree checkout, invisible in the DSH Agents tab.
+  # `host` runs a real DSH Host session (visible in Agents) but the Host pins the
+  # session to the squad workspace, so every task would share one tree. Switch
+  # only together with branch-level isolation in nova3_team's verify/publish path.
+  backend: headless
+  isolation: per-task-checkout
+  timeout_s: 1200
+  max_steps: 240
+  squad: NOVA3 Reconstruction
+  worker_member: reconstruction-worker
+
+members:
+  reconstruction-worker:
+    preset: standard
+    permission: workspace-write
+    model: openrouter/deepseek/deepseek-v4.1-flash-1017
+    effort: high
+    brief: >-
+      You are the NOVA3 reconstruction worker for /home/jason/Projects/nova3_re.
+      Work only inside the task Allowed paths. Never upload original APKs, ELFs
+      or extracted game data to a third party, and never commit the private
+      analysis trees. Prefer evidence: compile and test real source, mark
+      unverified claims NOT MATCHED, and update docs/progress so the next
+      session can resume without chat history.
+  evidence-verifier:
+    preset: minimal
+    permission: read-only
+    model: openai-codex/gpt-6-astra
+    effort: high
+    brief: >-
+      Independently review submitted NOVA3 reconstruction work: re-run the tests
+      the task declares, compare every claim against the recorded evidence,
+      reject fabricated matches, and report only concrete findings with file and
+      command evidence. Never modify source.
+
+routing:
+  semantic:
+    - openai-codex/gpt-6.1-sol
+    - openrouter/deepseek/deepseek-v4.1-flash-1017
+  routine:
+    - openrouter/deepseek/deepseek-v4.1-flash-1017
+  routine_tasks: [test, tests, docs, documentation, metadata, inventory, lint, freshness]
+
+safety:
+  safe_paths: [reconstruction/, nova3_team/, dsh_runner/, tools/, docs/, config/]
+  denied_paths: [originals/, analysis/, research/, generated/, Archive/, materials/,
+                 .github/, .codex/, coordination/, .venv/, .local/, analysis_db/]
+  verify:
+    - .venv/bin/python -m pytest -q reconstruction/tests nova3_team/tests dsh_runner/tests

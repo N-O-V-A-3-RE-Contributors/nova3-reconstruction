@@ -1,6 +1,25 @@
 # Next tasks
 
-## 2026-11-02 (LATEST) — source-assisted decompilation is running
+## 2026-11-03 (LATEST) — native runner port
+
+Done: `dsh_runner/` (profiles, guarded Host client, headless + host backends,
+CLI, 9 tests), `config/projects/nova3.yaml`, native squad registration, and the
+decision record `docs/decisions/NATIVE_RUNNER.md`.
+
+Next, in order:
+
+1. **DSH runner plugin (host half)** — expose `POST /dsh-runner/api/session`
+   (create/reuse a workspace for a path, create the session there, apply
+   permission/model/effort, prompt, return the id) and
+   `GET /dsh-runner/api/session/{id}`. Then `backend: host` honours
+   `per-task-checkout`, and sessions appear natively in the Agents tab.
+2. **Switch NOVA3** — set `backend: host` in its profile, run one task, confirm
+   the run appears in Agents, the checkout is the task's own, and verify/publish
+   behave identically.
+3. **Second project** — a throwaway repo profile proves the runner is not
+   NOVA3-shaped before any more features land.
+
+## 2026-11-02 — source-assisted decompilation is running
 
 Steps 1–2 of the previous plan are **done** (see `HANDOFF.md` and
 `docs/progress/SOURCE_CORRESPONDENCE.md`): 39,452 functions extracted from the

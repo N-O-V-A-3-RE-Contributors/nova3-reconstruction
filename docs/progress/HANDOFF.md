@@ -39,6 +39,24 @@ and `last_event_age_s` parsed from the private round log, plus future
 needs `systemctl --user restart nova3-dsh.service` (which ends the chat, never
 the worker).
 
+### Generic runner and the native-session port (2026-11-03)
+
+`dsh_runner/` is the reusable engine extracted from this project: project
+profiles (`config/projects/*.yaml`, schema `dsh-runner-project/1`), a guarded
+DSH Host client, and two interchangeable backends — `headless` (current NOVA3
+behaviour, per-task checkout, invisible in the Agents tab) and `host` (a real
+Host session, visible in the Agents tab, pinned to the squad workspace). The
+decision record, verified seams and the reason the cutover is staged are in
+`docs/decisions/NATIVE_RUNNER.md`; read it before switching `backend`.
+
+Add a project: copy `config/projects/nova3.yaml`, change repo/workspace/members/
+routing/safety, then `python -m dsh_runner.cli register --project <name>` and
+`python -m dsh_runner.cli status --project <name>`. No code fork.
+
+The port needs one small DSH plugin (host half) exposing `workspace.create` +
+`session.create` + prompt so a native session can run in a per-task checkout;
+until it exists, `host` requires `execution.isolation: shared-workspace`.
+
 ### Which DSH view actually shows it (proven from a saved page)
 
 A saved snapshot of the Web UI (`DeepSeek Harness.html`, 01:49) contained **no**
