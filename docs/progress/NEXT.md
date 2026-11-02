@@ -1,5 +1,76 @@
 # Next tasks
 
+## Settled residuals — parser-checked facts (2026-11-02)
+
+The five settled residuals below are frozen in the JSON block, checked by
+`python -m pytest reconstruction/tests/test_next_settled_residuals.py -q` and
+stated here as facts, not as matched functions.
+
+```json
+{
+  "schema": "nova3-settled-residuals/1",
+  "reference": {
+    "path": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    "sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf"
+  },
+  "residuals": [
+    {
+      "id": "operator_star",
+      "symbol": "_ZN6glitch4coremlIfNS_7collada7SMatrixEEENS0_8CMatrix4IT_EERKS6_RKT0_",
+      "address": "0x006e7e60",
+      "original_size": 564,
+      "candidate_size": 540,
+      "vldr_original": 76,
+      "vldr_candidate": 70,
+      "load_gap": 6,
+      "status": "NOT MATCHED",
+      "evidence": ".cache/gcc443-sweep/sweep1.json (540 B rows incl. -O2 -funroll-loops; identical class mix, vldr delta 6) and .cache/gcc443-sweep/explain-multiply.json"
+    },
+    {
+      "id": "prepare_cache",
+      "symbol": "_ZN6glitch7collada6detail22CSoftwareSkinTechnique12prepareCacheEv",
+      "address": "0x0073f0a4",
+      "original_size": 228,
+      "candidate_size": 224,
+      "size_gap": 4,
+      "status": "NOT MATCHED",
+      "evidence": "docs/progress/STATUS.md prepareCache section (224 vs 228 B); pilot tool tools/compare/collada_skin_trivial_pilot.py"
+    },
+    {
+      "id": "android_cpu_init",
+      "symbol": "android_cpuInit",
+      "address": "0x000d2f98",
+      "original_size": 2632,
+      "candidate_size": 2648,
+      "candidate_body": 2600,
+      "size_delta": -16,
+      "status": "NOT MATCHED",
+      "evidence": "tools/compare/cpufeatures_pilot.py with -fsigned-char (2648 vs 2632 B; 11 sxtb/18 ldrsb reproduced, six feature permutations all 2648)"
+    },
+    {
+      "id": "copy_ctor",
+      "symbol": "_ZN6glitch4core8CMatrix4IfEC1ERKS2_NS2_12eConstructorE",
+      "address": "0x00108c8c",
+      "original_size": 240,
+      "candidate_size": 240,
+      "identical_words": 41,
+      "status": "NOT MATCHED",
+      "evidence": "tools/compare/collada_matrix4_copy_ctor_pilot.py (41/41 non-branch words as a multiset; 25 displacement words differ by bb-reorder)"
+    },
+    {
+      "id": "ctor_econstructor",
+      "symbol": "_ZN6glitch4core8CMatrix4IfEC1ENS2_12eConstructorE",
+      "address": "0x00108c54",
+      "original_size": 56,
+      "candidate_size": 56,
+      "identical_words": 56,
+      "status": "MATCHED_MODULO_RELOCATION",
+      "evidence": ".cache/gcc443-sweep/ctor-window.json (nova3.gcc443-window-check/1: 56/56 B, code_window_equal=false for the single bl memset relocation word)"
+    }
+  ]
+}
+```
+
 ## 2026-11-02 (later still) — autopilot engine
 
 Done: DSH execution provider, supervisor, planner, units (`docs/DSH_WORKER.md`).
@@ -55,7 +126,7 @@ fast-math):
   at `-std=gnu++98 -marm -mfpu=vfpv3-d16 -O2`; bytes differ.
 * `operator*<float, collada::SMatrix>` `0x6e7e60` (564 B): at
   `-mfpu=vfpv3-d16 -O2 -funroll-loops` the instruction-class profile is exact
-  (vldr 70 vs 76, everything else equal). The 6-load gap is a reload pattern of
+  (vldr 70 vs 76, everything else equal). The 6-load gap means 540 vs 564 B and is a reload pattern of
   the `a` operand (`vldr; vmul` first instead of `vldr r5; vldr r4; vmul`);
   `__restrict` helps `a` but hurts `b` and is rejected on evidence.
 
@@ -117,7 +188,7 @@ constructor's value-3/value-5 paths now run the real arithmetic (CTest
 
 `glitch::core::CMatrix4<float>::CMatrix4(CMatrix4<float> const&, eConstructor)`
 (`0x00108c8c`, 240 B) is IMPLEMENTED + TESTED and measured **NOT MATCHED**: the
-instruction content is identical (41/41 non-branch words as a multiset) but the
+instruction content is identical (candidate 240 B, reference 240 B) and (41/41 non-branch words as a multiset) but the
 reference lays the four trailing case blocks out `4,2,3,1` where this compiler
 emits `1,3,4,2`, so 25 displacement words differ. The five enumerator values are
 now pinned from the bytes (1 copy, 2 identity, 3 transpose, 4 inverse, 5
@@ -161,7 +232,7 @@ inverse-transpose; 0 and >= 6 write nothing) and the in-binary call sites agree:
 
 `glitch::core::CMatrix4<float>::CMatrix4(eConstructor)` (`0x00108c54`, 56 B) is
 IMPLEMENTED + TESTED and instruction-window MATCHED modulo its one `bl memset`
-relocation word (56/56 B, 4/4 configurations, `code_window_equal=False`).
+relocation word (56/56 B, candidate 56 B, reference 56 B, 4/4 configurations, `code_window_equal=False`).
 Measured call-site distribution: 74 calls, 54 with `r1 = 2`, 6 with `r1 = 0`.
 
 1. **Bounded next step: recover `glitch::core::CMatrix4<float>::CMatrix4(
@@ -231,7 +302,7 @@ builds the destination vector and this operator computes each element.
 ## prepareCache is done; the next slice is its SMatrix consumer (2026-11-01)
 
 `CSoftwareSkinTechnique::prepareCache` (`0x0073f0a4`, 228 B) is IMPLEMENTED +
-TESTED and measured NOT MATCHED (224 B candidate, 4 words of scheduling
+TESTED and measured NOT MATCHED (224 B candidate, reference 228 B, 4 words of scheduling
 difference). The class layout at `+0x04`/`+0x08`/`+0x0c` is now declared, and the
 three 8-byte leaves re-measured byte-equal in all four configurations afterwards.
 
@@ -564,3 +635,5 @@ Reproduce:
 `build/host/nova3_mesh .cache/assets/premium-main.obb 01_room_a.bdae build/room_a.obj`
 
 Nested archive integration: implement a source-owned seekable/memory SB archive class using scrambled_zip.* and existing payload decoder. SDIR is not yet validated; descriptors/other custom PAK variants unsupported. Mount precedence must follow actual CCustomFileSystem::customCreateAndOpenFile0x2a3afc rather than assuming generic ZIP policy applies across archive classes. Five new Ghidra exports completed successfully; total62. No Ghidra process should remain.
+
+Re-run the settled-residual facts check (parser + Premium `.symtab`, read-only): `python -m pytest reconstruction/tests/test_next_settled_residuals.py -q`.
