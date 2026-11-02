@@ -756,9 +756,11 @@ def main(argv=None) -> int:
         return 0
     report = run(args.repo, holder=args.holder, state_dir=state, ttl_seconds=args.ttl)
     print(json.dumps(report, indent=2))
+    # A timer run with nothing to do is SUCCESS, not failure: returning 3 for an
+    # idle tick made systemd mark the unit failed every ten minutes. Exit 3 is
+    # reserved for an approval that was written but could not be queued.
     unqueued = [e for e in report.get('approved') or [] if not e.get('queued')]
-    done = bool(report.get('approved') or report.get('finalized'))
-    return 0 if done and not unqueued else 3
+    return 3 if unqueued else 0
 
 
 if __name__ == '__main__':
