@@ -126,7 +126,7 @@ commit it as-is).
 Disk ~19 GiB free, RAM 7.6 GiB, 4 cores: one heavyweight analyser at a time.
 Owner `jason` (uid 1000); original inputs read-only; nothing uploaded.
 
-## 2026-11-02 (LATEST) — setup fixed, source materialised; start source-assisted decompilation
+## 2026-11-02 (older) — setup fixed, source materialised; start source-assisted decompilation
 
 This section supersedes the older resume notes below for the *next* session. Read
 it first, then `STATUS.md`, `NEXT.md`, `docs/decisions/{ARCHITECTURE,BLOCKERS}.md`.
