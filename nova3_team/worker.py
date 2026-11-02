@@ -274,9 +274,12 @@ def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
     _publish_activity(activity, force=True)
     try:
         endpoint = dsh_endpoint(cwd, root)
-        outcome = dsh_runtime.run_session(
-            endpoint, prompt, cwd=pathlib.Path(cwd), log_path=log, timeout_s=int(timeout),
-            cancel=lambda: False)
+        if _dsh_session is not None:
+            outcome = _dsh_session(prompt, cwd, log, int(timeout))
+        else:
+            outcome = dsh_runtime.run_session(
+                endpoint, prompt, cwd=pathlib.Path(cwd), log_path=log, timeout_s=int(timeout),
+                cancel=lambda: False)
     except (dsh_runtime.DshUnavailable, dsh_runtime.DshLaunchError) as exc:
         dsh_last = {'status': dsh_runtime.EXECUTION_ERROR, 'reason': str(exc)[:300]}
         raise provider_runtime.ProviderUnavailable(str(exc)) from None
@@ -297,6 +300,13 @@ def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
 
 
 dsh_last = {}
+# Supervisor-supplied sink for per-session spend; None for the Codex worker,
+# which never runs a DSH session.
+_dsh_ledger = None
+# Supervisor-supplied session runner. Needed because provider failover belongs
+# to the supervisor (it owns the approved-route list and the state), while the
+# prompt belongs to work_one. None keeps the plain single-route behaviour.
+_dsh_session = None
 
 
 def record_dsh_checkpoint(root, number):
@@ -312,6 +322,45 @@ def record_dsh_checkpoint(root, number):
                         dsh_error_message=dsh_last.get('error_message'),
                         dsh_steps=dsh_last.get('steps'),
                         dsh_spend=dsh_last.get('spend'))
+    except Exception:
+        pass
+
+
+def dsh_account_session(ledger_append, task, round_num, checkpoint_root, number):
+    """Record ONE DSH attempt the moment it ends (NOVA3_DSH_PER_SESSION_ACCOUNTING_V1).
+
+    `work_one` may run several DSH sessions per task and the supervisor only
+    writes its own ledger entry after `work_one` returns, so accounting once per
+    return under-counts real spend and hides failed rounds from the budgets.
+    The attempt is written here, by the component that spent it.
+    """
+    if not dsh_last:
+        return
+    spend = dsh_last.get('spend') or {}
+    try:
+        ledger_append({'task': str(task), 'status': dsh_last.get('status'),
+                       'error_code': dsh_last.get('error_code'),
+                       'attempt': int(round_num), 'phase': 'session',
+                       'session_id': dsh_last.get('session_id'),
+                       'elapsed_s': dsh_last.get('elapsed_s'),
+                       'input_tokens': int(spend.get('input_tokens') or 0),
+                       'output_tokens': int(spend.get('output_tokens') or 0)})
+    except Exception:
+        pass
+    try:
+        attempts = recovery.load(checkpoint_root, number).get('dsh_attempts') or []
+        if not isinstance(attempts, list):
+            attempts = []
+        attempts = (attempts + [{'round': int(round_num),
+                                 'status': dsh_last.get('status'),
+                                 'error_code': dsh_last.get('error_code'),
+                                 'input_tokens': int(spend.get('input_tokens') or 0),
+                                 'output_tokens': int(spend.get('output_tokens') or 0),
+                                 'at': int(time.time())}])[-20:]
+        recovery.update(checkpoint_root, number, dsh_attempts=attempts,
+                        dsh_attempts_used=len(attempts),
+                        session_spent=sum(int(x.get('input_tokens') or 0) +
+                                          int(x.get('output_tokens') or 0) for x in attempts))
     except Exception:
         pass
     # NOVA3_WORKER_PRESENCE_V1: nonblocking best-effort status; never logs credentials.
@@ -765,6 +814,23 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
     prior=recovery.load(root,n)
     token=claim(gh,issue,user,saved=prior)
     if token is None:return None
+    return work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
+                        provider_status=provider_status,gate=gate)
+
+
+def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
+                 provider_status=None,gate=None):
+    """Everything after a GRANTED lease, for a caller that already owns one.
+
+    NOVA3_DSH_CLAIM_OWNERSHIP_V1: the coordinator refuses a second `/nova claim`
+    while a lease is active, so a supervisor that claims first and then calls
+    `work_one` would see its own live lease, wait the full claim timeout, find
+    no lease for its NEW token and skip the task it had just won. The claim step
+    is therefore split out and exactly one component performs it: `work_one`
+    for the Codex worker, the supervisor for the DSH worker -- both then hand
+    the granted token to this function, which never claims again.
+    """
+    n=issue['number']
     recovery.update(root,n,repo=upstream,user=user,token=token)
     allowed=allowed_from_issue(issue.get('body',''))
     if not allowed:
@@ -819,6 +885,8 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                     dsh_last.clear()
                     cp=run_dsh(provider,prompt,work,log,timeout=ai_session_timeout(),root=root)
                     record_dsh_checkpoint(root,n)
+                    if _dsh_ledger is not None:
+                        dsh_account_session(_dsh_ledger, n, k, root, n)
                     timed_out_session = cp.returncode == 124
                     session_failed = cp.returncode != 0
                     cmd=[provider_runtime.PROVIDERS['dsh'].executable,'--profile','headless','--json','-']
@@ -856,6 +924,15 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                 if paths:
                     verified,checklog=verify(work)
                     handoff+='\nINDEPENDENT VALIDATION OUTPUT (abbreviated):\n'+checklog[-4500:]
+                if provider == 'dsh' and dsh_last.get('status') in _DSH_TERMINAL:
+                    # No credits, a rejected credential or a cancel cannot be
+                    # fixed by another identical round: stop spending now and let
+                    # the supervisor choose WAITING_CREDITS / AUTH / backoff.
+                    note(f'ALERT #{n}: DSH session ended {dsh_last.get("status")} '
+                         f'({dsh_last.get("error_code") or "no code"}); not starting another round')
+                    return pause_failed_task(
+                        gh,root,n,token,provider,user,
+                        RuntimeError(f'DSH terminal provider state: {dsh_last.get("status")}'))
                 if cp.returncode==124:
                     note(f'ALERT #{n}: AI provider TIMEOUT; private output and any local edits '
                          f'are retained. Quarantining instead of repeating a stalled session.')
@@ -1000,6 +1077,8 @@ _SECRET_RE = re.compile(
     r'|bearer\s+[A-Za-z0-9._-]{12,})')
 _RATE_LIMIT = ('429', 'rate limit', 'rate_limit', 'quota', 'too many requests',
                'insufficient_quota', 'usage limit')
+# DSH statuses where another identical round cannot help.
+_DSH_TERMINAL = ('WAITING_CREDITS', 'AUTH', 'CANCELLED')
 
 
 class SlotError(RuntimeError):

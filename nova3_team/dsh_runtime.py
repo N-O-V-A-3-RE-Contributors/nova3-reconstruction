@@ -46,11 +46,13 @@ import re
 import shutil
 import signal
 import subprocess
+import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 KILL_GRACE_SECONDS = 10
+DEADLINE_POLL_S = 0.5      # watchdog granularity for a silent session
 DEFAULT_STREAM_CAP = 16 * 1024 * 1024      # one private log, never in Git
 DEFAULT_EVENT_CAP = 4000                   # parsed events retained per session
 
@@ -77,6 +79,8 @@ COMPLETED = 'COMPLETED'
 # Classes whose remedy is time (or a different model), never a changed task.
 TRANSIENT = frozenset({RATE_LIMIT, PROVIDER_OUTAGE, EXECUTION_ERROR, SESSION_TIMEOUT})
 TERMINAL = frozenset({WAITING_CREDITS, AUTH, CANCELLED})
+# Provider-level failures that an owner-approved alternative route may survive.
+FAILOVER_STATUSES = frozenset({WAITING_CREDITS, AUTH, RATE_LIMIT, PROVIDER_OUTAGE})
 
 EXACT_CODES = {
     'MISSING_CREDENTIAL': WAITING_CREDITS,
@@ -125,6 +129,9 @@ class DshEndpoint:
     base_url: str = DEFAULT_BASE_URL
     key_ref: str = DEFAULT_KEY_REF
     max_steps: int = 120
+
+    def with_route(self, provider: str, model: str) -> 'DshEndpoint':
+        return replace(self, route=provider, model=model or self.model)
 
     def command(self, *, session_id: str | None, json_events: bool = True) -> list[str]:
         argv = [self.binary, '--profile', self.profile]
@@ -333,7 +340,47 @@ def _yaml_quote(value: str) -> str:
     return value
 
 
-def overlay_text(endpoint: DshEndpoint) -> str:
+@dataclass(frozen=True)
+class FallbackRoute:
+    """One owner-approved alternative route for the same credential."""
+
+    name: str
+    api: str = 'openai-completions'
+    model: str = ''
+    base_url: str = ''
+
+    def final_model(self, primary: DshEndpoint) -> str:
+        return self.model or primary.model
+
+    def final_base_url(self, primary: DshEndpoint) -> str:
+        return self.base_url or primary.base_url
+
+
+def parse_fallback_routes(value: str) -> tuple[FallbackRoute, ...]:
+    """Parse NOVA3_DSH_FALLBACK like ``name[:model[:base_url]][,name...]``.
+
+    Nothing is guessed: an empty value means "no approved alternative" and the
+    supervisor then pauses correctly instead of inventing a provider.
+    """
+    out = []
+    for item in (value or '').split(','):
+        item = item.strip()
+        if not item:
+            continue
+        if '//' in item:
+            continue                      # a URL is not a route name
+        parts = item.split(':')
+        if not parts[0] or not re.fullmatch(r'[a-z0-9][a-z0-9._-]{1,39}', parts[0]):
+            continue
+        model = parts[1].strip() if len(parts) > 1 and parts[1].strip() else ''
+        base = ':'.join(parts[2:]).strip() if len(parts) > 2 else ''
+        if base and not base.startswith('https://'):
+            base = ''
+        out.append(FallbackRoute(parts[0], model=model, base_url=base))
+    return tuple(out[:3])
+
+
+def overlay_text(endpoint: DshEndpoint, fallbacks: tuple[FallbackRoute, ...] = ()) -> str:
     route = _yaml_quote(endpoint.route)
     model = _yaml_quote(endpoint.model)
     base = endpoint.base_url
@@ -351,12 +398,24 @@ def overlay_text(endpoint: DshEndpoint) -> str:
         + f'          - id: {model}\n            name: "NOVA3 {model}"\n'
         + '            contextWindow: 1048576\n            maxTokens: 65536\n'
         + '            input: [text]\n'
+        + ''.join(
+            # Each alternative is a separate pi-ai route over the same
+            # credential reference, so switching never needs a new secret.
+            f'      {_yaml_quote(f.name)}:\n        api: {_yaml_quote(f.api)}\n'
+            f'        baseURL: {f.final_base_url(endpoint)}\n        apiKeyEnv: {key}\n'
+            '        models:\n'
+            f'          - id: {_yaml_quote(f.final_model(endpoint))}\n'
+            f'            name: "NOVA3 fallback {f.name}"\n'
+            '            contextWindow: 1048576\n            maxTokens: 65536\n'
+            '            input: [text]\n'
+            for f in fallbacks)
         + '- id: agent-default-model\n  config:\n'
         + f'    provider: {route}\n    model: {model}\n'
     )
 
 
-def write_overlay(path: pathlib.Path, endpoint: DshEndpoint) -> pathlib.Path:
+def write_overlay(path: pathlib.Path, endpoint: DshEndpoint, *,
+                  fallbacks: tuple[FallbackRoute, ...] = ()) -> pathlib.Path:
     """Atomically write the overlay into a private directory (0700/0600)."""
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -365,7 +424,7 @@ def write_overlay(path: pathlib.Path, endpoint: DshEndpoint) -> pathlib.Path:
     tmp = path.with_name(path.name + '.tmp')
     descriptor = os.open(tmp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, 'w', encoding='utf-8', newline='\n') as handle:
-        handle.write(overlay_text(endpoint))
+        handle.write(overlay_text(endpoint, fallbacks))
     os.replace(tmp, path)
     return path
 
@@ -502,6 +561,28 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
             written = 0
             killed = {}          # filled by the stop paths; surface, not a guess
             assert proc.stdout is not None
+            # NOVA3_DSH_DEADLINE_V1: the deadline must not depend on output.
+            # `for raw in proc.stdout` blocks forever on a silent process (a
+            # hung tool, a stalled provider handshake, or time before the first
+            # token), so the bound is enforced by a watchdog thread that kills
+            # the process group on the same deadline, while the reader loop only
+            # decides WHY it stopped.
+            stop_reason = {'why': ''}
+
+            def watchdog():
+                while time.monotonic() < deadline:
+                    if proc.poll() is not None:
+                        return
+                    if cancel is not None and cancel():
+                        stop_reason['why'] = 'cancel'
+                        return _stop(proc)
+                    time.sleep(min(DEADLINE_POLL_S, max(0.05, deadline - time.monotonic())))
+                if proc.poll() is None:
+                    stop_reason['why'] = 'timeout'
+                    _stop(proc)
+
+            guard = threading.Thread(target=watchdog, name='nova3-dsh-deadline', daemon=True)
+            guard.start()
             for raw in proc.stdout:
                 now = time.monotonic()
                 written += len(raw)
@@ -528,11 +609,11 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
                 if acc.steps >= endpoint.max_steps:
                     killed = _stop(proc)
                     break
-                if now > deadline:
+                if now > deadline or stop_reason['why'] == 'timeout':
                     timed_out = True
                     killed = _stop(proc)
                     break
-                if cancel is not None and cancel():
+                if stop_reason['why'] == 'cancel' or (cancel is not None and cancel()):
                     cancelled = True
                     killed = _stop(proc)
                     break
@@ -545,6 +626,15 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
                     exit_code = proc.wait(timeout=KILL_GRACE_SECONDS)
                 except subprocess.TimeoutExpired:
                     exit_code = None
+            if stop_reason['why'] == 'timeout' or time.monotonic() > deadline:
+                # The watchdog fired while the reader was blocked: the process
+                # was killed, not finished. Classifying that by its exit status
+                # would attribute our own kill to the provider.
+                timed_out = timed_out or stop_reason['why'] == 'timeout'
+            if stop_reason['why'] == 'cancel':
+                cancelled = True
+            if timed_out or cancelled:
+                killed = killed or {'returncode': proc.returncode}
     finally:
         if proc is not None and proc.poll() is None:
             _stop(proc)

@@ -31,6 +31,7 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import sys
 import time
@@ -123,6 +124,8 @@ def endpoint_from_env(project: pathlib.Path, overlay_path: pathlib.Path) -> dsh_
         max_steps = 120
     return dsh_runtime.DshEndpoint(
         binary=binary, home=home, profile=env.get('NOVA3_DSH_PROFILE', 'headless'),
+        # Approved alternatives, e.g. NOVA3_DSH_FALLBACK=openrouter-alt:model.",
+        # Parsed here so readiness, overlay and failover agree on one list.
         patch=overlay_path, route=env.get('NOVA3_DSH_ROUTE', dsh_runtime.DEFAULT_ROUTE),
         model=env.get('NOVA3_DSH_MODEL', dsh_runtime.DEFAULT_MODEL),
         base_url=env.get('NOVA3_DSH_BASE_URL', dsh_runtime.DEFAULT_BASE_URL),
@@ -203,7 +206,9 @@ class DshSupervisor:
         control.mkdir(parents=True, exist_ok=True, mode=0o700)
         overlay = self.paths.state / 'dsh-overlay.yml'
         self.endpoint = endpoint_from_env(self.project, overlay)
-        dsh_runtime.write_overlay(overlay, self.endpoint)
+        self._fallbacks = dsh_runtime.parse_fallback_routes(os.environ.get('NOVA3_DSH_FALLBACK', ''))
+        self._overlay = overlay
+        dsh_runtime.write_overlay(overlay, self.endpoint, self._fallbacks)
         try:
             from . import presence
             self.reporter = presence.Reporter(self.upstream, self.user, 'dsh',
@@ -230,6 +235,12 @@ class DshSupervisor:
         _log('DSH supervisor: repo=%s account=%s slot=%s profile=%s route=%s model=%s dsh=%s'
              % (self.upstream, self.user, self.slot, self.endpoint.profile,
                 self.endpoint.route, self.endpoint.model, probe.get('version')))
+        if self._fallbacks:
+            _log('approved fallback routes (in order): '
+                 + ', '.join(f.name for f in self._fallbacks))
+        else:
+            _log('no approved fallback route configured (NOVA3_DSH_FALLBACK); a provider outage '
+                 'will pause instead of switching')
         _log(f'local endpoint probe: {probe.get("reason")}')
         if not probe.get('ok'):
             self.state.save(state=dsh_policy.WAITING_APPROVAL,
@@ -317,6 +328,18 @@ class DshSupervisor:
             return False
         self.state.save(resume_for_cycle=int(time.time()))
         return True
+
+    def _ledger_append(self, record: dict) -> dict:
+        return self.ledger.append(record)
+
+    def _session_for_task(self, prompt: str, cwd, log_path, timeout_s: int):
+        """The task-session callable handed to worker.work_one.
+
+        Routing every session through _run_with_failover keeps one policy for
+        the planner and for engineering work alike.
+        """
+        return self._run_with_failover(prompt, cwd=pathlib.Path(cwd),
+                                       log_path=pathlib.Path(log_path), timeout_s=timeout_s)
 
     def _consume_resume_consent(self) -> bool:
         """One-shot: true if the next session may exceed the hourly cap.
@@ -441,9 +464,10 @@ class DshSupervisor:
 
     def cycle(self) -> None:
         self.state.save(cycle_errors=0)
-        if (self.state.load().get('state') or dsh_policy.RUNNING) == dsh_policy.RUNNING:
-            if _read_json_list(self.paths.state / 'requests.open.json'):
-                self._update_open_requests(None, clear=True)
+        # Requests are resolved one by one, when their own condition is met
+        # (see _resolve_requests). A cycle that makes progress does not answer a
+        # question a human still owes us, and certainly does not cancel one.
+        self._resolve_requests()
         issues = self._issues()
         our = self._our_task(issues)
         if our is not None:
@@ -462,6 +486,11 @@ class DshSupervisor:
         _log(' | '.join(assessment.evidence))
         self._presence('VERIFYING' if our else 'ONLINE', (our or {}).get('number'))
 
+        if self.plan_only:
+            # --plan-only is a diagnostic for planning alone: it must not claim,
+            # execute or publish anything, even when tasks are available.
+            self.plan()
+            return
         if our is not None:
             self.run_task(our)
             return
@@ -564,9 +593,19 @@ class DshSupervisor:
         try:
             self.state.save(state=dsh_policy.RUNNING, reason='')
             self._presence('VERIFYING', number)
-            result = worker.work_one(self.gh, self.upstream, self.user, issue, 'dsh',
-                                     self.paths.state, 3, self._binary_root(),
-                                     provider_status=None, gate=self.gate, guard=self.guard)
+            # The supervisor already owns the lease; publish re-runs (and any
+            # other resume) call the same post-claim entry point, which never
+            # issues a second `/nova claim`.
+            token = (self.state.load().get('task') or {}).get('token')
+            worker._dsh_ledger = self._ledger_append   # per-session spend sink
+            worker._dsh_session = self._session_for_task
+            try:
+                result = worker.work_claimed(self.gh, self.upstream, self.user, issue, 'dsh',
+                                             self.paths.state, 1, self._binary_root(), token,
+                                             provider_status=None, gate=self.gate)
+            finally:
+                worker._dsh_ledger = None
+                worker._dsh_session = None
         except SystemExit as exc:            # work_one stops deliberately on fatal causes
             raise SupervisorExit(int(exc.code or 1), 'worker requested a deliberate stop') from exc
         except Exception as exc:
@@ -594,6 +633,18 @@ class DshSupervisor:
                 lease_inactive = False       # submitted+released is a healthy end state
         except Exception:
             pass
+        if outcome.ok and lease_inactive:
+            # The session spent real quota but the lease it produced work under
+            # is gone (lost to an expiry, another worker, or a coordinator
+            # hiccup). Recording that as COMPLETED would reset the failure
+            # counters and hide it; it is a coordination failure.
+            outcome = dsh_runtime.SessionOutcome(
+                status=dsh_runtime.EXECUTION_ERROR, exit_code=outcome.exit_code,
+                session_id=outcome.session_id, turn_reason=outcome.turn_reason,
+                error_code='LEASE_LOST', error_message='lease was not active after the session',
+                steps=outcome.steps, tool_calls=outcome.tool_calls,
+                elapsed_s=outcome.elapsed_s, input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens)
         previous = self.state.load().get('same_failure') or {}
         same = 1 + int(previous.get('count') or 0) if previous.get('status') == outcome.status else 1
         prior_ok_inactive = int(self.state.load().get('ok_with_inactive_lease') or 0)
@@ -605,12 +656,15 @@ class DshSupervisor:
             control_dir=self.paths.state / 'control',
             attempt_started=float(saved.get('claimed_unix') or 0) or None)
         decision = dsh_policy.decide(outcome, self.ledger, context)
+        # The per-session attempts were already written by work_one; this is a
+        # SUMMARY of the whole task attempt and deliberately carries no tokens,
+        # so budgets count real spend once and never double-count it.
         self.ledger.append({'task': str(number), 'status': outcome.status,
                             'error_code': outcome.error_code,
                             'elapsed_s': outcome.summary()['elapsed_s'],
-                            'input_tokens': outcome.input_tokens,
-                            'output_tokens': outcome.output_tokens,
-                            'phase': task_state.get('phase'),
+                            'phase': task_state.get('phase'), 'summary': True,
+                            'sessions': task_state.get('dsh_attempts_used'),
+                            'task_tokens': int(task_state.get('session_spent') or 0),
                             'result': None if result is None else bool(result)})
         if result is not True and task_state.get('verified'):
             # The model finished AND the independent checks passed; what failed
@@ -637,6 +691,79 @@ class DshSupervisor:
             self.state.save(task=None)
         self._presence('REVIEW' if task_state.get('phase') == 'review' else 'ONLINE', number)
 
+    def _run_with_failover(self, prompt: str, *, cwd: pathlib.Path, log_path: pathlib.Path,
+                           timeout_s: int):
+        """One bounded session, moving to an APPROVED route only when the
+        primary's failure is provider-level (credits, auth, rate limit, outage).
+
+        An execution error is the model's or the task's problem and is never
+        retried on another route: that would just spend the alternative on the
+        same failure. Without an approved route the outcome is returned as-is so
+        the caller pauses in the right state.
+        """
+        outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=cwd, log_path=log_path,
+                                          timeout_s=timeout_s,
+                                          cancel=lambda: bool(self.stop_signal))
+        if outcome.status not in dsh_runtime.FAILOVER_STATUSES or not self._fallbacks:
+            return outcome
+        base = self.endpoint
+        used = list(self.state.load().get('failover_used') or [])
+        for route in self._fallbacks:
+            if route.name in used:
+                continue
+            endpoint = base.with_route(route.name, route.final_model(base))
+            probe = dsh_runtime.probe_endpoint(endpoint)
+            if not probe.get('ok'):
+                _log(f'fallback route {route.name} unusable ({probe.get("reason")}); skipped')
+                continue
+            _log(f'primary route {outcome.status} ({outcome.error_code}); failing over to '
+                 f'approved route {route.name}')
+            self.state.save(failover_used=used + [route.name],
+                            failover_reason=f'{outcome.status}:{outcome.error_code}')
+            fallback = dsh_runtime.run_session(endpoint, prompt, cwd=cwd,
+                                               log_path=log_path.with_name(
+                                                   log_path.stem + f'-{route.name}.log'),
+                                               timeout_s=timeout_s,
+                                               cancel=lambda: bool(self.stop_signal))
+            if fallback.ok:
+                # The alternative is now the working route: make it the
+                # primary for the next session instead of re-failing every time.
+                self.endpoint = endpoint
+                dsh_runtime.write_overlay(self._overlay, endpoint,
+                                          tuple(f for f in self._fallbacks
+                                                if f.name != route.name))
+                self.state.save(endpoint={k: getattr(endpoint, k)
+                                          for k in ('profile', 'route', 'model', 'key_ref')},
+                                reason=f'using approved fallback route {route.name}')
+                _log(f'fallback route {route.name} succeeded and is now primary')
+            return fallback
+        return outcome
+
+    def _project_goal_met(self) -> bool:
+        """Independently checkable acceptance criteria for the WHOLE project.
+
+        Deliberately conservative and offline: each criterion is a fact about
+        this checkout, not a model's opinion. Until all hold, the supervisor may
+        never declare COMPLETE.
+        """
+        project = self.project
+        checks = {
+            # A built, source-only Android application package exists and is
+            # produced by our sources (the end-state in AGENTS.md).
+            'android_apk_built': bool(list((project / 'build').rglob('*.apk'))),
+            # The source-only verification tool passes over the built app.
+            'source_only_verified': (project / 'tools/verify_source_only.py').is_file()
+                                    and (project / 'build').is_dir(),
+            # The reconstruction source tree is non-empty and tracked.
+            'reconstruction_source': any((project / 'reconstruction/engine').glob('**/*.c*'))
+                                     or any((project / 'reconstruction/android').glob('**/*')),
+            # End-to-end behavioural evidence exists (real gameplay scenarios).
+            'behavioural_evidence': any((project / 'reconstruction/tests').glob('**/*behaviour*'))
+                                    or (project / 'docs/progress/BEHAVIOURAL.md').is_file(),
+        }
+        self.state.save(acceptance=checks)
+        return all(checks.values())
+
     def _resume_publish(self, number: int, issue: dict, task_state: dict, error) -> bool:
         """Retry only the publish half of `work_one` for already-verified work.
 
@@ -656,9 +783,16 @@ class DshSupervisor:
             return False
         self.state.save(publish_attempts=int(self.state.load().get('publish_attempts') or 0) + 1)
         try:
-            self.worker.work_one(self.gh, self.upstream, self.user, issue, 'dsh',
-                                 self.paths.state, 3, self._binary_root(),
-                                 provider_status=None, gate=self.gate, guard=self.guard)
+            token = (self.state.load().get('task') or {}).get('token')
+            self.worker._dsh_ledger = self._ledger_append
+            self.worker._dsh_session = self._session_for_task
+            try:
+                self.worker.work_claimed(self.gh, self.upstream, self.user, issue, 'dsh',
+                                         self.paths.state, 1, self._binary_root(), token,
+                                         provider_status=None, gate=self.gate)
+            finally:
+                self.worker._dsh_ledger = None
+                self.worker._dsh_session = None
         except Exception as exc:              # keep the original, more useful error
             _log(f'task #{number}: publish retry failed: {_redact(exc)[:200]}')
             return False
@@ -735,9 +869,8 @@ class DshSupervisor:
         log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
         self._presence('PLANNING')
         _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
-        outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=self.project,
-                                          log_path=log_path, timeout_s=plan_timeout_s(),
-                                          cancel=lambda: bool(self.stop_signal))
+        outcome = self._run_with_failover(prompt, cwd=self.project, log_path=log_path,
+                                          timeout_s=plan_timeout_s())
         _log(f'planner session finished: {outcome.status} in {int(outcome.elapsed_s)}s')
         self.ledger.append({'task': 'planner', 'status': outcome.status,
                             'error_code': outcome.error_code,
@@ -782,16 +915,24 @@ class DshSupervisor:
             _log('planner produced no acceptable new task; '
                  + ('nothing remains queued' if complete else
                     f'{len(working)} task(s) still in flight elsewhere'))
-            if complete:
-                # COMPLETE is only declared after a settle period in which the
-                # queue stayed empty across several checks: a human may approve
-                # a proposal minutes later, and autofeed runs on its own clock.
-                settles = int(self.state.load().get('complete_settles') or 0) + 1
-                if settles < COMPLETE_SETTLES:
-                    self.state.save(state=dsh_policy.RUNNING, complete_settles=settles,
-                                    reason=f'no plannable work; settling ({settles}/'
-                                           f'{COMPLETE_SETTLES})')
-                    return
+            if complete and not self._project_goal_met():
+                # An empty queue and an exhausted planner are NOT completion of
+                # a whole-game source reconstruction. The project is
+                # EVIDENCE_NEEDED until the acceptance criteria in
+                # _project_goal_met() pass in this checkout.
+                _log('nothing queued and nothing plannable, but project acceptance is not met; '
+                     'entering EVIDENCE_NEEDED (human decision required)')
+                self.state.save(state=dsh_policy.WAITING_APPROVAL, complete_settles=0,
+                                reason='evidence needed: project acceptance criteria not met')
+                self._request('evidence',
+                              'the queue is empty, the planner found no honest new task, and the '
+                              'project acceptance criteria are not met',
+                              'Run the discovery timer for new function evidence, approve one of '
+                              'the open planner proposals, or narrow a blocked task. The '
+                              'supervisor is idle and safe; it resumes as soon as work appears.',
+                              'No work is guessed to fill the queue and no completion is claimed.',
+                              task='planner')
+                return
             self.state.save(state=dsh_policy.COMPLETE if complete else dsh_policy.RUNNING,
                             reason='planner: no honest task derived from evidence',
                             complete_settles=0 if not complete else None)
@@ -850,10 +991,91 @@ class DshSupervisor:
         _log(f'ACTION REQUIRED ({kind})' + (f' for #{task}' if task else '')
              + f': {action} -- {detail}')
 
-    def _update_open_requests(self, record: dict | None, *, clear: bool = False) -> None:
+    def _resolve_requests(self) -> None:
+        """Drop a request only when the condition that raised it is satisfied."""
+        open_set = _read_json_list(self.paths.state / 'requests.open.json')
+        if not open_set:
+            return
+        keep = []
+        for record in open_set:
+            try:
+                if self._request_satisfied(record):
+                    _log(f'request resolved ({record.get("kind")}): '
+                         f'{str(record.get("detail"))[:80]}')
+                    continue
+            except Exception:
+                pass
+            keep.append(record)
+        if len(keep) != len(open_set):
+            self._write_open_requests(keep)
+
+    def _request_satisfied(self, record: dict) -> bool:
+        kind = str(record.get('kind') or '')
+        if kind == 'approval':
+            # Satisfied when none of the proposals named in the request is still
+            # awaiting a decision (each was labelled or closed by a human).
+            numbers = [int(n) for n in re.findall(r'#(\d+)', str(record.get('detail') or ''))]
+            if not numbers:
+                return False
+            for number in numbers:
+                issue = self.gh.issue(number)
+                if (issue.get('state') or 'open') == 'open' \
+                        and not ({'nova:queued', 'nova:claimed', 'nova:review', 'nova:blocked'}
+                                 & set(label_names(issue))):
+                    return False
+            return True
+        if kind == 'credits' or kind == 'credential':
+            try:
+                return bool(dsh_runtime.probe_endpoint(self.endpoint).get('ok')) and \
+                    dsh_runtime.credential_present(self.endpoint.home, self.endpoint.key_ref)
+            except Exception:
+                return False
+        if kind == 'evidence':
+            return bool([i for i in self._issues()
+                         if (i.get('state') or 'open') == 'open'
+                         and 'nova:queued' in label_names(i)])
+        if kind == 'budget':
+            ledger = self.ledger
+            budget = dsh_policy.Budget.from_env()
+            return (ledger.sessions_today() < budget.sessions_per_day
+                    and ledger.tokens_today() < budget.tokens_per_day
+                    and len(ledger.window(seconds=3600)) < budget.sessions_per_hour)
+        if kind == 'publish':
+            number = int(str(record.get('task') or '0') or 0)
+            if not number:
+                return False
+            return recovery.load(self.paths.state, number).get('phase') == 'review'
+        if kind == 'failure' or kind == 'replan':
+            number = int(str(record.get('task') or '0') or 0)
+            if not number:
+                return False
+            issue = self.gh.issue(number)
+            # A human requeued it (nova:queued) after fixing the cause.
+            return 'nova:queued' in label_names(issue) or \
+                (issue.get('state') or 'open') != 'open'
+        return False
+
+    def _write_open_requests(self, open_set: list) -> None:
         path = self.paths.state / 'requests.open.json'
         try:
-            if clear:
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = path.with_name(path.name + '.tmp')
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump(open_set, handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+    def _update_open_requests(self, record: dict | None, *, clear: bool = False,
+                              open_set: list | None = None) -> None:
+        path = self.paths.state / 'requests.open.json'
+        try:
+            if open_set is not None:
+                pass
+            elif clear:
                 open_set = []
             else:
                 open_set = _read_json_list(path)
