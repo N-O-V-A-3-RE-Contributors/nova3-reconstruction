@@ -13,7 +13,7 @@ execution:
   # `host` runs a real DSH Host session (visible in Agents) but the Host pins the
   # session to the squad workspace, so every task would share one tree. Switch
   # only together with branch-level isolation in nova3_team's verify/publish path.
-  backend: headless
+  backend: host
   isolation: per-task-checkout
   timeout_s: 1200
   max_steps: 240

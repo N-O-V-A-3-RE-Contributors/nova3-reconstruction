@@ -70,22 +70,74 @@ def test_unsafe_values_are_refused():
     assert chosen.worker.name == 'alpha'
 
 
-def test_host_backend_requires_shared_workspace_or_squad():
+def test_host_backend_selection_and_limits():
+    # A shared-workspace host run needs a squad to launch through.
     with pytest.raises(profiles.ProfileError):
         profiles.parse(valid_profile(execution={'backend': 'host',
+                                                'isolation': 'shared-workspace',
+                                                'timeout_s': 900, 'max_steps': 120}))
+    # Per-task checkouts are legal for the host backend: the dsh-runner bridge
+    # registers a workspace for the checkout path instead of the squad workspace.
+    per_task = profiles.parse(valid_profile(execution={
+        'backend': 'host', 'isolation': 'per-task-checkout',
+        'timeout_s': 900, 'max_steps': 120}))
+    assert per_task.execution.backend == 'host'
+    assert isinstance(backends.backend_for(per_task, client=object()),
+                      backends.HostBackend)
+    # A shared profile that names its squad parses and constructs; the guard is
+    # re-checked at construction for callers that build a Profile themselves.
+    shared = profiles.parse(valid_profile(execution={
+        'backend': 'host', 'isolation': 'shared-workspace', 'squad': 'Demo',
+        'timeout_s': 900, 'max_steps': 120}))
+    assert isinstance(backends.HostBackend(shared, client=object()), backends.HostBackend)
+    import dataclasses
+    broken = dataclasses.replace(shared, execution=dataclasses.replace(
+        shared.execution, squad=''))
+    with pytest.raises(backends.BackendError):
+        backends.HostBackend(broken, client=object())
+
+
+class _FakeHost:
+    def __init__(self, *, fails=None):
+        self.calls = []
+        self.fails = fails
+
+    def create_session(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.fails:
+            raise self.fails
+        return 'session-native'
+
+    def report(self, session_id, **kwargs):
+        return host.SessionReport(session_id, 'completed', 'completed', None, 4, 6, 0.2)
+
+
+def test_host_backend_uses_the_bridge_with_the_checkout_path():
+    p = profiles.parse(valid_profile(execution={'backend': 'host',
                                                 'isolation': 'per-task-checkout',
                                                 'timeout_s': 900, 'max_steps': 120}))
-    shared = valid_profile(execution={'backend': 'host', 'isolation': 'shared-workspace',
-                                      'squad': 'Demo Squad', 'timeout_s': 900,
-                                      'max_steps': 120})
-    host_profile = profiles.parse(shared)
-    assert host_profile.execution.backend == 'host'
-    assert isinstance(backends.backend_for(host_profile, client=object()),
-                      backends.HostBackend)
-    # A headless profile may not be pushed through the Host backend.
-    headless_profile = profiles.parse(valid_profile())
-    with pytest.raises(backends.BackendError):
-        backends.HostBackend(headless_profile)
+    fake = _FakeHost()
+    backend = backends.HostBackend(p, client=fake, poll_s=0.01)
+    result = backend.run(prompt='task text', cwd=pathlib.Path('/tmp/checkout-7'),
+                         log_path=pathlib.Path('/tmp/checkout-7/round.log'), timeout_s=30)
+    assert result.ok and result.visible_in_agents_tab is True
+    assert fake.calls[0]['workspace_path'] == '/tmp/checkout-7'
+    assert fake.calls[0]['prompt'] == 'task text'
+    assert fake.calls[0]['model'] == 'openrouter/demo'
+    assert fake.calls[0]['effort'] == 'high'
+    assert result.steps == 4 and result.tool_calls == 6
+
+
+def test_host_backend_reports_a_missing_bridge_clearly():
+    p = profiles.parse(valid_profile(execution={'backend': 'host',
+                                                'isolation': 'per-task-checkout',
+                                                'timeout_s': 900, 'max_steps': 120}))
+    fake = _FakeHost(fails=host.HostUnavailable('HTTP 404'))
+    backend = backends.HostBackend(p, client=fake, poll_s=0.01)
+    result = backend.run(prompt='t', cwd=pathlib.Path('/tmp/c'),
+                         log_path=pathlib.Path('/tmp/c/log'), timeout_s=5)
+    assert result.status == 'unavailable'
+    assert 'bridge plugin is not loaded' in result.detail
 
 
 def test_headless_adapter_maps_objective_status():

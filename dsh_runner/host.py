@@ -135,6 +135,35 @@ class HostClient:
                              {'teamId': team_id, 'member': member})
         return created.get('team') or {}
 
+    # -- native session bridge (dsh-runner plugin) ---------------------------
+    def bridge_available(self) -> bool:
+        try:
+            self._call('/dsh-runner/api/session/__probe__')
+            return True
+        except HostUnavailable as exc:
+            return 'HTTP 404' not in str(exc)
+
+    def create_session(self, *, workspace_path: str, prompt: str,
+                       permission: str | None = None, model: str | None = None,
+                       effort: str | None = None, title: str | None = None,
+                       agent_preset: str | None = None) -> str:
+        """Create a native session in an explicit directory via the dsh-runner plugin.
+
+        This is what keeps a Host run inside a per-task checkout: the plugin
+        registers or reuses a Workspace for that path first.
+        """
+        payload = {'workspacePath': workspace_path, 'prompt': prompt}
+        for key, value in (('permission', permission), ('model', model),
+                           ('reasoningEffort', effort), ('title', title),
+                           ('agentPreset', agent_preset)):
+            if value:
+                payload[key] = value
+        created = self._call('/dsh-runner/api/session', payload)
+        session = created.get('sessionId')
+        if not isinstance(session, str) or not session:
+            raise HostUnavailable('/dsh-runner/api/session returned no session id')
+        return session
+
     # -- runs ---------------------------------------------------------------
     def run_member(self, *, team_id: str, member_id: str, first_message: str) -> str:
         """Launch a real Host session for one member. Spends quota.

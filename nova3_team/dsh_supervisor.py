@@ -762,6 +762,21 @@ class DshSupervisor:
         same failure. Without an approved route the outcome is returned as-is so
         the caller pauses in the right state.
         """
+        native = os.environ.get('NOVA3_DSH_NATIVE', '').lower() in ('1', 'true', 'yes')
+        if native:
+            # Native Host session: same task, same checkout, visible in the DSH
+            # Agents tab. Model routing still comes from the supervisor's router.
+            from . import host_runner
+            task = self.state.load().get('task') or {}
+            title = str(task.get('title') or 'reconstruction task')
+            try:
+                return host_runner.run_native(
+                    prompt=prompt, cwd=cwd, timeout_s=timeout_s, title=title,
+                    model=f'{self.endpoint.route}/{self.endpoint.model}',
+                    effort='')
+            except Exception as exc:
+                _log(f'native session unavailable, falling back to headless: '
+                     f'{_redact(exc)[:200]}')
         if os.environ.get('NOVA3_DSH_AUTO_ROUTE', '').lower() in ('1', 'true', 'yes'):
             from . import dsh_model_router
             router = getattr(self, '_model_router', None)

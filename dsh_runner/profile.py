@@ -183,8 +183,8 @@ def parse(data: dict, *, path: str = '') -> Profile:
     isolation = _text(raw_exec.get('isolation'), 'execution.isolation') or 'per-task-checkout'
     if isolation not in ISOLATION:
         raise ProfileError(f'execution.isolation must be one of {ISOLATION}')
-    if backend == 'host' and isolation == 'per-task-checkout' and not raw_exec.get('squad'):
-        raise ProfileError('host backend needs execution.squad or shared-workspace isolation')
+    if backend == 'host' and isolation == 'shared-workspace' and not raw_exec.get('squad'):
+        raise ProfileError('shared-workspace host runs need execution.squad')
     timeout_s = raw_exec.get('timeout_s', 1200)
     max_steps = raw_exec.get('max_steps', 240)
     if not isinstance(timeout_s, int) or not 300 <= timeout_s <= 3600:

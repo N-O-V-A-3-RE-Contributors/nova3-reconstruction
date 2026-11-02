@@ -73,18 +73,48 @@ class HostBackend:
 
     def __init__(self, profile: Profile, *, client: HostClient | None = None,
                  poll_s: float = 5.0) -> None:
-        if profile.execution.isolation != 'shared-workspace':
-            raise BackendError(
-                'the host backend runs in the squad workspace; the profile must '
-                'declare execution.isolation: shared-workspace')
-        if not profile.execution.squad:
-            raise BackendError('the host backend needs execution.squad')
+        if profile.execution.isolation == 'shared-workspace' and not profile.execution.squad:
+            raise BackendError('shared-workspace runs need execution.squad')
         self.profile = profile
         self.client = client or HostClient()
         self.poll_s = max(1.0, float(poll_s))
 
     def run(self, *, prompt: str, cwd: pathlib.Path, log_path: pathlib.Path,
             timeout_s: int) -> RunResult:
+        started = time.monotonic()
+        try:
+            session = self.client.create_session(
+                workspace_path=str(cwd), prompt=prompt,
+                permission=self.profile.worker.permission or None,
+                model=self.profile.worker.model or None,
+                effort=self.profile.worker.effort or None,
+                title=f'{self.profile.name}: {cwd.name}',
+                agent_preset=self.profile.worker.preset or None)
+        except HostUnavailable as exc:
+            detail = str(exc)
+            if '404' in detail or 'not found' in detail.lower():
+                detail = ('the dsh-runner bridge plugin is not loaded in the Web '
+                          'profile; load it or use backend: headless')
+            return RunResult('unavailable', self.name,
+                             elapsed_s=time.monotonic() - started, detail=detail)
+        deadline = started + timeout_s
+        report = None
+        while time.monotonic() < deadline:
+            report = self.client.report(session)
+            if report.status in ('completed', 'error', 'aborted'):
+                break
+            time.sleep(self.poll_s)
+        elapsed = time.monotonic() - started
+        if report is None or report.status == 'running':
+            return RunResult('timeout', self.name, session_id=session,
+                             elapsed_s=elapsed, visible_in_agents_tab=True,
+                             detail='host session did not reach a terminal turn')
+        return RunResult('completed' if report.ok else 'error', self.name,
+                         session_id=session, steps=report.steps,
+                         tool_calls=report.tool_calls, elapsed_s=elapsed,
+                         detail=report.error_code or '', visible_in_agents_tab=True)
+
+    def _legacy_squad_run(self, *, prompt, cwd, log_path, timeout_s):
         started = time.monotonic()
         try:
             state = self.client.state()
