@@ -30,6 +30,19 @@ requeue it. Activate changes at a completed-task checkpoint rather than killing
 an active task. Routing diagnostics live in slot `state/model-router/status.json`;
 supervisor `active_model` records the actual selected route.
 
+Only ONE worker may own the queue. On 2026-11-03 the legacy
+`nova3-worker.service` was still running although `disabled`; it claimed #197
+first, so the DSH supervisor repeatedly lost the claim ("no lease ... another
+worker owns it"). It was stopped and disabled; its lease on #197 was released
+with `/nova release <token>` and the coordinator (serialised runs) processes that
+asynchronously — a stale `nova:claimed` lease otherwise blocks the task until the
+15-minute sweep or a manual release. Recovery rule: `systemctl --user is-active
+nova3-worker.service` must be `inactive` whenever the DSH worker runs.
+
+Task #196 (Codex, 85 s) completed the transport but changed nothing, so it is
+`BLOCKED (NO_SOURCE_PROGRESS)` with its checkout retained; that is a task-scope
+outcome, not a routing failure, and it must not be reset to fabricate progress.
+
 Memory tooling is unavailable, not silently working: Hindsight has no config or
 API token (`hindsight_diagnose` confirmed); OpenViking has neither connection
 config nor a running local server. The operator was given the missing setup

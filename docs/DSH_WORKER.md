@@ -168,11 +168,22 @@ that task; they must not be hidden by resetting attempt history.
 
 `NOVA3_DSH_AUTO_ROUTE=1` enables `nova3_team.dsh_model_router` (enabled in the
 shipped worker unit). At each session boundary it reads the composed Web
-profile's explicitly configured models and current default. It prefers the Web
-default for semantic/planning/review work and an explicitly configured flash or
-mini model for routine tests/documentation. This is a preference heuristic, not
-a benchmark or a guarantee that one model is best. Changes to Web model settings
-are picked up on the next session, without restarting the Web GUI.
+profile's explicitly configured models and current default. Ranking is an
+offline capability heuristic over the owner's own settings, never a benchmark:
+semantic/planning/review work prefers a high reasoning level and a non-flash
+model; routine tests and documentation prefer an explicitly configured
+flash/mini model. The remembered route list makes a still-installed,
+still-authenticated model keep being offered after the Web default moves to
+another provider; `known` is revalidated against the live profile (plugin
+present, provider configured, credential stored) on every session. Changes to
+Web model settings are picked up on the next session, without restarting the
+Web GUI. A model id that is neither the current default nor already used
+successfully is never invented.
+
+Live proof (2026-11-03): with the Web default on OpenRouter DeepSeek, a
+semantic task selected `openai-codex/gpt-6.1-sol` (reasoning `high`) and logged
+`model selected: openai-codex/gpt-6.1-sol for semantic work`; both routes were
+`eligible` and the Codex session completed in 85 s (7 steps, 16 tool calls).
 
 The authenticated `dsh-openai-codex-auth` plugin is loaded from its installed Web
 package for a native Codex route. It is not replaced with an OpenRouter API-key

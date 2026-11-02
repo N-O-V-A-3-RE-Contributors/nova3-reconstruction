@@ -160,3 +160,49 @@ def test_reload_picks_up_new_settings_each_session(home, tmp_path):
                   log_path=tmp_path / 'round.log', timeout_s=40,
                   cancel=lambda: False, on_failure=lambda *a: None)
     assert [call.args[0].model for call in run.call_args_list] == ['deepseek/flash', 'owner-added-model']
+
+
+def test_reasoning_route_beats_flash_for_semantic_work(home):
+    remembered = [{'provider': 'openai-codex', 'model': 'gpt-code', 'effort': 'high'}]
+    merged = router.parse_config(json.dumps(config()), home, known_models=remembered)
+    assert [r.identity for r in router.rank(merged, 'native decompilation')] == [
+        'openai-codex/gpt-code', 'openrouter/deepseek/flash']
+    assert router.rank(merged, 'docs freshness test')[0].identity == \
+        'openrouter/deepseek/flash'
+
+
+def test_remembered_route_is_reoffered_only_while_plugin_is_installed(home):
+    remembered = [{'provider': 'openai-codex', 'model': 'gpt-code', 'effort': 'high'}]
+    assert any(r.provider == 'openai-codex' for r in
+               router.parse_config(json.dumps(config()), home, known_models=remembered))
+    (home / 'profiles/web/node_modules/dsh-openai-codex-auth/lib/index.js').unlink()
+    assert [r.provider for r in router.parse_config(
+        json.dumps(config()), home, known_models=remembered)] == ['openrouter']
+
+
+def test_unknown_codex_model_is_never_invented(home):
+    found = router.parse_config(
+        json.dumps(config()), home,
+        known_models=[{'provider': 'openai-codex', 'model': 'not a model'}])
+    assert [r.identity for r in found if r.provider == 'openai-codex'] == [
+        'openai-codex/gpt-code']   # only the configured Web default, never a guess
+
+
+def test_router_persists_known_routes_for_later_sessions(home, tmp_path):
+    r = router.Router(runtime.DshEndpoint('/dsh', home), tmp_path / 'router')
+    remembered = [{'provider': 'openai-codex', 'model': 'gpt-code', 'effort': 'high'}]
+    r.state['known'] = remembered
+    seen = {}
+
+    def fake_discover(endpoint, profile='web', known_models=()):
+        seen['known'] = list(known_models)
+        return router.parse_config(json.dumps(config()), home, known_models=known_models)
+
+    with mock.patch.object(router, 'discover', side_effect=fake_discover), \
+         mock.patch.object(runtime, 'credential_present', return_value=True), \
+         mock.patch.object(runtime, 'run_session', return_value=outcome(runtime.COMPLETED)):
+        r.run('task', task='native', cwd=tmp_path, log_path=tmp_path / 'log',
+              timeout_s=30, cancel=lambda: False, on_failure=lambda *a: None)
+    assert seen['known'] == remembered
+    saved = json.loads((tmp_path / 'router/status.json').read_text())
+    assert {entry['provider'] for entry in saved['known']} == {'openrouter', 'openai-codex'}

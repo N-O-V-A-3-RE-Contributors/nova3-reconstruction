@@ -58,7 +58,8 @@ class Route:
                 'reasoning_effort': self.effort, 'preferred': self.preferred}
 
 
-def parse_config(text: str, home: pathlib.Path, profile: str = 'web') -> list[Route]:
+def parse_config(text: str, home: pathlib.Path, profile: str = 'web',
+                 known_models=()) -> list[Route]:
     try:
         entries = json.loads(text)
     except ValueError as exc:
@@ -95,19 +96,39 @@ def parse_config(text: str, home: pathlib.Path, profile: str = 'web') -> list[Ro
     # route. Load that exact installed plugin in headless; never impersonate it
     # with the OpenRouter base URL/key (or register two owners of its route).
     codex = active.get('openai-codex-auth')
-    if (codex and codex.get('name') == 'dsh-openai-codex-auth'
-            and preferred[0] == 'openai-codex' and isinstance(preferred[1], str)
-            and IDENTIFIER.fullmatch(preferred[1])):
+    if codex and codex.get('name') == 'dsh-openai-codex-auth':
         package = home / 'profiles' / profile / 'node_modules' / 'dsh-openai-codex-auth'
         entry = package / 'lib' / 'index.js'
+        # A model id is only taken from the current Web default or from a route
+        # this router already used successfully; the catalog is never guessed.
+        codex_models = []
+        if preferred[0] == 'openai-codex' and isinstance(preferred[1], str):
+            codex_models.append(preferred[1])
+        known_effort = {}
+        for item in known_models or ():
+            if not isinstance(item, dict) or not isinstance(item.get('model'), str):
+                continue
+            if item.get('provider') != 'openai-codex':
+                continue
+            known_effort[item['model']] = item.get('effort')
+            if item['model'] not in codex_models:
+                codex_models.append(item['model'])
         if entry.is_file():
             routes = [r for r in routes if r.provider != 'openai-codex']
-            routes.append(Route('openai-codex', preferred[1], 'PI_OAUTH_OPENAI_CODEX',
-                                plugin=entry.resolve(), effort=effort, preferred=True))
+            for mid in codex_models:
+                if not IDENTIFIER.fullmatch(mid):
+                    continue
+                is_default = mid == preferred[1]
+                routes.append(Route('openai-codex', mid, 'PI_OAUTH_OPENAI_CODEX',
+                                    plugin=entry.resolve(),
+                                    effort=(effort if is_default
+                                            else known_effort.get(mid)),
+                                    preferred=is_default))
     return routes
 
 
-def discover(endpoint: runtime.DshEndpoint, profile: str = 'web') -> list[Route]:
+def discover(endpoint: runtime.DshEndpoint, profile: str = 'web',
+             known_models=()) -> list[Route]:
     try:
         result = subprocess.run([endpoint.binary, '--profile', profile, '--dump-config'],
                                 env=endpoint.environment(), capture_output=True,
@@ -120,7 +141,7 @@ def discover(endpoint: runtime.DshEndpoint, profile: str = 'web') -> list[Route]
                                 text=True, timeout=10, check=False)
         if parsed.returncode:
             raise ConfigError('DSH bundled YAML parser unavailable')
-        return parse_config(parsed.stdout, endpoint.home, profile)
+        return parse_config(parsed.stdout, endpoint.home, profile, known_models)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ConfigError('Local model discovery unavailable') from exc
 
@@ -137,14 +158,31 @@ def purpose(title: str) -> str:
     return 'semantic'
 
 
+HIGH_EFFORT = ('high', 'xhigh', 'max')
+
+
+def _is_fast(model: str) -> bool:
+    return any(token in model.lower() for token in ('flash', 'mini', 'nano', 'haiku'))
+
+
 def rank(routes: list[Route], task: str) -> list[Route]:
-    """Preference heuristic, not a claim of measured model superiority."""
+    """Offline capability heuristic: reasoning level and configured default.
+
+    This is a scheduling preference over the owner's own settings, not a
+    benchmark and not a claim that one model is better at the mission.
+    """
     routine = purpose(task) == 'routine'
-    def score(route):
-        fast = any(t in route.model.lower() for t in ('flash', 'mini', 'nano', 'haiku'))
-        return ((10 if fast else 0) if routine else (10 if route.preferred else 0),
-                int(route.preferred), route.identity)
-    return sorted(routes, key=score, reverse=True)
+
+    def capability(route: Route) -> int:
+        effort = (route.effort or '').lower()
+        if routine:
+            return (3 if _is_fast(route.model) else 0) + (1 if route.preferred else 0)
+        return ((3 if effort in HIGH_EFFORT else 0)
+                + (2 if not _is_fast(route.model) else 0)
+                + (1 if route.preferred else 0))
+
+    return sorted(routes, key=lambda route: (capability(route), int(route.preferred),
+                                             route.identity), reverse=True)
 
 
 def write_route(base: runtime.DshEndpoint, route: Route, folder: pathlib.Path):
@@ -193,12 +231,27 @@ class Router:
 
     def run(self, prompt, *, task, cwd, log_path, timeout_s, cancel, on_failure,
             on_selected=lambda route: None):
-        routes = rank(discover(self.base), task)
+        remembered = self.state.get('known') or []
+        routes = rank(discover(self.base, known_models=remembered), task)
+        # Remember routes that still compose and are still authenticated, so a
+        # model keeps being offered after the Web default moves elsewhere. The
+        # list is revalidated against the live profile on every session.
+        merged = {f'{r.provider}/{r.model}': {'provider': r.provider, 'model': r.model,
+                                              'effort': r.effort} for r in routes}
+        for item in remembered:
+            if not isinstance(item, dict):
+                continue
+            key = f'{item.get("provider")}/{item.get("model")}'
+            merged.setdefault(key, {'provider': item.get('provider'),
+                                    'model': item.get('model'),
+                                    'effort': item.get('effort')})
+        known = list(merged.values())[-12:]
         now = time.time()
         eligible = [r for r in routes
                     if runtime.credential_present(self.base.home, r.key_ref)
                     and self.cooldowns.get(r.identity, 0) <= now]
-        self.save(task=task, purpose=purpose(task), catalog=[r.summary() for r in routes],
+        self.save(task=task, purpose=purpose(task), known=known,
+                  catalog=[r.summary() for r in routes],
                   eligible=[r.identity for r in eligible])
         if not eligible:
             raise ConfigError('No configured authenticated model outside its cooldown')

@@ -818,3 +818,27 @@ flight when this note was written; the outcome is appended below.
   (`owner_approval_locator_required`). `_queue_labels` now replaces locators and
   is idempotent; verified one label remains.
 - Also verified the previously order-dependent suite now passes: 1223 tests.
+
+## 2026-11-03 (00:45-01:10) — model routing, transport teardown, single-worker rule
+
+- Diagnosed the "nothing running" report against processes, not switches: the
+  DSH supervisor and a headless child were active, and #167's private log showed
+  148 tool calls before its 20-minute bound. It timed out and was quarantined
+  (`PROVIDER_TIMEOUT`); checkout and attempts preserved.
+- New `nova3_team/dsh_model_router.py` (+15 tests): reads the owner's Web model
+  settings each session, ranks by reasoning level/throughput class, remembers
+  still-installed authenticated routes, and falls back only on provider-level
+  failures with a shared deadline, cooldowns and accounting. Live selection:
+  `openai-codex/gpt-6.1-sol` for semantic work, session
+  `session-cc01cf8f-fd2f-4417-9feb-6d81eac58625` COMPLETED in 85 s.
+- Live-discovered defect fixed in `dsh_runtime.run_session`: the native Codex
+  plugin emitted terminal `turn_end.completed` + `final` but kept transport
+  handles open, so a completed 180 s review was classified SESSION_TIMEOUT.
+  Now a confirmed terminal pair gets 1 s of teardown, then the process group is
+  cleaned up without changing the verdict; incomplete streams still fail.
+  Three regression tests cover completed, terminal-error and final-only streams.
+- Found two workers racing: legacy `nova3-worker.service` (disabled but running)
+  claimed #197 before the DSH supervisor. Stopped and disabled it; released its
+  lease with `/nova release <token>` (coordinator runs are serialised, so the
+  label change lags). Documented the single-worker rule.
+- Full suite: 1239 passed / 1891 subtests; routing+provider+review modules 88.
