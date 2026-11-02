@@ -867,3 +867,13 @@ flight when this note was written; the outcome is appended below.
   Verified live through `/nova3/api/mission`: running true,
   openrouter/deepseek-v4.1-flash-1017, 56 steps, 69 tools, last event 2.8 s.
 - 4 new tests (`test_mission_agent.py`); full suite 1247 passed; plugin tests 4 pass.
+
+## 2026-11-03 (01:50-01:55) — why the Agents tab is empty; Mission reload
+
+- Inspected the operator's saved page: no Mission DOM at all, and the Agents tab
+  reads dsh-agents/ledger.json (teams/runs), which is empty by design. The worker
+  was on task #201 the whole time.
+- Fixed the client's activity line (`ago()` takes unix seconds, not ms).
+- Scheduled a transient `nova3-web-reload` unit (01:53:12) to restart the Web
+  service so the boot-time plugin `rev` changes and the Mission tab renders the
+  `agent RUNNING` pill. The worker unit is separate and unaffected.

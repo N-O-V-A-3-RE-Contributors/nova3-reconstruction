@@ -39,6 +39,20 @@ and `last_event_age_s` parsed from the private round log, plus future
 needs `systemctl --user restart nova3-dsh.service` (which ends the chat, never
 the worker).
 
+### Which DSH view actually shows it (proven from a saved page)
+
+A saved snapshot of the Web UI (`DeepSeek Harness.html`, 01:49) contained **no**
+Mission content (`MISSION CONTROL` count 0) and the **Agents** tab is driven by
+`$DSH_HOME/dsh-agents/ledger.json`, whose contents were
+`{"teams": [], "runs": []}` — it lists AgentTeams runs, never systemd processes.
+So "no agents" in that tab is expected and is not evidence the worker is idle.
+Open the **Mission** tab (or `curl -s localhost:3080/nova3/api/mission | jq .agent`)
+to see `agent RUNNING`, the provider/model, steps and last-event age. The client
+half is only re-fetched when the Web service restarts (the page bootstrap carries
+a boot-time `rev=` per plugin), which is why a plain refresh can still show old
+code: `systemctl --user restart nova3-dsh.service` (ends the chat, never the
+worker's unit) then reopen the URL.
+
 ### Post-reboot proof (2026-11-03 01:17-01:18, after an unrelated host restart)
 
 Linger is enabled, so the unit returned by itself with no login:
