@@ -842,3 +842,15 @@ flight when this note was written; the outcome is appended below.
   lease with `/nova release <token>` (coordinator runs are serialised, so the
   label change lags). Documented the single-worker rule.
 - Full suite: 1239 passed / 1891 subtests; routing+provider+review modules 88.
+
+## 2026-11-03 (01:17-01:19) — post-reboot verification and provider-cap failover
+
+- Host restart (unrelated) killed the session mid-check; user services came back
+  by themselves (Linger), supervisor PID 2731 at 01:17:15.
+- Supervisor reclaimed #195 at 01:17:30, reused checkout 195-e3685c without
+  resetting files, selected openai-codex/gpt-6.1-sol for semantic work, hit the
+  ChatGPT usage cap, and failed over automatically to openrouter/deepseek with
+  a 10-minute Codex cooldown. Task stayed RUNNING; no task was quarantined.
+- Classification fix committed as c02fde1: usage/billing-cap messages are
+  provider-level (WAITING_CREDITS, failover-eligible); other PI_AI_ERROR
+  messages remain task failures and never spend a second model.

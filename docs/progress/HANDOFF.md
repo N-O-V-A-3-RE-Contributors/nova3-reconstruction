@@ -23,6 +23,26 @@ fail. Live recheck: COMPLETED in 20.7 seconds, 3 steps, 2 tool calls, session
 `session-b9943894-9668-46ec-9ed6-7bea248e953b`. Independent work checks still
 remain mandatory: completed transport is not completed reconstruction.
 
+
+### Post-reboot proof (2026-11-03 01:17-01:18, after an unrelated host restart)
+
+Linger is enabled, so the unit returned by itself with no login:
+`started 01:17:15`, claimed `#195` at `01:17:30`, reused the saved checkout
+(`195-e3685c`, no files reset), then:
+
+```
+01:18:00 model selected: openai-codex/gpt-6.1-sol for semantic work
+01:18:06 model selected: openrouter/deepseek/deepseek-v4.1-flash-1017 for semantic work
+```
+
+Codex reported `PI_AI_ERROR / "The usage limit has been reached"`; because that
+is now classified `WAITING_CREDITS` (provider-level), the router failed over to
+the other authenticated route, put Codex in a 10-minute cooldown and kept the
+task instead of quarantining it. `model-router/status.json` shows both routes in
+`catalog`, the active route, and the cooldown. That is the end-to-end behaviour
+to re-check after any routing change: selection, failover, cooldown, and the
+task staying RUNNING.
+
 The previous DeepSeek task #167 really timed out at 20 minutes (148 tool calls);
 its checkout/history were preserved and it was quarantined, not reset. The
 supervisor then automatically started #170. Do not erase those attempts to
