@@ -490,6 +490,16 @@ def run(repo: str, *, holder: int, state_dir: pathlib.Path,
             return False, 0
         admin = str((permission.get('permission') or '')).lower() == 'admin' or \
             str((permission.get('role_name') or '')).lower() == 'admin'
+        if not admin:
+            # Optional DSH-team admins: logins the owner added to the merged
+            # coordination/admin_team.json. A contributor cannot self-add,
+            # because only an owner/admin can merge that file.
+            try:
+                from . import authority
+                admin = login.lower() in {name.lower()
+                                          for name in authority.team_allowlist()}
+            except Exception:
+                admin = False
         return (admin, int(user.get('id') or 0))
 
     def post_comment(number: int, body: str):
