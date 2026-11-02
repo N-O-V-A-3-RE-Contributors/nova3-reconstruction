@@ -39,6 +39,29 @@ and `last_event_age_s` parsed from the private round log, plus future
 needs `systemctl --user restart nova3-dsh.service` (which ends the chat, never
 the worker).
 
+### Native runs are switched on (2026-11-03)
+
+`dsh-plugins/dsh-runner` is the Host bridge that was missing: it registers or
+reuses a Workspace for an explicit path, creates a session there, applies
+permission/model/effort, prompts it, and returns the id. That is what lets a
+native (Agents-tab visible) run stay inside a per-task checkout.
+
+* plugin: `POST /dsh-runner/api/session`, `GET /dsh-runner/api/session/{id}`;
+  local-browser only; fails closed without permission services; 4 node tests.
+* `dsh_runner.HostBackend` calls the bridge for `host` + `per-task-checkout`
+  (11 python tests); profile validation now allows that combination.
+* `nova3_team/host_runner.py` maps a native run to the supervisor's
+  `SessionOutcome`; `NOVA3_DSH_NATIVE=1` in the worker unit enables it and falls
+  back to the headless child when the bridge is unavailable, so work never
+  stalls on a missing plugin.
+* `config/projects/nova3.yaml` is now `backend: host`,
+  `isolation: per-task-checkout`.
+
+Verify after the Web reload: `curl -s -H 'Origin: http://127.0.0.1:3080'
+localhost:3080/dsh-runner/api/session/probe` returns `{"ok":true,...}` (a 404
+means the plugin did not load). Runs then appear under the squad's runs in the
+Agents tab, one per task checkout.
+
 ### Generic runner and the native-session port (2026-11-03)
 
 `dsh_runner/` is the reusable engine extracted from this project: project

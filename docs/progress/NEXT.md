@@ -8,15 +8,11 @@ decision record `docs/decisions/NATIVE_RUNNER.md`.
 
 Next, in order:
 
-1. **DSH runner plugin (host half)** — expose `POST /dsh-runner/api/session`
-   (create/reuse a workspace for a path, create the session there, apply
-   permission/model/effort, prompt, return the id) and
-   `GET /dsh-runner/api/session/{id}`. Then `backend: host` honours
-   `per-task-checkout`, and sessions appear natively in the Agents tab.
-2. **Switch NOVA3** — set `backend: host` in its profile, run one task, confirm
-   the run appears in Agents, the checkout is the task's own, and verify/publish
-   behave identically.
-3. **Second project** — a throwaway repo profile proves the runner is not
+1. **Confirm the native path live** — after the Web reload, the bridge probe must
+   return `{"ok":true}`; the next task session should log `model selected` and
+   then complete in the Agents tab as a run. If it returns 404 the plugin did not
+   load and the supervisor has already fallen back to headless.
+2. **Second project** — a throwaway repo profile proves the runner is not
    NOVA3-shaped before any more features land.
 
 ## 2026-11-02 — source-assisted decompilation is running
