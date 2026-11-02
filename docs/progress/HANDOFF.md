@@ -1,6 +1,29 @@
 # Resume without chat history
 
-## 2026-11-02 (LATEST) — ELF↔source correspondence done; build configuration recovered
+## 2026-11-03 (LATEST) — getInverse implemented, measured, committed
+
+`glitch::core::CMatrix4<float>::getInverse` (0x000ebb08, 776 B) is now a
+source-owned unit: `reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp`
++ `reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_inverse_test.cpp`,
+CMake target `collada_matrix4_inverse_behaviour` (ctest 40/40), registered in
+`tools/check_all.sh`. Body: Cramer's rule, eleven float minors widened to double,
+`fabs(det) <= 1e-08` (the measured constant at 0xebe08), 16 explicit cofactors,
+then `det = 1/det` and a 16-element scaling loop; no identity branch.
+`__builtin_fabs` is used instead of `<cmath>` because NDK r8e's ARM include path
+has no C++ library headers — that is a toolchain fact, not a style choice.
+
+Measurement (NDK r8e GCC 4.4.3, `-O3 -mfpu=vfpv3-d16 -mfloat-abi=softfp`,
+`tools/compare/collada_matrix4_inverse_pilot.py` → .cache/gcc443-sweep/):
+**776/776 bytes, 194/194 instructions, DIFFERENT** — the class multiset differs
+by 4 (`vmul` 38 vs 34, `vfp_other` 15 vs 19), no class is unique to either side,
+first divergence at instruction 5. Keep the claim `NOT MATCHED`; the next
+experiment is an operand-level diff of the out[12..15] block.
+
+Committed: `100744d`. Autopilot is ON (`python -m nova3_team.autopilot status`),
+worker service and timer active; this session kept working locally rather than
+waiting for the queue.
+
+## 2026-11-02 (earlier) — ELF↔source correspondence done; build configuration recovered
 
 Read this first, then `STATUS.md`, `NEXT.md`,
 `docs/progress/SOURCE_CORRESPONDENCE.md`, `docs/decisions/{ARCHITECTURE,BLOCKERS}.md`.

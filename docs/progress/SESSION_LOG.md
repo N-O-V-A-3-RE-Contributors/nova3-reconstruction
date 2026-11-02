@@ -786,3 +786,17 @@ flight when this note was written; the outcome is appended below.
   and the real `operator*`/`getInverse` bodies from the tree. Not implemented yet.
 - Commit `1d3c38f` (tooling) ; no originals modified, nothing uploaded, no
   packages installed.
+
+## 2026-11-03 (early) — getInverse unit
+
+- Read the recovered build switches out of the binary (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+  defined, `GLITCH_FAST_MATH` not, tolerance literal 1e-8 at 0xebe08).
+- Wrote `collada_matrix4_inverse.cpp` (Cramer's rule, 16 cofactors, scaling loop)
+  and a 7-group behaviour test; ctest 40/40. Two host-compile fixes: CMatrix4 has
+  no default constructor (tests construct through the recovered ctor), and the
+  NDK r8e ARM toolchain has no <cmath>, so `__builtin_fabs` is used.
+- GCC 4.4.3 sweep: 336/420 configurations compiled, 144 produce exactly 776 B;
+  none byte-equal. Window check at -O3: 776/776 B, 194/194 instructions,
+  DIFFERENT with a 4-op class delta (vmul +4, vfp_other -4) and first divergence
+  at instruction 5. Recorded NOT MATCHED; pilot tool committed.
+- Commit `100744d`.

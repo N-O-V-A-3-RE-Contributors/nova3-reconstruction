@@ -11,14 +11,14 @@ evidence), and the build configuration recovered from machine code
 
 Now, in order:
 
-1. **`getInverse` 0x000ebb08 (776 B)** — write
-   `reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp` from the
-   Cramer's-rule body at `matrix4.h:1251` (eleven double minors, `iszero(det)` with
-   tolerance `1e-8`, `ftN = T(tN)`, 16 explicit products, then the `1/det` scaling
-   loop), add a CTest behaviour target, run
-   `tools/compare/gcc443_window_check.py` with GCC 4.4.3 at
-   `-O3 -mfpu=vfpv3-d16 -mfloat-abi=softfp`. Acceptance: 776 B and the window
-   explained word by word; record `MATCHED` or the residual.
+1. **`getInverse` residual (DONE except byte match)** — IMPLEMENTED + TESTED at
+   776/776 B and 194/194 instructions; class multiset off by four
+   (candidate 38 `vmul` / 15 `vfp_other` vs reference 34 / 19), nothing unique
+   either side, first divergence at instruction 5. Reproduce with
+   `tools/compare/collada_matrix4_inverse_pilot.py`. Next attempt: dump the
+   reference and candidate operand streams side by side around the out[12..15]
+   block (the arithmetic there is the only place the four extra float multiplies
+   can come from) before changing the source; do not "fix" by adding flags.
 2. **`operator*` 0x006e7e60 (564 B)** — restate
    `collada_matrix_multiply.cpp` as the real `matrix4_ops.h` template body
    (`CMatrix4<T> mat2(EM4CONST_NOTHING)` + `rowMatrixProduct34`), then re-run

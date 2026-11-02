@@ -2,6 +2,25 @@
 
 **At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: the **Mission tab** in the DSH Web UI (or `python -m nova3_team.mission`).
 
+## getInverse reconstructed; 776-byte window measured (2026-11-03)
+
+`glitch::core::CMatrix4<float>::getInverse` (0x000ebb08, 776 B) is now
+IMPLEMENTED (`reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp`)
+and TESTED (7 groups, ctest now 40/40), closing the last dangling dependency of
+`collada_skin_cache_deps.h`. The body is Cramer's rule with eleven float minors
+widened to double, the measured `1e-08` determinant tolerance, 16 explicit
+cofactor outputs and the non-fast-math `1/det` scaling loop; no identity-flag
+branch, consistent with `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` being defined.
+
+ARM measurement with NDK r8e GCC 4.4.3 (`-O3 -mfpu=vfpv3-d16
+-mfloat-abi=softfp`, `tools/compare/collada_matrix4_inverse_pilot.py`):
+**776/776 bytes and 194/194 instructions**, but the class multiset differs by
+exactly four (candidate 38 `vmul` vs 34, 15 `vfp_other` vs 19; nothing unique on
+either side; first divergence at instruction 5). Window status: **DIFFERENT →
+NOT MATCHED** — recorded as such, `source_matching_verified=false`. This is a
+size- and shape-identical candidate with a four-operation scheduling/expression
+residual, not a byte match.
+
 ## ELF source correspondence and build configuration (2026-11-02, latest)
 
 Full-function correspondence now exists: 39,452 Premium `.symtab` functions
