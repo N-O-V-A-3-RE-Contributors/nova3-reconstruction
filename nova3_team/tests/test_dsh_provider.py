@@ -291,6 +291,35 @@ class PolicyTests(unittest.TestCase):
                           'BLOCKED', 'COMPLETE'})
 
 
+class OpenRequestTests(unittest.TestCase):
+    """The status surface must show what is needed NOW, not a growing history."""
+
+    def test_new_request_supersedes_the_same_kind_and_task(self):
+        import time
+        from nova3_team import dsh_supervisor as sup
+        with tempfile.TemporaryDirectory() as folder:
+            held = {}
+
+            class Fake(sup.DshSupervisor):
+                def __init__(self):
+                    self.slot = 'test'
+                    self.paths = type('P', (), {'state': pathlib.Path(folder)})()
+
+            supervisor = Fake()
+            supervisor._request('approval', '#1,#2 need review', 'approve them', task='planner')
+            supervisor._request('credits', 'quota', 'top up', task='7')
+            supervisor._request('approval', '#3,#4 need review', 'approve them', task='planner')
+            current = json.loads((pathlib.Path(folder) / 'requests.open.json').read_text())
+            self.assertEqual(len(current), 2)
+            approvals = [r for r in current if r['kind'] == 'approval']
+            self.assertEqual(len(approvals), 1)
+            self.assertIn('#3,#4', approvals[0]['detail'])       # newest wins
+            history = (pathlib.Path(folder) / 'requests.jsonl').read_text().splitlines()
+            self.assertEqual(len(history), 3)                     # history is kept
+            supervisor._update_open_requests(None, clear=True)
+            self.assertEqual(json.loads((pathlib.Path(folder) / 'requests.open.json').read_text()), [])
+
+
 class PublishIsNotASessionTests(unittest.TestCase):
     """A verified commit that fails to push must not burn the task's budget."""
 

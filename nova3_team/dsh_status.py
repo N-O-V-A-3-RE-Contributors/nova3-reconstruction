@@ -65,7 +65,10 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
     state = _read_json(state_file)
     ledger = dsh_policy.SpendLedger(paths.state / 'spend.jsonl')
     balance = _openrouter_balance()
-    requests = _requests(paths.state / 'requests.jsonl')
+    open_path = paths.state / 'requests.open.json'
+    requests = _read_list(open_path)
+    if not open_path.exists():
+        requests = _requests(paths.state / 'requests.jsonl')
     last = state.get('last_outcome') or {}
     task = state.get('task') or {}
     return {
@@ -89,6 +92,14 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
         'balance': balance,
         'state_file': str(state_file),
     }
+
+
+def _read_list(path: pathlib.Path) -> list:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 def _requests(path: pathlib.Path, limit: int = 6) -> list:

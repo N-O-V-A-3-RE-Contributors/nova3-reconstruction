@@ -384,6 +384,9 @@ class DshSupervisor:
 
     def cycle(self) -> None:
         self.state.save(cycle_errors=0)
+        if (self.state.load().get('state') or dsh_policy.RUNNING) == dsh_policy.RUNNING:
+            if _read_json_list(self.paths.state / 'requests.open.json'):
+                self._update_open_requests(None, clear=True)
         issues = self._issues()
         our = self._our_task(issues)
         if our is not None:
@@ -750,6 +753,14 @@ class DshSupervisor:
     # -- human requests ------------------------------------------------------
     def _request(self, kind: str, detail: str, action: str, risk: str = '',
                  task: str | None = None) -> None:
+        """Append an actionable request AND maintain the current open set.
+
+        requests.jsonl is the append-only history. requests.open.json is what an
+        operator should see NOW: a fast-advancing condition (like the newest
+        proposal numbers) supersedes its own previous entry instead of piling
+        up, so the status page and `dsh_status` never show work that was
+        already done. Entries are cleared when the state that caused them ends.
+        """
         path = self.paths.state / 'requests.jsonl'
         record = {'at': int(time.time()), 'kind': kind, 'task': task,
                   'detail': detail[:800], 'action': action[:800], 'risk': risk[:400],
@@ -761,8 +772,39 @@ class DshSupervisor:
             os.chmod(path, 0o600)
         except OSError:
             pass
+        self._update_open_requests(record)
         _log(f'ACTION REQUIRED ({kind})' + (f' for #{task}' if task else '')
              + f': {action} -- {detail}')
+
+    def _update_open_requests(self, record: dict | None, *, clear: bool = False) -> None:
+        path = self.paths.state / 'requests.open.json'
+        try:
+            if clear:
+                open_set = []
+            else:
+                open_set = _read_json_list(path)
+                open_set = [r for r in open_set
+                            if not (r.get('kind') == record.get('kind')
+                                    and str(r.get('task')) == str(record.get('task')))]
+                open_set.append(record)
+            path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = path.with_name(path.name + '.tmp')
+            with open(tmp, 'w', encoding='utf-8') as handle:
+                json.dump(open_set[-8:], handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp, path)
+            os.chmod(path, 0o600)
+        except OSError:
+            pass
+
+
+def _read_json_list(path: pathlib.Path) -> list:
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
+    except (OSError, ValueError):
+        return []
 
 
 def _head(path: pathlib.Path, limit: int = 9000) -> str:
