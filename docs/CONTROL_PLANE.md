@@ -109,3 +109,37 @@ arrives:
 
 Nothing in this hold affects the contributor release: the worker loop, the
 owner gate and the review gate are ready to use.
+
+## DSH plugin: `/nova` in any chat
+
+The repository ships a real DSH/cordis plugin at
+`dsh-plugins/nova3-control`. It registers one slash command in a DSH profile:
+
+| Command | Runs |
+| --- | --- |
+| `/nova` or `/nova status` | `nova3_team.dsh_status` (worker, queue, open requests) |
+| `/nova eta` | `nova3_team.analysis` (inventory, coverage, ETA scenarios) |
+| `/nova review <pr>` | `nova3_team.review` (read-only compliance verdict) |
+| `/nova fleet [task]` | `nova3_team.fleet` (model/host routing) |
+| `/nova toolchain [tier]` | `dsh_loop.toolchain --plan` (per-OS tool plan) |
+
+It is read-only: every subcommand is one of the audited CLIs above, and it never
+merges, labels or reads credentials.
+
+Install into a profile (a local checkout works; a published package is not
+required):
+
+```bash
+# 1) make the package resolvable in the profile
+ln -s "$PWD/dsh-plugins/nova3-control" \
+  "${DSH_HOME:-$HOME/.local/share/nova3-dsh/data}/profiles/web/node_modules/@nova3/dsh-control"
+# 2) add the loader row to that profile's cordis.patch.yml
+#    - insert:
+#        - id: nova3-control
+#          name: '@nova3/dsh-control'
+#          config: { repo: /absolute/path/to/nova3_re }
+```
+
+`dsh --profile web --dump-config` must show `id: nova3-control`. The plugin loads
+when that profile next boots; restarting the live web profile ends the current
+chat session, so do it when convenient (a reboot does it too).

@@ -1,0 +1,15 @@
+{
+  "name": "@nova3/dsh-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NOVA3 owner control plane as a DSH slash command (/nova status|eta|review|fleet|toolchain)",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-commands": "0.2.1-rc.5"
+  },
+  "license": "MIT"
+}
