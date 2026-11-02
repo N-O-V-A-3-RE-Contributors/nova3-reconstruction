@@ -271,8 +271,8 @@ window.__ModuleLoader__.load({
                 agent.running
                   ? ("agent " + (agent.provider || "?") + "/" + (agent.model || "?") +
                      " · " + num(agent.steps) + " steps · " + num(agent.tool_calls) +
-                     " tool calls · last event " + ago(agent.last_event_age_s == null
-                       ? null : Math.round(Date.now() / 1000 - agent.last_event_age_s) * 1000) + " ago")
+                     " tool calls" + (agent.last_event_age_s == null ? "" :
+                       " · last event " + ago(Math.round(Date.now() / 1000 - agent.last_event_age_s))))
                   : "agent idle — the supervisor is between sessions"),
             ]),
             h(Card, { key: "e", label: "elapsed" }, [
