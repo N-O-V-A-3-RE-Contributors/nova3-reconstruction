@@ -301,8 +301,10 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
                                            dsh_policy.Context(task='planner', budget=budget)).state,
                          dsh_policy.BACKOFF)
+        # The per-task cap is a separate guard; this test isolates the hourly
+        # cap, so the task string differs from the ledger's history.
         self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
-                                           dsh_policy.Context(task='planner', budget=budget,
+                                           dsh_policy.Context(task='fresh-task', budget=budget,
                                                               budget_consent=True,
                                                               control_dir=None)).state,
                          dsh_policy.RUNNING)
