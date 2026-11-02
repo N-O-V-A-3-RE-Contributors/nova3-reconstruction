@@ -123,8 +123,7 @@ def _linked_issue(body: str) -> int | None:
         match = re.search(pattern, str(body or ''))
         if match:
             return int(match.group(1))
-    match = re.search(r'#(\d+)', str(body or ''))
-    return int(match.group(1)) if match else None
+    return None
 
 
 def review(repo: str, pr: int, *, owner_override: bool = False) -> dict:
@@ -140,8 +139,14 @@ def review(repo: str, pr: int, *, owner_override: bool = False) -> dict:
         issue = json.loads(_gh(['api', f'repos/{repo}/issues/{number}']))
         issue_body = issue.get('body') or ''
     diff = _gh(['pr', 'diff', str(pr), '--repo', repo]) if not owner_override else ''
-    findings = findings_for(files=files, diff=diff, issue_body=issue_body,
-                            issue_number=number)
+    if number is None:
+        findings = [{'id': 'missing_linked_task', 'severity': 'blocker',
+                     'problem': 'the PR does not say which task it closes '
+                                '(Closes/Fixes/Resolves #N)',
+                     'fix': 'link the scoped issue the work belongs to'}]
+    else:
+        findings = findings_for(files=files, diff=diff, issue_body=issue_body,
+                                issue_number=number)
     if owner_override:
         findings = [f for f in findings if f['id'] not in ('outside_allowed_paths',)]
     verdict = 'pass' if not findings else 'needs_changes'
