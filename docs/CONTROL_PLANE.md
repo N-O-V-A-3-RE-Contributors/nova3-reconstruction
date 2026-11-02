@@ -107,3 +107,32 @@ ln -s "$PWD/dsh-plugins/nova3-control" \
 ```
 
 `dsh --profile web --dump-config` must show `id: nova3-control`. The plugin loads when that profile next boots; restarting the live web profile ends the current chat session, so do it when convenient (a reboot does it too).
+
+## Autopilot (owner grant, for unattended progress)
+
+By default the planner proposes and an owner/admin approves. **Autopilot** is the
+owner's explicit, time-boxed switch that lets a background timer approve safe
+proposals itself, so the worker keeps moving without a human in the loop.
+
+```bash
+python -m nova3_team.autopilot enable --hours 24 --max-tasks 6   # verifies live ADMIN
+python -m nova3_team.autopilot status
+python -m nova3_team.autopilot off                               # kill switch
+systemctl --user stop nova3-autopilot.timer                      # belt and braces
+```
+
+What it will and will not do:
+
+* **Will** approve only planner proposals (`NOVA3_DSH_PLANNER_PROPOSAL` marker)
+  whose `Allowed paths` stay inside the safe source trees, writing a normal
+  approval record plus `nova:queued` and the locator — the same gate still
+  verifies it at claim time.
+* **Will not** touch protected trees, binaries, credentials, CI or the queue
+  contract; will not merge, extend its own grant, or act after expiry/budget.
+* Every decision is appended to
+  `~/.cache/nova3-team/<repo>/autopilot/audit.jsonl`.
+
+`nova3-autopilot.timer` runs every 10 minutes (at most two approvals per tick).
+The grant is a 0600 file in the same cache directory; the CLI refuses to create
+one unless the authenticated account is a repository ADMIN. Deleting the file or
+running `off` stops it immediately.

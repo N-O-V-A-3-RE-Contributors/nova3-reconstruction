@@ -1,0 +1,16 @@
+# NOVA3 autopilot: act on the owner's time-boxed grant. One timer tick = at
+# most two approvals; the grant's own max_tasks/expiry stop it. Nothing here
+# can approve outside the safe source paths, merge, or extend the grant.
+[Unit]
+Description=NOVA3 autopilot (owner-granted, time-boxed)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/nova3_re
+Environment=PYTHONPATH=%h/Projects/nova3_re
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+ExecStart=/usr/bin/python3 -m nova3_team.autopilot run --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction
+TimeoutStartSec=180
+Nice=10
