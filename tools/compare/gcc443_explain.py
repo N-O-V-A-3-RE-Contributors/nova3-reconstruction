@@ -32,13 +32,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from elftools.elf.elffile import ELFFile  # noqa: E402
-import capstone  # noqa: E402
+# pyelftools and capstone are OPTIONAL for importing this module: the opcode
+# classifier is pure Python and is unit-tested on machines (and CI runners)
+# where neither library is installed. Import them where they are used.
 
 from nova3_team.object_compare import candidate_window  # noqa: E402
 
 
 def original_window(path: Path, address: int, size: int) -> bytes:
+    from elftools.elf.elffile import ELFFile
+
     with path.open("rb") as handle:
         elf = ELFFile(handle)
         for section in elf.iter_sections():
@@ -50,6 +53,8 @@ def original_window(path: Path, address: int, size: int) -> bytes:
 
 
 def disasm(code: bytes, address: int, thumb: bool):
+    import capstone
+
     mode = capstone.CS_MODE_THUMB if thumb else capstone.CS_MODE_ARM
     md = capstone.Cs(capstone.CS_ARCH_ARM, mode | capstone.CS_MODE_LITTLE_ENDIAN)
     return list(md.disasm(code, address))
@@ -189,6 +194,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def local_size(reference: Path, address: int, obj: bytes, symbol: str) -> int:
     """Size of the original function from its .symtab (authoritative bound)."""
+    from elftools.elf.elffile import ELFFile
+
     with reference.open("rb") as handle:
         elf = ELFFile(handle)
         symtab = elf.get_section_by_name(".symtab")
