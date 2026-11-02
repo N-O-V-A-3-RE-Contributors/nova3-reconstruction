@@ -55,7 +55,7 @@ Owner-supplied input: `/home/jason/Downloads/NOVA3_DEV_SOURCECODE.zip`
   (131,126 files, 11,670 folders). Solid archive, LZMA + BCJ + 7zAES.
 * **Do not extract the whole 39 GB** (the disk had ~31 GiB free). The source
   subset was materialised to the ignored local tree
-  **`reference/nova3_source/`** (595 MiB, 40,820 files) using include patterns
+  **`reference/nova3_source/`** (618 MiB, 41,955 files) using include patterns
   for `NOVA3/trunk/{src,prj,docs,tools,build,lib}`, project files and all
   source/header/shader/Java/C# extensions. The rest is assets (`data/game`,
   `.svn` pristine copies, Windows binaries) and is not needed for the first

@@ -15,9 +15,9 @@
   "source_reference": {
     "present": true,
     "path": "reference/nova3_source",
-    "files": 40820,
-    "bytes": 624190786,
-    "manifest_sha256": "a2193bc775e0dd44e886db8a4687a307010a6591dda8c76ac059403184a2d031",
+    "files": 41955,
+    "bytes": 648489917,
+    "manifest_sha256": "7aabaf922b06fb024d529cc424066a8893dc7c016f3d635afc880beb3350b066",
     "elf_source_paths_resolved": 808,
     "elf_source_paths_present": 783,
     "elf_source_paths_present_ratio": 0.969059405940594,
