@@ -28,8 +28,13 @@ Description=NOVA3 DSH autonomous reconstruction supervisor
 Documentation=file:%h/Projects/nova3_re/docs/DSH_WORKER.md
 Wants=network-online.target
 After=network-online.target
-StartLimitIntervalSec=1800
-StartLimitBurst=8
+# A crash loop backs off instead of spinning -- but a start-limit-hit also
+# blocks a MANUAL `systemctl start`, which is a recovery trap (see the old
+# worker's RestartPreventExitStatus=3). Keep the automatic burst small and rely
+# on RestartSec for pacing; recovery instructions include reset-failed because
+# a limit hit always needs it.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -55,7 +60,7 @@ Environment=NOVA3_DSH_TOKENS_PER_DAY=6000000
 ExecStart=/usr/bin/python3 -u -m nova3_team.dsh_supervisor run --slot dsh --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction
 
 Restart=on-failure
-RestartSec=30
+RestartSec=60
 TimeoutStopSec=240
 KillMode=mixed
 # Resource envelope for a 4-core / ~8 GiB machine: one AI session plus its

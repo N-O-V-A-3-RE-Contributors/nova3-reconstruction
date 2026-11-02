@@ -306,7 +306,8 @@ class DshSupervisor:
         except Exception:
             pass
 
-    def _wait(self, seconds: int, why: str) -> None:
+    def _wait(self, seconds: int, why: str) -> str:
+        """Sleep, watching the control files. Returns 'elapsed' | 'resume' | 'stop'."""
         seconds = max(0, int(seconds))
         self.state.save(next_check_unix=int(time.time()) + seconds, wait_reason=why)
         _log(f'{why}; next check in {seconds}s (state is durable; no restart needed)')
@@ -314,17 +315,18 @@ class DshSupervisor:
         control = self.paths.state / 'control'
         while time.time() < end:
             if self.stop_signal:
-                return
+                return 'stop'
             if dsh_policy.stop_requested(control):
-                return
+                return 'stop'
             if dsh_policy.resume_requested(control):
                 _log('RESUME file found; rechecking now')
                 try:
                     (control / 'RESUME').unlink()
                 except OSError:
                     pass
-                return
+                return 'resume'
             time.sleep(min(15, max(1, end - time.time())))
+        return 'elapsed'
 
     # -- the loop ------------------------------------------------------------
     def run(self) -> int:
@@ -348,8 +350,8 @@ class DshSupervisor:
                         continue
                 if current == dsh_policy.COMPLETE:
                     # IDLE, not an exit: exiting here would be restarted by the
-                    # unit forever. The state is cleared only by RESUME, by a
-                    # human approving work, or by new evidence appearing.
+                    # unit forever. Loop back into this same branch so the wait,
+                    # RESUME handling and work detection live in one place.
                     self._idle_complete(state)
                     continue
                 if current == dsh_policy.BLOCKED:
@@ -414,34 +416,33 @@ class DshSupervisor:
         _log('no claimable task; polling the coordinator queue')
 
     def _idle_complete(self, state: dict) -> None:
-        """Wait in COMPLETE, watching for work that a human or schedule adds."""
+        """Wait in COMPLETE, watching for work that a human or schedule adds.
+
+        `_wait` returns early on RESUME and only then, so a RESUME found here is
+        an explicit human instruction to re-check now.
+        """
         if self.stop_signal:
             return
         control = self.paths.state / 'control'
         if dsh_policy.stop_requested(control):
             self._wait(COMPLETE_IDLE_S, 'COMPLETE; STOP file present')
             return
-        if dsh_policy.resume_requested(control):
-            try:
-                (control / 'RESUME').unlink()
-            except OSError:
-                pass
-            # An explicit human request beats a planner verdict: leave COMPLETE,
-            # run a full cycle (queue first, then one fresh planning pass), and
-            # let that cycle decide whether COMPLETE still holds.
-            _log('RESUME found; leaving COMPLETE for one full cycle')
-            self.state.save(state=dsh_policy.RUNNING, reason='operator resume',
-                            complete_settles=0, resume_requested=int(time.time()))
+        woke = self._wait(COMPLETE_IDLE_S, 'COMPLETE: no queued or plannable work remains '
+                                            '(idle; RESUME or new work resumes it)')
+        if woke != 'resume':
             return
+        # An explicit human request beats a planner verdict: leave COMPLETE, run
+        # a full cycle (queue first, then one fresh planning pass) and let that
+        # cycle decide whether COMPLETE still holds.
+        _log('RESUME: leaving COMPLETE for one full cycle')
+        self.state.save(state=dsh_policy.RUNNING, reason='operator resume',
+                        complete_settles=0, resume_requested=int(time.time()))
         try:
             if self._approved_and_awaiting_claim({'proposed': [1]}):
                 _log('queued work appeared; leaving COMPLETE')
                 self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
-                return
         except Exception:
             pass
-        self._wait(COMPLETE_IDLE_S, 'COMPLETE: no queued or plannable work remains '
-                                    '(idle; RESUME or new work resumes it)')
 
     def _approved_and_awaiting_claim(self, state: dict) -> int | None:
         """Count runnable tasks when a wait state is waiting on the human.
