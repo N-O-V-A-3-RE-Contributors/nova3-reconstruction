@@ -51,6 +51,11 @@ PATH_RE = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_./-]{2,180}$')
 PROPOSAL_MARKER = '<!-- NOVA3_DSH_PLANNER_PROPOSAL:'
 PROPOSAL_MARKER_RE = re.compile(PROPOSAL_MARKER + r'([0-9a-f]{16}) -->')
 MAX_PROPOSALS = 3
+# A planner session may only run when fewer than this many of ITS OWN proposals
+# are still waiting for an owner decision. Each session costs roughly 20-40k
+# tokens, so planning into a decision backlog is pure waste: the answer cannot
+# change until a human acts. 0 disables the cap (explicit opt-in).
+DEFAULT_MAX_PENDING_PROPOSALS = 1
 
 
 @dataclass(frozen=True)
@@ -74,6 +79,30 @@ class LedgerView:
     note: str = ''
 
 
+def is_proposal(issue) -> bool:
+    """A planner proposal: filed by the planner, deliberately unlabelled."""
+    return bool(PROPOSAL_MARKER_RE.search(issue.get('body') or ''))
+
+
+def pending_proposals(issues) -> list:
+    """Proposals still awaiting an owner decision: open AND not queue-labelled.
+
+    Once a human applies the queue label (with owner approval) the proposal has
+    become work and no longer blocks planning; once it is closed it has been
+    rejected (deduplication keeps its title/objective in the history).
+    """
+    out = []
+    for issue in issues:
+        if (issue.get('state') or 'open') != 'open' or issue.get('pull_request'):
+            continue
+        if not is_proposal(issue):
+            continue
+        if {'nova:queued', 'nova:claimed', 'nova:review', 'nova:blocked'} & _labels(issue):
+            continue
+        out.append(issue.get('number'))
+    return sorted(n for n in out if n)
+
+
 @dataclass(frozen=True)
 class Assessment:
     queue: QueueView
@@ -81,9 +110,17 @@ class Assessment:
     checkpoints: int
     last_outcome: str
     evidence: tuple = field(default=())
+    pending: tuple = ()                     # proposals awaiting an owner decision
+    max_pending: int = DEFAULT_MAX_PENDING_PROPOSALS
+
+    @property
+    def proposal_suppressed(self) -> bool:
+        """Planning would produce a duplicate of an answer a human still owes."""
+        return bool(self.max_pending) and len(self.pending) >= self.max_pending
 
     def needs_planning(self) -> bool:
-        return self.queue.queue_low
+        """Plan only when the queue is thin AND no decision is outstanding."""
+        return self.queue.queue_low and not self.proposal_suppressed
 
     def as_dict(self) -> dict:
         return {
@@ -98,6 +135,9 @@ class Assessment:
             'checkpoints': self.checkpoints,
             'last_outcome': self.last_outcome,
             'needs_planning': self.needs_planning(),
+            'pending_proposals': list(self.pending),
+            'pending_proposal_count': len(self.pending),
+            'proposal_suppressed': self.proposal_suppressed,
             'evidence': list(self.evidence),
         }
 
@@ -107,7 +147,8 @@ def _labels(issue) -> set:
 
 
 def assess(*, issues, ledger_root: pathlib.Path, checkpoint_root: pathlib.Path,
-           spend_records=(), low_watermark: int = QUEUE_LOW_WATERMARK) -> Assessment:
+           spend_records=(), low_watermark: int = QUEUE_LOW_WATERMARK,
+           max_pending: int = DEFAULT_MAX_PENDING_PROPOSALS) -> Assessment:
     """Deterministic, offline view of what work exists and what evidence exists."""
     queued, claimed, review, blocked, open_prs = [], [], [], [], []
     keys = {}
@@ -152,14 +193,18 @@ def assess(*, issues, ledger_root: pathlib.Path, checkpoint_root: pathlib.Path,
         if record.get('status'):
             last = f"{record.get('status')} task={record.get('task')}"
             break
+    pending = tuple(pending_proposals(issues))
     evidence = (
         f'queue: {runnable} runnable of {len(queued)} queued, {len(claimed)} claimed, '
         f'{len(review)} in review, {len(blocked)} blocked',
         f'ledger: {ledger_view.total} entries, {ledger_view.unassigned} unassigned',
         f'checkpoints: {checkpoints} durable task records',
         f'last session: {last or "none"}',
+        (f'proposals awaiting owner decision: {len(pending)}'
+         + (f' ({", ".join("#" + str(n) for n in pending[:8])})' if pending else '')),
     )
-    return Assessment(queue, ledger_view, checkpoints, last, evidence)
+    return Assessment(queue, ledger_view, checkpoints, last, evidence,
+                      pending, int(max_pending))
 
 
 def _ledger_view(root: pathlib.Path) -> LedgerView:

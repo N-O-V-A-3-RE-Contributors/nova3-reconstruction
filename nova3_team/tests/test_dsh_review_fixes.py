@@ -16,7 +16,7 @@ import time
 import unittest
 from unittest import mock
 
-from nova3_team import dsh_policy, dsh_runtime, worker
+from nova3_team import dsh_planner, dsh_policy, dsh_runtime, worker
 from nova3_team.common import lease_put
 
 
@@ -383,6 +383,46 @@ class SpendAccountingTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # P1: control-plane semantics (plan-only, requests, completion, fallback)
 # ---------------------------------------------------------------------------
+
+class ProposalSuppressionTests(unittest.TestCase):
+    """No planner session while its own proposals still await a human."""
+
+    def _issue(self, number, body, labels=(), state='open'):
+        return {'number': number, 'state': state, 'labels': [{'name': l} for l in labels],
+                'body': body}
+
+    def test_pending_proposal_blocks_planning(self):
+        marker = '<!-- NOVA3_DSH_PLANNER_PROPOSAL:0123456789abcdef -->'
+        issues = [self._issue(163, marker), self._issue(164, marker)]
+        with tempfile.TemporaryDirectory() as folder:
+            view = dsh_planner.assess(issues=issues, ledger_root=pathlib.Path(folder),
+                                      checkpoint_root=pathlib.Path(folder))
+        self.assertEqual(view.pending, (163, 164))
+        self.assertTrue(view.proposal_suppressed)
+        self.assertFalse(view.needs_planning(), 'a decision backlog suppresses planning')
+
+    def test_approved_or_rejected_proposals_no_longer_block(self):
+        marker = '<!-- NOVA3_DSH_PLANNER_PROPOSAL:0123456789abcdef -->'
+        issues = [
+            self._issue(163, marker, labels=['nova:queued']),    # approved into the queue
+            self._issue(164, marker, state='closed'),            # rejected
+            self._issue(165, 'ordinary task, no marker'),
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            view = dsh_planner.assess(issues=issues, ledger_root=pathlib.Path(folder),
+                                      checkpoint_root=pathlib.Path(folder))
+        self.assertEqual(view.pending, ())
+        self.assertTrue(view.needs_planning())
+
+    def test_cap_is_configurable_and_zero_disables_it(self):
+        marker = '<!-- NOVA3_DSH_PLANNER_PROPOSAL:0123456789abcdef -->'
+        issues = [self._issue(163, marker)]
+        with tempfile.TemporaryDirectory() as folder:
+            view = dsh_planner.assess(issues=issues, ledger_root=pathlib.Path(folder),
+                                      checkpoint_root=pathlib.Path(folder), max_pending=0)
+        self.assertFalse(view.proposal_suppressed)
+        self.assertTrue(view.needs_planning())
+
 
 class ControlPlaneTests(unittest.TestCase):
     def test_plan_only_never_runs_a_task(self):

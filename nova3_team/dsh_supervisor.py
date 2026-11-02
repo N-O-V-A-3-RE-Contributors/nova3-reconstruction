@@ -274,9 +274,15 @@ class DshSupervisor:
         return list(self.gh.issues())
 
     def _assessment(self) -> dsh_planner.Assessment:
+        try:
+            max_pending = int(os.environ.get('NOVA3_DSH_MAX_PENDING_PROPOSALS',
+                                             dsh_planner.DEFAULT_MAX_PENDING_PROPOSALS))
+        except ValueError:
+            max_pending = dsh_planner.DEFAULT_MAX_PENDING_PROPOSALS
         return dsh_planner.assess(issues=self._issues(), ledger_root=self.project,
                                   checkpoint_root=self.paths.state / '.nova-state',
-                                  spend_records=self.ledger.records())
+                                  spend_records=self.ledger.records(),
+                                  max_pending=max(0, max_pending))
 
     def _our_task(self, issues) -> dict | None:
         number = (self.state.load().get('task') or {}).get('number')
@@ -497,6 +503,26 @@ class DshSupervisor:
         candidates = self._claimable(issues)
         if candidates:
             self.run_task(candidates[0], claim_first=True)
+            return
+        if assessment.proposal_suppressed:
+            # Planning now would spend a session to re-confirm an answer that is
+            # already waiting for a human. Stay in WAITING_APPROVAL (no session,
+            # no tokens) and check back on the normal cadence.
+            _log(f'planning suppressed: {len(assessment.pending)} proposal(s) already await an '
+                 'owner decision ' + ', '.join(f'#{n}' for n in assessment.pending[:8]))
+            self.state.save(state=dsh_policy.WAITING_APPROVAL,
+                            reason=f'{len(assessment.pending)} planner proposal(s) awaiting '
+                                   'owner decision',
+                            next_check_unix=int(time.time()) + PLAN_RECHECK_S)
+            self._request('approval',
+                          'planner proposals are waiting for a decision; planning is paused '
+                          'so no further tokens are spent proposing duplicates',
+                          ', '.join(f'#{n}' for n in assessment.pending[:8])
+                          + ' — approve each with the owner approval label plus `nova:queued`, '
+                            'or close it to reject. Planning resumes automatically once fewer '
+                            'than the cap remain.',
+                          'Nothing is approved by the planner itself; no spend while paused.',
+                          task='planner')
             return
         if not self.no_plan and assessment.needs_planning():
             self.plan()
