@@ -33,11 +33,16 @@ const MAX_BODY = 32 * 1024
 const MAX_PROMPT = 32 * 1024
 const MAX_TEXT = 400
 
-function ownerPeer() {
+function ownerPeer(signal) {
+  // The typert gateway reads the peer's abort signal; an absent one crashed the
+  // first live call with "Cannot read properties of undefined (reading
+  // 'aborted')". A never-aborting signal is the correct default for these short
+  // control calls.
   return {
     id: 'dsh-runner-owner:' + crypto.randomUUID(),
     principal: { kind: 'owner' },
     interactions: 'none',
+    signal: signal || new AbortController().signal,
     dispose: async () => {},
   }
 }
@@ -98,9 +103,19 @@ export function apply(ctx, config = {}) {
   const gateway = ctx.typertGateway
   if (!gateway) throw new Error('dsh-runner: this composition mounts no typert gateway')
 
-  const call = async (namespace, method, request) => gateway.invoke({
-    namespace, method, args: { request }, peer: ownerPeer(),
-  })
+  const call = async (namespace, method, request) => {
+    try {
+      return await gateway.invoke({
+        namespace, method, args: { request }, peer: ownerPeer(ctx.signal),
+      })
+    } catch (error) {
+      // Name the failing verb: a bare "runner_failed" hid a bad peer signal for
+      // an entire debugging cycle.
+      throw Object.assign(
+        new Error(`${namespace}.${method}: ${error?.message || error}`),
+        { code: 'GATEWAY_ERROR' })
+    }
+  }
 
   const permission = async (sessionId, level) => {
     const commands = ctx.get?.('commands')

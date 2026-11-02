@@ -386,7 +386,7 @@ class DshSupervisor:
                               str((state_now.get('task') or {}).get('number')) == str(task)
                               else state_now.get('task')))
         if decision.request:
-            self._request(**decision.request, task=task)
+            self._request(**{**decision.request, 'task': task})
         return False
 
     def _wait(self, seconds: int, why: str) -> str:
@@ -746,7 +746,7 @@ class DshSupervisor:
                         ok_with_inactive_lease=ok_inactive,
                         last_decision=decision.as_dict())
         if decision.request:
-            self._request(**decision.request, task=str(number))
+            self._request(**{**decision.request, 'task': str(number)})
         if decision.state in (dsh_policy.BLOCKED, dsh_policy.WAITING_CREDITS) \
                 or not decision.retry_same_task:
             self.state.save(task=None)
@@ -1011,7 +1011,7 @@ class DshSupervisor:
                             next_check_unix=int(time.time()) + delay,
                             last_outcome=outcome.summary())
             if decision.request:
-                self._request(**decision.request, task='planner')
+                self._request(**{**decision.request, 'task': 'planner'})
             return
         self.state.save(resume_requested=None)   # consumed by this pass
         proposals, bad = dsh_planner.parse_proposals(_final_text(outcome),
