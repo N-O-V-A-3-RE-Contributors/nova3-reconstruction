@@ -96,3 +96,60 @@ capability this session was granted.
 Stage2: all sampled mesh and complete texture-container tests pass within documented subsets. Next rendering dependencies are original ETC1 pixel conversion, alpha-mode/material/shader semantics, scene transforms and attribute binding. No Android device/game APK or gameplay validation exists. Agent account quota interrupted an independent review; lead inspected and continued; no replacement agents were spawned.
 
 Resolved missing outer shader/effect filename lead: source-decoded effects.gla contains NV_DiffuseVC.bdae and shader references. Outer absence did not mean missing content. Actual remaining blocker for faithful first frame is effect technique/parameter parsing, shader semantic/normalization binding, samplers and scene/camera transforms. Generic resource mounts do not yet include source SB readers; inspect custom filesystem precedence.19other .gla variants and SDIR/descriptor handling remain unsupported.
+
+## B-2026-11-02 — the DSH worker's code exists only in this checkout, not on GitHub
+
+**Blocked:** cutting over from `nova3-worker.service` (Codex) to
+`nova3-dsh-worker.service` (DSH) in a way that *persists across a reboot*.
+
+**Evidence.** After two commits (`9f7d6d2`, `d575231`),
+`git status -sb` reports `main...origin/main [ahead 2]`. Those commits touch
+`nova3_team/*.py`, `tools/systemd/*` and `docs/`, all of which CI would run and
+the coordinator would see — but none of them is on `origin/main` yet. The old
+worker's upgrade path (`3563606 worker: refresh AGENTS.md and progress docs from
+main on every start`) is **not** the solution, because the tooling it would
+have to restock is exactly the thing missing from `main`. Doing that cutover
+now would leave the enabled unit failing to import `nova3_team.dsh_supervisor`
+at the next reboot, producing precisely the restart loop the migration is meant
+to remove.
+
+**Why a GitHub link was not simply used.** `git remote -v` is
+`https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction.git`, so
+`git push` authenticates as **jason**, not as the worker's pinned GitHub account
+`crjase`. The worker's own PR path authenticates with `gh` (logged in as
+`crjase`, scopes `repo, workflow`) to the **upstream** repository and pushes the
+`nova/issue-N-…` branch with plain `git`, which is why every historical worker
+PR exists while this checkout itself is divergent: the maintainer merges GitHub
+side branches locally. Nothing in this session's remit authorises inventing a
+new push path with an identity the operator did not name.
+
+**Also observed, not blocking.** `nova-ci.yml` has no `workflow_dispatch`, so CI
+can only be triggered by a real push or PR; the committed tree was verified
+locally instead with `worker.verify()` on a clean clone (4 commands, all exit 0,
+CTest 39/39, 1094 unit tests).
+
+**Actionable request (the exact commands, run as the repository owner):**
+
+```bash
+cd ~/Projects/nova3_re
+gh pr create --base main --head <branch> ...          # OR, simplest:
+git push git@github.com:N-O-V-A-3-RE-Contributors/nova3-reconstruction.git \
+    HEAD:refs/heads/nova/dsh-execution-provider
+# then open a PR from nova/dsh-execution-provider into main
+```
+
+**Reason:** a new execution engine is permanent infrastructure and should
+reach `main` through a reviewed PR, not a local-only commit.
+
+**Risk:** none to the running system — the Codex worker keeps its unit and its
+state; the DSH worker is additionally enabled and idling on an empty queue.
+**Rollback:** `tools/systemd/rollback-to-codex.sh` (nothing is deleted).
+
+**Until this is resolved:** the DSH supervisor runs from this checkout and has
+verified its complete loop against the live queue, but **the cutover (stopping
+the Codex unit) is deliberately not done in this session**, because a
+half-migrated pair of workers is worse than one working worker. If the
+operator prefers a local-only cutover that assumes this checkout persists,
+`tools/systemd/rollback-to-codex.sh` is the reverse and
+`systemctl --user stop nova3-worker.service` is the forward step — both are
+single commands and both preserve state.

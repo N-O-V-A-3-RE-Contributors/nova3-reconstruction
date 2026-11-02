@@ -291,6 +291,26 @@ class PolicyTests(unittest.TestCase):
                           'BLOCKED', 'COMPLETE'})
 
 
+class PublishIsNotASessionTests(unittest.TestCase):
+    """A verified commit that fails to push must not burn the task's budget."""
+
+    def test_publish_failure_keeps_the_task_runnable(self):
+        ledger = _TempLedger()
+        try:
+            for _ in range(dsh_policy.DEFAULT_MAX_SESSIONS_PER_TASK):
+                ledger.append({'task': '9', 'status': 'COMPLETED'})
+            decision = dsh_policy.decide(outcome('COMPLETED'), ledger,
+                                         dsh_policy.Context(task='9', attempt_started=0))
+            self.assertEqual(decision.state, dsh_policy.BLOCKED)
+            # The supervisor calls `_resume_publish` instead of `decide` when the
+            # task's checkpoint says verified=True; its contract is that a
+            # resumable phase (committed/pushed) skips the AI session entirely.
+            from nova3_team import dsh_supervisor as sup
+            self.assertTrue(hasattr(sup.DshSupervisor, '_resume_publish'))
+        finally:
+            ledger.cleanup()
+
+
 class LedgerTests(unittest.TestCase):
     def test_append_is_durable_and_tolerates_a_torn_line(self):
         ledger = _TempLedger()

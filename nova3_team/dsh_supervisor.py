@@ -42,6 +42,10 @@ from .coordinator import EvidenceUnavailable, build_gate
 
 DEFAULT_POLL_S = 90
 DEFAULT_PLAN_TIMEOUT_S = 900
+# How long to wait before planning again when proposals are already awaiting
+# review. Re-planning every poll would spend 2-3 sessions an hour on the same
+# evidence, since the queue stays empty until a human approves something.
+PLAN_RECHECK_S = 3600
 HEARTBEAT_EVERY_S = 20 * 60
 
 STATUSES = frozenset({
@@ -326,10 +330,18 @@ class DshSupervisor:
                 current = state.get('state') or dsh_policy.RUNNING
                 next_check = int(state.get('next_check_unix') or 0)
                 if current in (dsh_policy.BACKOFF, dsh_policy.WAITING_CREDITS,
-                               dsh_policy.WAITING_APPROVAL) and next_check > time.time():
-                    self._wait(next_check - time.time(),
-                               f'{current}: {state.get("reason", "")}')
-                    continue
+                               dsh_policy.WAITING_APPROVAL):
+                    pending = self._approved_and_awaiting_claim(state)
+                    if pending is not None:
+                        # The honoured WAITING state no longer describes reality:
+                        # a human approved work into the queue. Resume at once.
+                        _log(f'{pending} approved task(s) in the queue; leaving {current}')
+                        self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
+                        continue
+                    if next_check > time.time():
+                        self._wait(next_check - time.time(),
+                                   f'{current}: {state.get("reason", "")}')
+                        continue
                 if current == dsh_policy.COMPLETE:
                     _log('state COMPLETE: no queued or plannable work remains')
                     return 0
@@ -393,6 +405,24 @@ class DshSupervisor:
             return
         self.state.save(state=dsh_policy.RUNNING, reason='no claimable task; idling')
         _log('no claimable task; polling the coordinator queue')
+
+    def _approved_and_awaiting_claim(self, state: dict) -> int | None:
+        """Count runnable tasks when a wait state is waiting on the human.
+
+        Covers both cases: proposals awaiting approval (an approver may have
+        queued one) and BACKOFF (a human may have queued work while the
+        provider was failing). One cheap list call per wait cycle.
+        """
+        if not state.get('proposed') and state.get('state') != dsh_policy.BACKOFF:
+            return None
+        try:
+            runnable = [i for i in self._issues()
+                        if (i.get('state') or 'open') == 'open'
+                        and 'nova:queued' in label_names(i)
+                        and not i.get('pull_request')]
+        except Exception:
+            return None
+        return len(runnable) or None
 
     def _claimable(self, issues) -> list:
         worker = self.worker
@@ -482,6 +512,17 @@ class DshSupervisor:
                             'output_tokens': outcome.output_tokens,
                             'phase': task_state.get('phase'),
                             'result': None if result is None else bool(result)})
+        if result is not True and task_state.get('verified'):
+            # The model finished AND the independent checks passed; what failed
+            # was our own publish plumbing (push/PR/network), not the work. That
+            # must never consume the task's session budget or block the task:
+            # only a provider or work failure counts against it.
+            recovered = self._resume_publish(number, issue, task_state, result)
+            if recovered:
+                _log(f'task #{number}: publish recovered without another AI session')
+                return
+            _log(f'task #{number}: verified work is committed locally but publishing failed; '
+                 f'checkout preserved at {task_state.get("work")}')
         _log(f'task #{number}: {outcome.status} -> {decision.state} ({decision.reason})')
         self.state.save(state=decision.state, reason=decision.reason,
                         next_check_unix=int(time.time()) + decision.delay_s,
@@ -495,6 +536,33 @@ class DshSupervisor:
                 or not decision.retry_same_task:
             self.state.save(task=None)
         self._presence('REVIEW' if task_state.get('phase') == 'review' else 'ONLINE', number)
+
+    def _resume_publish(self, number: int, issue: dict, task_state: dict, error) -> bool:
+        """Retry only the publish half of `work_one` for already-verified work.
+
+        `work_one` is resumable by design: with phase `committed`/`pushed` it
+        skips the AI session entirely and repeats push -> PR -> submitted. The
+        supervisor calls it again with the same checkpoint; if the phase has
+        already reached `review` there is nothing left to do.
+        """
+        phase = task_state.get('phase')
+        if phase not in ('committed', 'pushed'):
+            return False
+        if int(self.state.load().get('publish_attempts') or 0) >= 2:
+            self._request('publish', f'verified work for #{number} cannot be published',
+                          f'Push the branch in {task_state.get("work")} manually or fix the '
+                          'credential/network error; the commits and verification are kept.',
+                          'Nothing is merged automatically either way.', task=str(number))
+            return False
+        self.state.save(publish_attempts=int(self.state.load().get('publish_attempts') or 0) + 1)
+        try:
+            self.worker.work_one(self.gh, self.upstream, self.user, issue, 'dsh',
+                                 self.paths.state, 3, self._binary_root(),
+                                 provider_status=None, gate=self.gate, guard=self.guard)
+        except Exception as exc:              # keep the original, more useful error
+            _log(f'task #{number}: publish retry failed: {_redact(exc)[:200]}')
+            return False
+        return recovery.load(self.paths.state, number).get('phase') == 'review'
 
     def _claim(self, number: int, title: str) -> str | None:
         """The exact coordinator handshake the Codex worker uses: one lease."""
@@ -541,6 +609,19 @@ class DshSupervisor:
             [i for i in issues if (i.get('state') or 'open') == 'open']) + \
             dsh_planner.issue_texts([i for i in issues if (i.get('state') or '') == 'closed'][-40:])
         rejected = list(self.state.load().get('rejected_proposals') or [])
+        # Proposals filed by this supervisor are deliberately queued WITHOUT a
+        # label so a human decides; that also makes them invisible to the open-
+        # issue text used above. Feed them back explicitly or the next pass
+        # would re-propose its own unanswered work.
+        filed = []
+        for number in self.state.load().get('proposed') or []:
+            try:
+                issue = self.gh.issue(number)
+                if (issue.get('state') or 'open') == 'open':
+                    filed.append({'title': issue.get('title') or '', 'body': issue.get('body') or ''})
+            except Exception:
+                continue
+        existing += dsh_planner.issue_texts(filed)
         overrides_file = self.project / '.local' / 'dsh-loop' / 'prompt-overrides.md'
         try:
             overrides = overrides_file.read_text(encoding='utf-8') if overrides_file.is_file() else ''
@@ -607,7 +688,7 @@ class DshSupervisor:
             return
         self.state.save(proposed=numbers, state=dsh_policy.WAITING_APPROVAL,
                         reason='planner proposals await owner approval into the queue',
-                        next_check_unix=int(time.time()) + 900)
+                        next_check_unix=int(time.time()) + PLAN_RECHECK_S)
         self._request('approval', 'planner filed new task proposals',
                       ', '.join(f'#{n}' for n in numbers)
                       + ' need owner review: apply the owner approval label plus `nova:queued` '

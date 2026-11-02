@@ -1,5 +1,43 @@
 # Next tasks
 
+## 2026-11-02 (later still) — autopilot engine
+
+Done: DSH execution provider, supervisor, planner, units (`docs/DSH_WORKER.md`).
+The first live planning pass filed **#163** (GCC 4.4.3 per-function window
+matrix) and two proposals were correctly rejected for unsafe paths.
+
+Next, in order:
+
+1. **Approve or reject #163.** It is a planner proposal with no queue label.
+   Approving it (owner approval label + `nova:queued`) makes it the first task
+   the DSH worker executes end to end; rejecting it costs nothing.
+2. Re-enable discovery once its resource guard is trusted:
+   `systemctl --user enable --now nova3-discovery.timer`. Four ELFs exist locally
+   but the last status reports only two scanned — worth one inspection pass.
+3. The GCC 4.4.3 items from the section below remain the reconstruction work
+   items; the planner now proposes them itself when the queue is empty.
+
+
+## 2026-11-02 (later) — where the GCC 4.4.3 work stands
+
+Done: constructor 0x108c54 is instruction-identical (call explained by the
+link formula); measurement tooling fixed (numeric opcode compare,
+`tools/compare/gcc443_window_check.py`).
+
+Next, in order:
+
+1. Run `gcc443_window_check.py` over every recovered function that already
+   compiles at the right size under 4.4.3 (`computePitch`, `getTransposed`,
+   the accessor cluster, `getStream`, `addOffset`, `getPrimitiveCount`,
+   `CFPSCounter`), replacing old clang numbers in STATUS with per-function
+   rows and report paths.
+2. `operator*` @0x6e7e60: only a register/allocation difference remains. Try
+   spellings that give the store's destination a live use (e.g. `T& d =
+   out[12+c]; d = b[12]*...; d += a[12];`) and `-frename-registers`; keep the
+   measured table in `.cache/gcc443-sweep/`.
+3. `getInverse` @0x000ebb08 (776 B): still unimplemented; decode from bytes.
+
+
 ## 2026-11-02 — GCC 4.4.3 is now on the machine; the match work is flag-and-spelling work
 
 Android NDK r8e was fetched (`tools/setup/fetch_gcc443.sh`,

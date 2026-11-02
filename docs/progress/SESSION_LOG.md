@@ -595,3 +595,67 @@ Verification after cleanup: `bash tools/check_all.sh` exit 0 (host CTest 39/39,
 Python 31/31), `nova3_team.guard --all` passed (627 files), `./nova3 doctor`
 15 pass / 1 warn (only the cleared index, with its fix command) / 0 fail.
 Disk free rose from 30 GB to 44 GB.
+
+## 2026-11-02 — the autopilot moved from Codex CLI execution to DeepSeek Harness
+
+**What was found before changing anything.** `nova3-worker.service` ran
+`python3 -m nova3_team.worker run --provider codex` — a direct `codex exec`
+CLI call — and carried `RestartPreventExitStatus=3`, so its deliberate
+"3 consecutive failures / 3 unclaimed" exit made systemd *stop restarting it*.
+`nova3-discovery.timer` was installed but **disabled** (last run 2026-10-30);
+the only discovery evidence is an up-to-date status file claiming
+"0 NEW functions from 2 local original ELF(s)" while `analysis/` holds four.
+`tools/dsh_loop` had already stopped with `preflight failed:
+OPENROUTER_API_KEY is not set`, and its one recorded pass was
+`AUTH: 401 User not found`. No open claims, no unmerged PRs, no running AI
+sessions, no worktrees with work. The GitHub queue was **empty**, and the
+last autofeed run said `WAITING_FOR_DISCOVERY: known functions already
+assigned`.
+
+**Root cause of "the worker does nothing".** Not a worker bug: the ledger's
+1165 functions are all covered by tasks that were already merged, discovery is
+disabled, and autofeed consequently creates nothing. A worker alone cannot
+advance the project in that state; something must *plan*.
+
+**DSH credential finding (verified, not assumed).** The shipped `headless`
+profile disables the managed credential store, so a key saved in the Web UI is
+invisible to it: a real no-op session failed with
+`MISSING_CREDENTIAL: ... route "deepseek-official"`. A `--patch` overlay that
+re-enables `credentials`/`authorization`/`deepseek-account` and declares the
+OpenRouter route makes the same session return `PONG`/`COMPLETED`. The key is
+referenced by NAME (`OPENROUTER_API_KEY`); the value stays only in
+`$DSH_HOME/.credentials.yaml`. Nothing secret was copied or printed.
+
+**Implemented** (`nova3_team/dsh_runtime.py`, `dsh_policy.py`, `dsh_planner.py`,
+`dsh_supervisor.py`, `dsh_status.py`; `worker.py` `dsh` branch;
+`provider_runtime.py` `dsh` provider; `tools/systemd/*`; `docs/DSH_WORKER.md`).
+The queue, coordinator leases, checkouts, scope guard, `verify()` and publish
+path are untouched. Commits `9f7d6d2`, `d575231`.
+
+**Verified with commands, not prose:**
+
+| Check | Result |
+| --- | --- |
+| no-op headless session through the overlay | `COMPLETED`, exit 0, session id persisted |
+| resume the same `--session-id` | `COMPLETED`, same id |
+| tool-using session in a git worktree | 3 steps, 2 tool calls, file written by the model |
+| 5 s bound on a longer task | `SESSION_TIMEOUT`, elapsed 5.8 s, killed exit status suppressed |
+| cancellation callable | `CANCELLED`, 3.3 s, no orphan `dsh-subprocess` |
+| mocked `QUOTA` failure | recorded `WAITING_CREDITS`; policy decides `WAITING_CREDITS`, **no exit** |
+| unknown `--session-id` | loud failure, no silent empty session |
+| `worker.verify()` on a clean clone of `d575231` | 4 commands, all exit 0, CTest 39/39 |
+| full unit suite | 1094 tests OK (36 new DSH tests, no runtime/network/model) |
+| `python -m nova3_team.worker providers --check-auth` | `dsh available`, credential reference present |
+
+**First real supervised cycle** (`nova3-dsh-worker.service`, slot `dsh`): queue
+empty → planner session ran in 70 s → filed proposal **#163** (a GCC 4.4.3
+per-function window matrix with acceptance criteria and a self-checking test)
+and rejected two proposals that listed `.cache/` paths. The rejections were
+correct; the second exposed a real gap (the top-level `CMakeLists.txt` was not
+an allowed path), fixed in `d575231`, together with a fix for verification
+commands being truncated to 200 characters.
+
+**Not yet done, deliberately:** the Codex unit was left running and enabled —
+two workers would race for the same leases. Cutover waits for this work to be
+on `origin/main` (see the blocker below), and the rollback path
+(`tools/systemd/rollback-to-codex.sh`) keeps every DSH checkpoint.
