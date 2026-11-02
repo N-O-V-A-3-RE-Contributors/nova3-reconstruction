@@ -33,16 +33,16 @@ const MAX_BODY = 32 * 1024
 const MAX_PROMPT = 32 * 1024
 const MAX_TEXT = 400
 
-function ownerPeer(signal) {
-  // The typert gateway reads the peer's abort signal; an absent one crashed the
-  // first live call with "Cannot read properties of undefined (reading
-  // 'aborted')". A never-aborting signal is the correct default for these short
-  // control calls.
+function ownerPeer() {
+  // The gateway needs a peer signal, but reading ctx.signal from a plugin that
+  // did not inject it throws `cannot get property "signal" without inject`
+  // (cordis tracks service access). These control calls are short and have their
+  // own HTTP timeout, so a dedicated never-aborting signal is correct here.
   return {
     id: 'dsh-runner-owner:' + crypto.randomUUID(),
     principal: { kind: 'owner' },
     interactions: 'none',
-    signal: signal || new AbortController().signal,
+    signal: new AbortController().signal,
     dispose: async () => {},
   }
 }
@@ -106,7 +106,7 @@ export function apply(ctx, config = {}) {
   const call = async (namespace, method, request) => {
     try {
       return await gateway.invoke({
-        namespace, method, args: { request }, peer: ownerPeer(ctx.signal),
+        namespace, method, args: { request }, peer: ownerPeer(),
       })
     } catch (error) {
       // Name the failing verb: a bare "runner_failed" hid a bad peer signal for
