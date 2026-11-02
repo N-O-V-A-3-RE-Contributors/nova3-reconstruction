@@ -10,9 +10,9 @@ window.__ModuleLoader__.load({
 
     const CSS = `
 .nv3m-root{height:100%;overflow:auto;background:var(--dsw-alias-bg-l1,#0f1115);color:var(--dsw-alias-label-primary,#e6e8ee);font-family:var(--dsw-font-sans,system-ui,sans-serif)}
-.nv3m-wrap{max-width:1120px;margin:0 auto;padding:22px 20px 60px}
+.nv3m-wrap{max-width:1120px;margin:0 auto;padding:22px 20px 240px;min-height:100%}
 .nv3m-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
-.nv3m-title{font-size:22px;font-weight:650;letter-spacing:.06em}
+.nv3m-title{font-size:22px;font-weight:650;letter-spacing:.06em;color:var(--dsw-alias-label-primary,#f2f4f8)}
 .nv3m-sub{color:var(--dsw-alias-label-tertiary,#8b93a7);font-size:12px;margin-top:4px}
 .nv3m-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;border:1px solid var(--dsw-alias-border-l2,#2a2f3a);background:var(--dsw-alias-fill-l1,#171a21)}
 .nv3m-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
@@ -279,7 +279,7 @@ window.__ModuleLoader__.load({
                 source.present ? "present" : "not materialised"),
               h("div", { key: "s", className: "nv3m-small", style: { marginTop: "5px" } },
                 source.present
-                  ? (source.indexed ? "indexed · " + (source.index.files || "?") + " files"
+                  ? (source.indexed ? "indexed · " + ((source.index.stats && source.index.stats.files) || "?") + " files"
                     : "not indexed yet · pre-release engine tree")
                   : (source.note || "")),
             ]),

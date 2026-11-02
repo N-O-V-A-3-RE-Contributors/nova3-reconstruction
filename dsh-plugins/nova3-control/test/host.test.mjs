@@ -12,13 +12,12 @@ const repo = join(here, '..', '..', '..')
 function harness() {
   const routes = new Map()
   const ctx = {
-    config: { repo, github: 'N-O-V-A-3-RE-Contributors/nova3-reconstruction' },
     effect(fn) { const dispose = fn(); return dispose },
     webServer: {
       register(route) { routes.set(route.path, route.handler); return () => routes.delete(route.path) },
     },
   }
-  apply(ctx)
+  apply(ctx, { repo, github: 'N-O-V-A-3-RE-Contributors/nova3-reconstruction' })
   return routes
 }
 

@@ -41,7 +41,9 @@ it first, then `STATUS.md`, `NEXT.md`, `docs/decisions/{ARCHITECTURE,BLOCKERS}.m
    checks were green, and both were merged into `main` by the new autopilot path.
 6. **Restart required once.** The running Web profile still has the old plugin
    set; a restart of `nova3-dsh.service` is what loads the Mission tab and the
-   DuckDuckGo provider (it also ends the chat that performed the setup).
+   DuckDuckGo provider (it also ends the chat that performed the setup). The
+   tab was verified beforehand on an isolated second instance: it renders next
+   to Chat / Trajectory / Context / Fleet and `/nova3/api/mission` returns 200.
 
 ### The pre-release source is present (this is the big unlock)
 
@@ -107,12 +109,16 @@ The old plan was decompiler-first. With the source present, invert it:
    the 62 exported functions. Output `coordination/source_correspondence.json`
    and a reviewable Markdown table. Distinguish `exact_body_found`,
    `same_file_different_revision`, `not_found`.
-2. **Recover the build recipe from the tree**, not from guesses: inspect
-   `NOVA3/extern/GLLegacyConfig/android_neon`, `trunk/prj/AndroidPrj`,
-   `trunk/prj/Android`, `Android.mk`/`Application.mk`, the UnityBuild generator
-   (`UB_*.cpp`) and the `.mk`/`.bat` scripts. Record compiler (GCC 4.4.3 is
-   already installed via `tools/setup/fetch_gcc443.sh`), flags, defines, include
-   order, and the exact translation-unit grouping.
+2. **Recover the build recipe from the tree**, not from guesses. The tree uses a
+   Gameloft Windows-hosted generator rather than plain `Android.mk`:
+   `NOVA3/trunk/prj/Android/NOVA3_Android.sln`,
+   `NOVA3/trunk/prj/AndroidPrj/GameSpecific/_project_VisualStudio/Android.vcproj`,
+   `NOVA3/trunk/prj/AndroidPrj/GameSpecific/{config,make,prebuild}.bat`,
+   `NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/{sln2gcc,sln2mk,sln2android}`,
+   and the UnityBuild generator behind `UB_*.cpp`. Cross-check against the
+   `.vcproj` file list, not a guessed glob. Record compiler (GCC 4.4.3 is already
+   installed via `tools/setup/fetch_gcc443.sh`), flags, defines, include order and
+   the exact translation-unit grouping before compiling anything large.
 3. **Source-verify before byte-matching.** For each already-IMPLEMENTED unit
    (`getInverse` 0xebb08, `operator*` 0x6e7e60, `prepareCache` 0x73f0a4, the
    constructors, `DetectNeon`, `Init`, cpu-features), replace reconstructed

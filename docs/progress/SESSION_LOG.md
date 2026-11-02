@@ -28,6 +28,12 @@
   web profile; live search returned 10 results; parser tests pass.
 - Merged validated PRs **#181** (task #172) and **#180** (task #174) with the new
   autopilot path after `review` returned `pass` and checks were green.
+- Verified the Mission tab on an isolated second Web instance (same profile and
+  symlinked node_modules, temporary `DSH_HOME` with a copy of the sessions and
+  storage registries, port 35605): the **Mission** tab appears next to Chat /
+  Trajectory / Context / Fleet, renders worker/automation/ETA/completion/source
+  data, and `/nova3/api/mission` returns 200 JSON. The only boot warning was the
+  expected task-board ledger lock owned by the live process.
 - Full `nova3_team/tests`: 1195 passed, 13 order-dependent pre-existing failures
   in `test_planning_memory.py` / `test_chatgpt_planner_auth.py` (`store-in-repo`);
   both pass in isolation and are unrelated to the changed files.

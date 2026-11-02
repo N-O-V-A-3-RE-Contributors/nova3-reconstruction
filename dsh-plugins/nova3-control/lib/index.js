@@ -25,14 +25,14 @@ export const inject = ['webServer']
 const MISSION_TTL_MS = 15000
 const MAX_BODY = 64 * 1024
 
-function repoDir(ctx) {
-  return (ctx && ctx.config && ctx.config.repo) ||
+function repoDir(config) {
+  return (config && config.repo) ||
     process.env.NOVA3_PROJECT_ROOT ||
     '/home/jason/Projects/nova3_re'
 }
 
-function githubRepo(ctx) {
-  return (ctx && ctx.config && ctx.config.github) ||
+function githubRepo(config) {
+  return (config && config.github) ||
     'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
 }
 
@@ -97,9 +97,9 @@ function sameOrigin(req) {
   }
 }
 
-export function apply(ctx) {
-  const repo = repoDir(ctx)
-  const github = githubRepo(ctx)
+export function apply(ctx, config) {
+  const repo = repoDir(config)
+  const github = githubRepo(config)
   let cache = { at: 0, body: null }
   let inflight = null
 
