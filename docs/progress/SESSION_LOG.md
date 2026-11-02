@@ -553,3 +553,45 @@ instead of retried.
 - Fetched Android NDK r8e (SHA-1 verified) and confirmed `arm-linux-androideabi-g++ (GCC) 4.4.3` runs here; a pre-existing copy in `~/.local/opt` is reused. Added `tools/compare/gcc443_sweep.py` and `gcc443_explain.py`. 420-config sweep: `CMatrix4(eConstructor)` 0x108c54 reaches the exact 56 B at `-mfpu=vfpv3-d16 -O2` (bytes differ); `operator*<float,SMatrix>` 0x6e7e60 reaches an exact instruction-class profile at `-mfpu=vfpv3-d16 -O2 -funroll-loops` with a 6-load reload gap, and `__restrict` is rejected on evidence.
 - Added `.local/dsh-worker` (owner helper) and `tools/dsh_loop/worker.py` (per-worktree workers, backlogs generated from NEXT.md, `web` view). The DSH Web UI boots from this checkout's runtime for an interactive session with the owner's existing sign-in.
 - Host changes, all reversible: appended two placeholder `export <KEY>="<paste your key here>"` lines to `~/.zshrc` (no secrets); stopped the idle `hermes-gateway` user service; moved the legacy project's reproducible `build/`, `artifacts/`, `private-backups` and downloaded APK archives out of that checkout to `/tmp/nova3_patch-build/moved` to free ~9 GB.
+
+## 2026-11-02 — repository and project-directory cleanup (owner request)
+
+Goal: remove stale/unused tooling and regenerable data. Everything deleted was
+either reproducible from tracked sources or already preserved in Git.
+
+Kept after checking real references (tests, CI, docs): `tools/agents`,
+`tools/revng`, `tools/workbench.py` (CI `test_workbench.py`), `tools/planning_memory.py`,
+`tools/triage_legacy_blocks.py` (documents `LEGACY_TRIAGE.md`), `tools/model_gateway_probe.py`
+(`test_model_gateway.py`), `tools/observatory` (release workflow),
+`nova3_easy.py`/`nova3_start.py` (legacy workflow + tests), the `research/`, `originals/`,
+`Archive/`, `analysis/`, `generated/` reference trees, and `coordination/`/`scripts/`
+(96 files reachable from an entry point).
+
+Deleted (with how to restore):
+
+| Removed | Size | Restore |
+| --- | --- | --- |
+| `tools/node_modules/` | 853 MB | `cd tools && npm install` (runtime is reused from `~/.local/share/nova3/dsh` or `.local/dsh`) |
+| `analysis_db/index.sqlite` | 50 MB | `./nova3 index` |
+| `.cache/assets/` (OBB working copies + 3 effect fixtures) | 2.2 GB | `tools/extract/materialize_premium.py` from `Archive/` + `originals/`; hashes in `research/assets/` |
+| `.cache/revng-c865bc3{,.tar.xz}` | 4.2 GB | `tools/revng/install_local.py` (pinned SHA in `tools/revng/distribution.json`) |
+| `.cache/integration-recovery-20261030`, `ida-input`, `ida-venv`, `revng-test` | ~300 MB | not needed (one-off integration/exploration scratch) |
+| `.local/automation/{legacy-hermes-folders,worktrees,sprints,node24,prior-nova3-stack,logs,paperclip-*,monitoring}` | ~9.6 GB | regenerable; planning notes preserved in `.local/automation-archive/` |
+| stale worktrees (7) and merged-only branches | — | commits remain in `main`/remote; `git worktree add` to recreate |
+| Git scratch/strays (`__pycache__`, `.pytest_cache`, `.worktrees`, `build/zip_lookup_test`, `build/sanitize*`, preview PNG/OBJ/SVG) | small | rebuild with CMake/`./nova3` |
+
+Safety measures: `git bundle` of every ref (`.local/git-backup-precleanup-20261102.bundle`,
+2.5 MB) taken first; the one unique uncommitted change (`nova3_team/coordinator.py` in the
+removed `nova3_wt_release` worktree) was saved to `.local/quarantine/*.patch`;
+`test/merge-rehearsal` (16 commits) and `hermes-subagent/subagent-sa-1-fc20275b` (1 commit)
+were kept because they are not on any remote; release-linked tags untouched.
+
+Left in place because the cleanup needs root: `.cache/invalid-ghidra/` (1 file) and
+`.local/automation/legacy-hermes-folders/nova3_patch/{artifacts,parts of build,inputs}`
+(3.1 GB of root-owned JetBrains/logcat output). One command finishes it:
+`sudo rm -rf ~/Projects/nova3_re/.cache/invalid-ghidra ~/Projects/nova3_re/.local/automation/legacy-hermes-folders`.
+
+Verification after cleanup: `bash tools/check_all.sh` exit 0 (host CTest 39/39,
+Python 31/31), `nova3_team.guard --all` passed (627 files), `./nova3 doctor`
+15 pass / 1 warn (only the cleared index, with its fix command) / 0 fail.
+Disk free rose from 30 GB to 44 GB.
