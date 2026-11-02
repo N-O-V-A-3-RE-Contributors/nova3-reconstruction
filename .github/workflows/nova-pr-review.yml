@@ -1,0 +1,32 @@
+name: NOVA PR compliance review
+
+# Read-only gate for CONTRIBUTOR pull requests. It checks the changed files
+# against the issue's declared Allowed paths and refuses protected trees,
+# binaries and credentials. Owner/admin PRs are reviewed by the owner and skip
+# this job; this workflow never approves, merges or labels anything.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  contributor-review:
+    if: >-
+      github.event.pull_request.author_association != 'OWNER' &&
+      github.event.pull_request.author_association != 'MEMBER'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Review the contributor PR against its task scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python -m nova3_team.review --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER"
