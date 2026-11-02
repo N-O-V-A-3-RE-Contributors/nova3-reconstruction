@@ -19,6 +19,23 @@ by merged tasks and discovery had been disabled since 2026-10-30, so the worker
 had nothing to do. Progress therefore depends on the planner producing honest
 new tasks, not on more worker capacity.
 
+**Planner output, reviewed.** Seven proposals were filed (#163–#174) and are
+open for owner approval. They are evidence-grounded (GCC 4.4.3 window-matrix
+data files, a Thumb-mode coverage test for the window checker, a
+driver-number adversary, STATUS↔`.symtab` freshness gates). One claim in #171
+was **checked and found wrong**: it said STATUS contains the typo `0xebba84`;
+`grep` finds no occurrence and the Premium `.symtab` gives `getTransposed` at
+`0x000eba84` (132 B). The atomicity idea is still useful, the stated reason is
+not — proposals are leads, not facts.
+
+**A verified end-to-end run.** A full task path was rehearsed against a fake
+GitHub (real clone, real DSH session, real scope guard, real `verify()`): the
+model made 8 tool calls, created the file, the guard accepted it, `verify()`
+passed (CTest 39/39) and the task was committed. The publish step failed only
+because the fake had no PR plumbing — and that exposed a real defect: a
+publish failure had been charged against the task's session budget, so the
+supervisor now resumes only the publish half for already-verified work.
+
 ## GCC 4.4.3 result: CMatrix4 constructor and the transpose are compiler-verified (2026-11-02)
 
 With the real compiler (`tools/setup/fetch_gcc443.sh`, GCC 4.4.3) the

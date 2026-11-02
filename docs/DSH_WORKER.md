@@ -169,6 +169,23 @@ cat $S/requests.jsonl        # outstanding actionable human requests
 | `NOVA3_DSH_PLAN_TIMEOUT` | 900 | planner session bound |
 | `NOVA3_REFERENCE_ROOT` | `<repo>/analysis` | local read-only oracles |
 
+## Operator controls and budget consent
+
+`control/RESUME` is the general "act now" button. It wakes any wait, and it
+waives the **hourly** session cap for exactly one session (the daily session cap
+and the token cap still apply, so consent cannot spend a day's budget at once).
+The supervisor consumes the consent at the moment it admits a session, so a
+cycle that could not spend does not throw the request away.
+
+The **planner** is exempt from the per-task session cap: its sessions are meant
+to end without closing a task (they file proposals for a human). It is still
+bounded by the hourly/daily/token budgets and by the de-duplication of its own
+unanswered proposals.
+
+A budget guard refusing a session writes `BACKOFF` with the budget as its
+reason; it never writes `BLOCKED`, because `BLOCKED` means "this *task* needs
+repair" and drops the task link.
+
 ## Recovery
 
 | Symptom | Action |
@@ -180,6 +197,8 @@ cat $S/requests.jsonl        # outstanding actionable human requests
 | stale local checkout | preserved automatically at `~/.cache/nova3-team/<repo>/<issue>-<id>`; never deleted by the worker |
 | duplicate worker suspicion | `systemctl --user status nova3-worker.service nova3-dsh-worker.service`; the slot lock refuses a second supervisor for the same slot |
 | rollback to Codex | `tools/systemd/rollback-to-codex.sh` (keeps all DSH state) |
+| unit hit the start limit | `systemctl --user reset-failed nova3-dsh-worker.service` then `start` — a limit hit also blocks a manual start, so recovery always needs this step |
+| a task is `BLOCKED` locally | read `supervisor.json` (`last_decision`); the reason names the remedy (`replan_task`, `repair_lease`, `failure`) |
 
 ## What this system does **not** claim
 
