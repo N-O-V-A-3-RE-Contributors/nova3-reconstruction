@@ -176,6 +176,8 @@ def run_plan(plan_dict: dict) -> list[dict]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='NOVA3 per-platform toolchain plan')
     parser.add_argument('--tier', choices=TIERS, default='project')
+    parser.add_argument('--plan', action='store_true',
+                        help='accepted for symmetry; the default is a plan')
     parser.add_argument('--install', action='store_true',
                         help='run the commands (may elevate via sudo/winget)')
     parser.add_argument('--json', action='store_true')
