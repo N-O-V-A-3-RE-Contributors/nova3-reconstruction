@@ -5,12 +5,14 @@ handwritten owner approval record bound to its exact revision, so an autonomous
 loop can create candidate tasks but nothing it makes can ever be claimed
 without the owner typing JSON. That is the bottleneck, not model capacity.
 
-The narrow fix: a **waiver** the owner writes once, in one comment, listing
-which specific issues they authorise an automated approver to approve -- and
-only those. For each waived issue the approver writes an *approval record* in
-the format `nova3_team.access_policy` documents, so the existing coordinator
-gate verifies it exactly like a hand-written one. Nothing in the gate, the
-coordinator or the worker is bypassed or weakened:
+The narrow fix: a **waiver** the owner writes once, in one comment (today on
+the holder issue, #16), listing which specific issues they authorise an
+automated approver to approve -- and only those. For each waived issue the
+approver writes an *approval record* in the format
+`nova3_team.access_policy` documents, then applies the queue labels
+(`nova:queued` plus the `nova:approved:<comment-id>` locator), so the existing
+coordinator gate verifies it exactly like a hand-written approval. Nothing in
+the gate, the coordinator or the worker is bypassed or weakened:
 
 * the owner's waiver is itself checked against live evidence (current owner or
   ADMIN, fresh, unexpired) by the same `_role` machinery the gate uses;
@@ -40,8 +42,12 @@ from . import access_policy as policy
 MARKER = 'NOVA3_AUTOADMIT_WAIVER'
 WAIVER_RE = re.compile(r'<!--\s*NOVA3_AUTOADMIT_WAIVER:\s*(\{.*?\})\s*-->', re.S)
 POLICY_VERSION = 'NOVA3_AUTOADMIT_V1'
-DEFAULT_TTL_S = 4 * 3600          # one unattended run, not a standing grant
-MAX_TTL_S = 8 * 3600
+# The gate refuses any approval whose window exceeds MAX_APPROVAL_AGE, and the
+# waiver is anchored at its comment's creation time. Advertising a longer TTL
+# would be a lie the gate would silently truncate, so the protocol maximum IS
+# the default: one unattended run, never a standing grant.
+DEFAULT_TTL_S = policy.MAX_APPROVAL_AGE
+MAX_TTL_S = policy.MAX_APPROVAL_AGE
 # Paths an auto-admitted task may touch. Everything else (CI, services,
 # credentials, proprietary trees, the queue itself, docs of record) needs a
 # human. Enforced by BOTH the grant (owner) and this module (approver).
@@ -95,6 +101,16 @@ def task_spec_sha256(issue: dict) -> str:
 
 def _canonical(message: dict) -> str:
     return json.dumps(message, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+
+
+def label_names(issue: dict) -> list:
+    """Label names, tolerating both GitHub label shapes ({'name': ...} or str)."""
+    names = []
+    for label in issue.get('labels') or ():
+        name = label.get('name') if isinstance(label, dict) else label
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
 
 
 def waiver_text(issues, *, ttl_seconds: int = DEFAULT_TTL_S, now: int | None = None,
@@ -160,6 +176,11 @@ def safety_blockers(issue: dict) -> tuple:
         problems.append('not_open')
     if issue.get('locked'):
         problems.append('locked')
+    # Never re-open a task that a human or another worker already parked or
+    # owns: auto-admission adds work, it never overrides a live state.
+    active = {'nova:blocked', 'nova:claimed', 'nova:review', 'nova:integrated'}
+    if active & set(label_names(issue)):
+        problems.append('already_active_or_closed')
     for line in body.splitlines():
         if not line.startswith('Allowed paths:'):
             continue
@@ -207,7 +228,7 @@ def approval_record(*, issue: dict, waiver: Waiver, repository: dict,
         'action': LOOP_ACTION.value, 'operation_sha256': operation_sha256,
         'operation_arguments': arguments, 'nonce': nonce, 'executor_user_id': None,
     }
-    ttl = max(60, min(max(60, policy.MAX_CONSENT_AGE), int(ttl_seconds)))
+    ttl = max(60, min(policy.MAX_APPROVAL_AGE, int(ttl_seconds)))
     issued = int(created_at)
     record = dict(binding)
     # Timestamps are GitHub timestamps (strict ISO-8601 UTC), not epoch ints:
@@ -225,7 +246,7 @@ def _github_time(seconds: int) -> str:
 
 def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
           fetch_issue=None, now: int | None = None,
-          ttl_seconds: int = DEFAULT_TTL_S) -> dict:
+          ttl_seconds: int = DEFAULT_TTL_S, waiver_source: dict | None = None) -> dict:
     """Approve only waiver-covered, unchanged, safe issues; write one record each.
 
     `reserve(number) -> bool` takes a durable one-shot slot for an issue and
@@ -236,23 +257,38 @@ def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
     an owner/ADMIN is ignored.
     `fetch_issue(number) -> dict | None` returns the live issue payload; a
     missing fetch is a refusal, never an assumption.
+    `waiver_source` is the comment that carries the waiver:
+    ``{'text', 'comment_id', 'actor_login', 'created_at'}``. It is what
+    ``run()`` reads from the holder issue's COMMENTS, and passing it here is the
+    only production path: the holder's body is a status board, not the waiver.
+    The older body-scan remains for callers that keep the waiver in a body, but
+    exactly one source is allowed.
     """
     now = int(time.time()) if now is None else int(now)
     fetch = fetch_issue or _fetch_issue
     report = {'policy': POLICY_VERSION, 'approved': [], 'skipped': [], 'waiver': None}
-    holders = [issue for issue in issues if WAIVER_RE.search(issue.get('body') or '')]
-    if not holders:
+    sources = []
+    if waiver_source is not None:
+        sources.append(dict(waiver_source))
+    for issue in issues:
+        if WAIVER_RE.search(issue.get('body') or ''):
+            sources.append({'text': issue.get('body') or '',
+                            'comment_id': int(issue.get('id') or 0),
+                            'actor_login': str(issue.get('_waiver_author') or ''),
+                            'created_at': int(issue.get('_waiver_created') or 0)})
+    if not sources:
         report['reason'] = 'no_waiver'
         return report
     # Exactly one waiver may exist: two would make "who authorised this"
     # ambiguous, and the gate's own locator rule rejects ambiguity too.
-    if len(holders) > 1:
+    if len(sources) > 1:
         report['reason'] = 'ambiguous_waiver'
         return report
-    holder = holders[0]
-    waiver = parse_waiver(holder.get('body') or '',
-                          actor_login=str(holder.get('_waiver_author') or ''),
-                          created_at=int(holder.get('_waiver_created') or 0))
+    source = sources[0]
+    waiver = parse_waiver(str(source.get('text') or ''),
+                          comment_id=int(source.get('comment_id') or 0),
+                          actor_login=str(source.get('actor_login') or ''),
+                          created_at=int(source.get('created_at') or 0))
     if waiver is None:
         report['reason'] = 'unparseable_waiver'
         return report
@@ -353,26 +389,95 @@ def reserve_factory(path: pathlib.Path):
     return reserve
 
 
+def _parse_github_time(value) -> int:
+    """Parse a GitHub ISO-8601 timestamp; 0 means unusable (never 'now')."""
+    text = str(value or '').strip()
+    if not text:
+        return 0
+    if text.endswith('Z'):
+        text = text[:-1] + '+00:00'
+    try:
+        moment = datetime.datetime.fromisoformat(text)
+    except ValueError:
+        return 0
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=datetime.timezone.utc)
+    return int(moment.timestamp())
+
+
+def _write_report(state_dir: pathlib.Path, report: dict) -> None:
+    """The audit record must exist even on a refusal; the dir is ours to make."""
+    state_dir = pathlib.Path(state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    (state_dir / 'last-admit.json').write_text(json.dumps(report, indent=2))
+
+
+def _update_reservation(directory: pathlib.Path, number: int, **fields) -> None:
+    target = pathlib.Path(directory) / f'{int(number)}.approved'
+    try:
+        current = json.loads(target.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        current = {}
+    current.update(fields)
+    try:
+        target.write_text(json.dumps(current), encoding='utf-8')
+    except OSError:
+        pass
+
+
+def _queue_labels(repo: str, number: int, comment_id: int) -> dict:
+    """Add `nova:queued` and the approval locator, keeping every other label.
+
+    This is the step that makes an approval *actionable*: the supervisor only
+    considers `nova:queued` issues, and `coordinator.approval_comment_id` only
+    finds the record through `nova:approved:<comment-id>`.
+    """
+    current = _issue_payload(repo, number)
+    names = set(label_names(current))
+    if {'nova:blocked', 'nova:claimed', 'nova:review'} & names:
+        raise RuntimeError(f'issue #{number} moved to {sorted(names)} state; not queueing')
+    names |= {'nova:queued', f'nova:approved:{int(comment_id)}'}
+    return _api(f'repos/{repo}/issues/{number}', method='PATCH',
+                payload={'labels': sorted(names)})
+
+
 def run(repo: str, *, holder: int, state_dir: pathlib.Path,
-        ttl_seconds: int = DEFAULT_TTL_S) -> dict:
-    """Approve the issues the owner waived, exactly as the gate will re-read them."""
-    holder_issue = _issue_payload(repo, holder)
-    comments = _api(f'repos/{repo}/issues/{holder}/comments?per_page=100')
-    waiver_comment = None
-    for comment in comments:
-        if MARKER in (comment.get('body') or ''):
-            waiver_comment = comment          # last one wins, newest author intent
-    if waiver_comment is None:
-        return {'policy': POLICY_VERSION, 'reason': 'no_waiver_comment', 'approved': []}
-    payload = dict(holder_issue)
-    payload['_waiver_author'] = (waiver_comment.get('user') or {}).get('login', '')
-    created = str(waiver_comment.get('created_at') or '')
-    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z', created):
-        return {'policy': POLICY_VERSION, 'reason': 'waiver_timestamp_unusable',
-                'approved': []}
-    payload['_waiver_created'] = int(datetime.datetime.strptime(
-        created, '%Y-%m-%dT%H:%M:%SZ').replace(
-            tzinfo=datetime.timezone.utc).timestamp())
+        ttl_seconds: int = DEFAULT_TTL_S, now: int | None = None) -> dict:
+    """Approve the issues the owner waived, exactly as the gate will re-read them.
+
+    The waiver lives in a **comment on the holder issue**, not in its body: the
+    holder body is a live status board. Reading only the body was the defect
+    that made this command report ``no_waiver`` while a valid waiver existed.
+    """
+    state_dir = pathlib.Path(state_dir)
+    state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    report = {'policy': POLICY_VERSION, 'approved': [], 'skipped': [],
+              'waiver': None, 'finalized': []}
+    try:
+        comments = _api(f'repos/{repo}/issues/{holder}/comments?per_page=100')
+    except RuntimeError as exc:
+        report.update(reason='github_unavailable', detail=str(exc)[:300])
+        _write_report(state_dir, report)
+        return report
+    candidates = [comment for comment in comments or []
+                  if isinstance(comment, dict) and MARKER in (comment.get('body') or '')]
+    if not candidates:
+        report['reason'] = 'no_waiver_comment'
+        _write_report(state_dir, report)
+        return report
+    # Newest author intent wins; ties break on the comment id, deterministically.
+    waiver_comment = max(candidates, key=lambda c: (_parse_github_time(c.get('created_at')),
+                                                    int(c.get('id') or 0)))
+    created = _parse_github_time(waiver_comment.get('created_at'))
+    if created <= 0:
+        report['reason'] = 'waiver_timestamp_unusable'
+        _write_report(state_dir, report)
+        return report
+    waiver_source = {'text': waiver_comment.get('body') or '',
+                     'comment_id': int(waiver_comment.get('id') or 0),
+                     'actor_login': (waiver_comment.get('user') or {}).get('login', ''),
+                     'created_at': created}
+    assert WAIVER_RE.search(waiver_source['text']), 'selected comment lost its marker'
 
     def verify_role(login: str):
         # Live role evidence through the same reads the gate trusts.
@@ -391,12 +496,44 @@ def run(repo: str, *, holder: int, state_dir: pathlib.Path,
         return _api(f'repos/{repo}/issues/{number}/comments', method='POST',
                     payload={'body': body})
 
-    report = admit(issues=[payload], repository=_repo_payload(repo),
+    report = admit(issues=[], repository=_repo_payload(repo),
                    reserve=reserve_factory(state_dir / 'reserved'),
                    verify_role=verify_role, post_comment=post_comment,
                    fetch_issue=lambda n: _issue_payload(repo, n),
-                   ttl_seconds=ttl_seconds)
-    (state_dir / 'last-admit.json').write_text(json.dumps(report, indent=2))
+                   ttl_seconds=ttl_seconds, waiver_source=waiver_source, now=now)
+    report.setdefault('finalized', [])
+    reserved = state_dir / 'reserved'
+    # A failed POST must not burn the one-shot slot forever.
+    for number, why in report.get('skipped') or []:
+        if why == 'comment_failed':
+            (reserved / f'{int(number)}.approved').unlink(missing_ok=True)
+    for entry in report.get('approved') or []:
+        _update_reservation(reserved, entry['issue'],
+                            comment_id=entry['comment_id'], queued=False)
+        try:
+            _queue_labels(repo, entry['issue'], entry['comment_id'])
+            entry['queued'] = True
+            _update_reservation(reserved, entry['issue'], queued=True)
+        except Exception as exc:                 # keep the comment; retry labels
+            entry['queued'] = False
+            entry['label_error'] = str(exc)[:200]
+    # Recover approvals whose comment landed but whose labels did not, without
+    # posting a second approval comment.
+    for path in sorted(reserved.glob('*.approved')) if reserved.is_dir() else []:
+        try:
+            state = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        number, comment_id = int(path.stem), int(state.get('comment_id') or 0)
+        if state.get('queued') or not comment_id:
+            continue
+        try:
+            _queue_labels(repo, number, comment_id)
+        except Exception:
+            continue
+        _update_reservation(reserved, number, queued=True)
+        report['finalized'].append({'issue': number, 'comment_id': comment_id})
+    _write_report(state_dir, report)
     return report
 
 
@@ -421,7 +558,9 @@ def main(argv=None) -> int:
         return 0
     report = run(args.repo, holder=args.holder, state_dir=state, ttl_seconds=args.ttl)
     print(json.dumps(report, indent=2))
-    return 0 if report.get('approved') else 3
+    unqueued = [e for e in report.get('approved') or [] if not e.get('queued')]
+    done = bool(report.get('approved') or report.get('finalized'))
+    return 0 if done and not unqueued else 3
 
 
 if __name__ == '__main__':

@@ -231,3 +231,155 @@ class AdmitFlowTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RunPathRegressionTests(unittest.TestCase):
+    """`run()` must read the waiver from the holder issue's COMMENTS.
+
+    The original defect: ``run()`` found the marker in a comment, then handed
+    the holder issue's *body* to ``admit()``, which only scanned bodies. A valid
+    owner waiver therefore reported ``no_waiver``. These tests fail if that
+    regression returns, if the state directory is assumed to exist, if the
+    approval record expires inside the gate's consent window instead of its
+    protocol window, or if the queue labels are not actually applied.
+    """
+
+    SLUG = 'example-org/reconstruction'
+
+    def _issues(self):
+        return {
+            169: {'id': 1690, 'number': 169, 'title': 'symtab cite check',
+                  'body': 'Priority: 3\nAllowed paths: tools/compare/symtab_cite_check.py',
+                  'created_at': iso(NOW - 3600), 'state': 'open', 'labels': []},
+            171: {'id': 1710, 'number': 171, 'title': 'thumb accounting check',
+                  'body': 'Priority: 3\nAllowed paths: reconstruction/tests/test_thumb.py',
+                  'created_at': iso(NOW - 3600), 'state': 'open', 'labels': []},
+        }
+
+    def _waiver_comment(self, issues, *, created=NOW, cid=7000):
+        spec = {str(item['number']): autoadmit.task_spec_sha256(item) for item in issues}
+        body = {'policy': autoadmit.POLICY_VERSION, 'issues': sorted(spec),
+                'task_spec': spec, 'expires_at': created + 3600}
+        return {'id': cid, 'user': {'login': APPROVER}, 'created_at': iso(created),
+                'updated_at': iso(created),
+                'body': '<!-- ' + autoadmit.MARKER + ': ' + autoadmit._canonical(body) + ' -->'}
+
+    def _harness(self, state_dir, *, comments=None, issues=None, patch_fails=False,
+                 now=NOW):
+        issues = issues if issues is not None else self._issues()
+        if comments is None:
+            comments = [self._waiver_comment(list(issues.values()))]
+        calls = {'post': [], 'patch': []}
+        next_id = iter((9100, 9101, 9102))
+
+        def fake_api(path, *, method='GET', payload=None):
+            if method == 'GET' and path == f'repos/{self.SLUG}':
+                return _repo_payload()
+            if method == 'GET' and path.startswith(f'repos/{self.SLUG}/issues/16/comments'):
+                return comments
+            if method == 'GET' and path.startswith(f'repos/{self.SLUG}/issues/'):
+                number = int(path.rsplit('/', 1)[1])
+                return json.loads(json.dumps(issues[number]))
+            if method == 'GET' and path.startswith('users/'):
+                return {'id': APPROVER_ID}
+            if method == 'GET' and path.endswith('/permission'):
+                return {'permission': 'admin'}
+            if method == 'POST' and path.endswith('/comments'):
+                calls['post'].append((path, payload['body']))
+                return {'id': next(next_id)}
+            if method == 'PATCH':
+                if patch_fails:
+                    raise RuntimeError('label transport unavailable')
+                calls['patch'].append((path, payload))
+                return {'ok': True}
+            raise AssertionError(f'unexpected api call: {method} {path}')
+
+        from unittest import mock
+        with mock.patch.object(autoadmit, '_api', side_effect=fake_api):
+            report = autoadmit.run(self.SLUG, holder=16, state_dir=pathlib.Path(state_dir),
+                                   ttl_seconds=autoadmit.DEFAULT_TTL_S, now=now)
+        return report, calls
+
+    def test_waiver_in_a_comment_admits_and_labels_without_a_body_marker(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = pathlib.Path(folder) / 'does' / 'not' / 'exist' / 'autoadmit'
+            report, calls = self._harness(state)
+            self.assertEqual([item['issue'] for item in report['approved']], [169, 171])
+            self.assertTrue(all(item['queued'] for item in report['approved']))
+            self.assertTrue((state / 'last-admit.json').is_file(),
+                            'the audit record must be written even on a fresh state dir')
+            self.assertEqual(len(calls['post']), 2)
+            self.assertEqual(len(calls['patch']), 2)
+            comment_ids = [item['comment_id'] for item in report['approved']]
+            self.assertEqual(comment_ids, [9100, 9101])
+            for (path, body), comment_id in zip(calls['post'], comment_ids):
+                record = json.loads(body)
+                self.assertEqual(record['kind'], 'nova3.approval')
+                self.assertEqual(record['actor_login'], APPROVER)
+            for (path, payload), comment_id in zip(calls['patch'], comment_ids):
+                self.assertIn('nova:queued', payload['labels'])
+                self.assertIn(f'nova:approved:{comment_id}', payload['labels'])
+
+    def test_refusal_on_a_fresh_state_dir_still_writes_the_audit_record(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = pathlib.Path(folder) / 'fresh'
+            report, calls = self._harness(state, comments=[])
+            self.assertEqual(report['reason'], 'no_waiver_comment')
+            self.assertEqual(calls['post'], [])
+            self.assertTrue((state / 'last-admit.json').is_file())
+
+    def test_expired_comment_waiver_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            report, calls = self._harness(
+                pathlib.Path(folder),
+                comments=[self._waiver_comment(list(self._issues().values()),
+                                               created=NOW - 2 * 3600)])
+            self.assertEqual(report['reason'], 'waiver_expired')
+            self.assertEqual(calls['post'], [])
+
+    def test_unparseable_comment_timestamp_is_refused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            comment = self._waiver_comment(list(self._issues().values()))
+            comment['created_at'] = 'yesterday'
+            report, calls = self._harness(pathlib.Path(folder), comments=[comment])
+            self.assertEqual(report['reason'], 'waiver_timestamp_unusable')
+            self.assertEqual(calls['post'], [])
+
+    def test_approval_record_uses_the_gate_protocol_window_not_the_consent_window(self):
+        issue = issue_payload()
+        waiver = autoadmit.parse_waiver(_waiver(issue['number']), actor_id=APPROVER_ID,
+                                        actor_login=APPROVER, created_at=NOW)
+        body = json.loads(autoadmit.approval_record(
+            issue=issue, waiver=waiver, repository=_repo_payload(),
+            created_at=NOW, ttl_seconds=8 * 3600))
+        issued = policy._time(body['issued_at'])
+        expires = policy._time(body['expires_at'])
+        self.assertEqual(expires - issued, policy.MAX_APPROVAL_AGE,
+                         'a longer request is clamped to the gate maximum')
+        self.assertGreater(expires - issued, policy.MAX_CONSENT_AGE,
+                           'the record must survive claim + publish, not 5 minutes')
+
+    def test_second_run_does_not_approve_or_label_twice(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = pathlib.Path(folder)
+            first, first_calls = self._harness(state)
+            second, second_calls = self._harness(state)
+            self.assertEqual([item['issue'] for item in first['approved']], [169, 171])
+            self.assertEqual(second['approved'], [])
+            self.assertEqual(second_calls['post'], [])
+            self.assertEqual(second_calls['patch'], [])
+            self.assertIn('already_approved',
+                          [why for _, why in second['skipped']])
+
+    def test_failed_labels_are_retried_without_a_second_approval_comment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            state = pathlib.Path(folder)
+            broken, broken_calls = self._harness(state, patch_fails=True)
+            self.assertEqual(len(broken_calls['post']), 2)
+            self.assertFalse(any(item.get('queued') for item in broken['approved']))
+            repaired, repaired_calls = self._harness(state)
+            self.assertEqual(repaired['approved'], [])
+            self.assertEqual(repaired_calls['post'], [],
+                             'recovery must not post another approval comment')
+            self.assertEqual(sorted(item['issue'] for item in repaired['finalized']),
+                             [169, 171])
