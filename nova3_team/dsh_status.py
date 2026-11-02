@@ -72,6 +72,13 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
     last = state.get('last_outcome') or {}
     task = state.get('task') or {}
     try:
+        from . import autopilot as autopilot_mod
+        auto_grant = autopilot_mod.load_grant(autopilot_mod.default_dir(repo))
+        autopilot_state = {'live': autopilot_mod.grant_live(auto_grant),
+                           'remaining': autopilot_mod.remaining(auto_grant)}
+    except Exception:
+        autopilot_state = None
+    try:
         from . import analysis as project_analysis
         project_snapshot = project_analysis.snapshot(pathlib.Path.cwd())
         project_estimate = project_analysis.estimate(project_snapshot)
@@ -98,6 +105,7 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
         'balance': balance,
         'state_file': str(state_file),
         'project': {'snapshot': project_snapshot, 'estimate': project_estimate},
+        'autopilot': autopilot_state,
     }
 
 
@@ -201,6 +209,11 @@ def render(data: dict) -> str:
         lines.append(f'\n**Queue:** {queue.get("runnable")} runnable · '
                      f'{queue.get("claimed")} claimed · {queue.get("review")} in review · '
                      f'{queue.get("blocked")} blocked · {queue.get("open_prs")} open PRs')
+    auto = data.get('autopilot')
+    if auto:
+        lines.append('**Autopilot:** ' + (
+            f'LIVE · {auto["remaining"]} approval(s) left' if auto.get('live')
+            else 'off'))
     project = data.get('project') or {}
     snapshot, estimate = project.get('snapshot'), project.get('estimate')
     if snapshot and estimate:

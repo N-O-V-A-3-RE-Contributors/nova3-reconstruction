@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the NOVA3 autopilot every 10 minutes
+
+[Timer]
+OnCalendar=*:0/10
+AccuracySec=1min
+RandomizedDelaySec=30s
+Persistent=false
+Unit=nova3-autopilot.service
+
+[Install]
+WantedBy=timers.target
