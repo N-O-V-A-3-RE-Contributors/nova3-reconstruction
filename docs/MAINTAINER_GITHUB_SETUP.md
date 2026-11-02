@@ -1,13 +1,16 @@
 # Maintainer: GitHub and automated contributor launcher setup
 
+> Historical note: the organisation transfer described below is **complete**; the repository now lives at
+> `N-O-V-A-3-RE-Contributors/nova3-reconstruction`. Keep this page for the permission and Actions rationale.
+
 ## Existing repository and safety
 
-Current repository: `crjase/nova3-reconstruction` (private). Keep it private. Do not publish APK/OBB archives, .so game libraries, asset extractions, proprietary decompiler exports, or tracked historical commits containing them. Keep the reconstruction and research directories safe locally.
+Current repository: `N-O-V-A-3-RE-Contributors/nova3-reconstruction` (private). Keep it private. Do not publish APK/OBB archives, .so game libraries, asset extractions, proprietary decompiler exports, or tracked historical commits containing them. Keep the reconstruction and research directories safe locally.
 
 ## Create organisation and transfer
 
 1. While signed in to GitHub as `crjase`, create a new Free organisation at https://github.com/organizations/plan . You will have to choose its name and confirm the creation in the browser.
-2. Open https://github.com/crjase/nova3-reconstruction/settings and scroll to **Danger Zone → Transfer**. Select the new organisation, confirm the exact repository name, and finish the transfer.
+2. Open https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction/settings and scroll to **Danger Zone → Transfer**. Select the new organisation, confirm the exact repository name, and finish the transfer.
 3. Visit `https://github.com/NEWORG/nova3-reconstruction` and verify the issues and Actions are present. Old URLs ordinarily redirect unless reused. Set the local remote with `git remote set-url origin https://github.com/NEWORG/nova3-reconstruction.git` if needed.
 4. Under organisation **Settings → Member privileges**, set the default repository permission to **No permission**. Only invited users should get access.
 5. Under organisation **Settings → Member privileges / Repository forking**, permit forks of private repositories. Exact wording changes over time; check the GitHub interface. A private fork cannot be placed under a GitHub Free organisation, but participants may fork to their personal accounts if permitted.
