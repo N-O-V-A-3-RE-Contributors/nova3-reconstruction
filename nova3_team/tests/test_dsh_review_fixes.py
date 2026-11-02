@@ -465,6 +465,56 @@ class ControlPlaneTests(unittest.TestCase):
         self.assertNotIn(dsh_runtime.EXECUTION_ERROR, dsh_runtime.FAILOVER_STATUSES)
         self.assertNotIn(dsh_runtime.STEP_LIMIT, dsh_runtime.FAILOVER_STATUSES)
 
+    def test_completed_session_without_effect_is_not_reported_as_success(self):
+        """Dry run finding: 165k tokens, nothing committed, state 'RUNNING'."""
+        import json as _json
+        from nova3_team import dsh_supervisor as sup
+        gh = _CoordinatorLikeGitHub()
+        state_dir = pathlib.Path(tempfile.mkdtemp())
+        supervisor = _fake_supervisor(sup, gh, state_dir)
+        gh.body = lease_put(gh.body, {'owner': 'crjase', 'token': 'token-owned',
+                                      'expires_at': '2999-01-01T00:00:00Z'})
+        supervisor.state.save(task={'number': 1, 'token': 'token-owned',
+                                    'title': 'T', 'claimed_unix': int(time.time())})
+        (state_dir / '.nova-state').mkdir(parents=True, exist_ok=True)
+        (state_dir / '.nova-state' / '1.json').write_text(_json.dumps({
+            'issue': 1, 'phase': 'checkpoint', 'provider_exit': 0,
+            'dsh_status': 'COMPLETED', 'dsh_session': 'session-x',
+            'last_error': 'No source changes after bounded AI sessions',
+            'dsh_spend': {'input_tokens': 165000, 'output_tokens': 1900},
+            'session_spent': 166900}))
+        # work returns False (the task did not progress) although the session exited 0
+        with mock.patch.object(worker, 'work_claimed', return_value=False):
+            supervisor.run_task(gh.issue(1))
+        state = _json.loads((state_dir / 'supervisor.json').read_text())
+        self.assertEqual(state['last_outcome']['status'], dsh_runtime.EXECUTION_ERROR)
+        self.assertEqual(state['last_outcome']['error_code'], 'NO_EFFECT')
+        self.assertIn(state['state'], (dsh_policy.BACKOFF, dsh_policy.BLOCKED),
+                      'a completed-but-ineffective session must not leave RUNNING')
+
+    def test_every_write_overlay_call_site_matches_the_signature(self):
+        """A signature change broke the live unit while unit tests passed: the
+        tests exercised overlay_text() directly, never the wired call."""
+        import inspect
+        from nova3_team import dsh_supervisor, provider_runtime
+        accepted = set(inspect.signature(dsh_runtime.write_overlay).parameters)
+        for module in (dsh_supervisor, worker, provider_runtime):
+            source = inspect.getsource(module)
+            for line in source.splitlines():
+                if 'write_overlay(' in line and 'def ' not in line:
+                    positional = line.split('write_overlay(', 1)[1]
+                    kwargs = [part.split('=')[0].strip() for part in positional.split(',')
+                              if '=' in part]
+                    for name in kwargs:
+                        self.assertIn(name, accepted,
+                                      f'{module.__name__}: unknown keyword {name!r}')
+        # And the real call the supervisor makes must work.
+        with tempfile.TemporaryDirectory() as folder:
+            ep = dsh_runtime.DshEndpoint(binary='x', home=pathlib.Path(folder))
+            path = pathlib.Path(folder) / 'overlay.yml'
+            dsh_runtime.write_overlay(path, ep, fallbacks=())
+            self.assertIn('agent-default-model', path.read_text())
+
     def test_dsh_loop_refuses_to_be_a_second_loop(self):
         from tools.dsh_loop import cli
         self.assertIn('enabled', cli._live_queue_owner().lower() + ' enabled')

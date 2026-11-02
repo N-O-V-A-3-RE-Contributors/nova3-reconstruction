@@ -773,8 +773,19 @@ def pause_failed_task(gh, root, number, token, provider, user, error):
     """Fail-closed, externally visible state without retry/comment storms.
 
     Never delete local checkouts. GitHub coordinator is the sole label writer.
+    The cause is recorded in the task checkpoint (`last_error`), and when the
+    provider session itself succeeded the record says so, because
+    'NO_SOURCE_PROGRESS after a completed session' is a different defect from
+    'the provider failed'.
     """
     error = provider_runtime.redact_diagnostic(error)
+    try:
+        if dsh_last.get('status') == 'COMPLETED':
+            recovery.update(root, number,
+                            dsh_completed_no_change=True,
+                            dsh_completed_reason=str(error)[:600])
+    except Exception:
+        pass
     previous = recovery.load(root, number)
     decision = reliability.failure_decision(previous, error)
     recovery.update(root, number,
@@ -943,6 +954,9 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
                 if cp.returncode!=0:note(f'Session {k} returned {cp.returncode}; bounded retry with fresh context')
             paths=validate_scope(work,allowed)
             if not paths:
+                if provider == 'dsh' and dsh_last.get('status') == 'COMPLETED':
+                    note(f'#{n}: the DSH session completed but changed nothing admissible; '
+                         'this is a task-scope or model-outcome failure, not a provider failure')
                 return pause_failed_task(gh,root,n,token,provider,user,
                                          RuntimeError('No source changes after bounded AI sessions'))
             git(work,'add','--',*paths)

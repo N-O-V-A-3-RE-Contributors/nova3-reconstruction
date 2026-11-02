@@ -208,7 +208,7 @@ class DshSupervisor:
         self.endpoint = endpoint_from_env(self.project, overlay)
         self._fallbacks = dsh_runtime.parse_fallback_routes(os.environ.get('NOVA3_DSH_FALLBACK', ''))
         self._overlay = overlay
-        dsh_runtime.write_overlay(overlay, self.endpoint, self._fallbacks)
+        dsh_runtime.write_overlay(overlay, self.endpoint, fallbacks=self._fallbacks)
         try:
             from . import presence
             self.reporter = presence.Reporter(self.upstream, self.user, 'dsh',
@@ -633,6 +633,25 @@ class DshSupervisor:
                 lease_inactive = False       # submitted+released is a healthy end state
         except Exception:
             pass
+        if outcome.ok and not task_state.get('provider_exit') and result is not True:
+            # `work_one` did not do the job even though the session completed
+            # (no admissible change, a scope violation, a publish failure it
+            # could not resume). Reporting COMPLETED here would reset every
+            # failure counter and hide a real defect -- exactly what the dry run
+            # caught: 165k tokens spent, nothing committed, state 'RUNNING'.
+            reason = str(task_state.get('last_error') or task_state.get('failure_code') or '')
+            if not reason:
+                reason = (str(result)[:200] if isinstance(result, Exception)
+                          else f'work returned {result!r}')
+            outcome = dsh_runtime.SessionOutcome(
+                status=dsh_runtime.EXECUTION_ERROR, exit_code=outcome.exit_code,
+                session_id=outcome.session_id, turn_reason=outcome.turn_reason,
+                error_code='NO_EFFECT', error_message=reason,
+                steps=outcome.steps, tool_calls=outcome.tool_calls,
+                elapsed_s=outcome.elapsed_s, input_tokens=outcome.input_tokens,
+                output_tokens=outcome.output_tokens)
+            _log(f'task #{number}: session COMPLETED but the task did not progress; '
+                 f'recording NO_EFFECT ({reason[:160]})')
         if outcome.ok and lease_inactive:
             # The session spent real quota but the lease it produced work under
             # is gone (lost to an expiry, another worker, or a coordinator
@@ -729,9 +748,9 @@ class DshSupervisor:
                 # The alternative is now the working route: make it the
                 # primary for the next session instead of re-failing every time.
                 self.endpoint = endpoint
-                dsh_runtime.write_overlay(self._overlay, endpoint,
-                                          tuple(f for f in self._fallbacks
-                                                if f.name != route.name))
+                dsh_runtime.write_overlay(
+                    self._overlay, endpoint,
+                    fallbacks=tuple(f for f in self._fallbacks if f.name != route.name))
                 self.state.save(endpoint={k: getattr(endpoint, k)
                                           for k in ('profile', 'route', 'model', 'key_ref')},
                                 reason=f'using approved fallback route {route.name}')
