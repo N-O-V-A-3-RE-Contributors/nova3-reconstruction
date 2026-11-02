@@ -1,5 +1,37 @@
 # Next tasks
 
+## 2026-11-02 (LATEST) — source-assisted decompilation is running
+
+Steps 1–2 of the previous plan are **done** (see `HANDOFF.md` and
+`docs/progress/SOURCE_CORRESPONDENCE.md`): 39,452 functions extracted from the
+Premium `.symtab`, 21,705 matched to a definition site (3,341 with strong body
+evidence), and the build configuration recovered from machine code
+(`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` defined, `GLITCH_FAST_MATH` not,
+`ROUNDING_ERROR_64 = 1e-8`).
+
+Now, in order:
+
+1. **`getInverse` 0x000ebb08 (776 B)** — write
+   `reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp` from the
+   Cramer's-rule body at `matrix4.h:1251` (eleven double minors, `iszero(det)` with
+   tolerance `1e-8`, `ftN = T(tN)`, 16 explicit products, then the `1/det` scaling
+   loop), add a CTest behaviour target, run
+   `tools/compare/gcc443_window_check.py` with GCC 4.4.3 at
+   `-O3 -mfpu=vfpv3-d16 -mfloat-abi=softfp`. Acceptance: 776 B and the window
+   explained word by word; record `MATCHED` or the residual.
+2. **`operator*` 0x006e7e60 (564 B)** — restate
+   `collada_matrix_multiply.cpp` as the real `matrix4_ops.h` template body
+   (`CMatrix4<T> mat2(EM4CONST_NOTHING)` + `rowMatrixProduct34`), then re-run
+   `tools/compare/collada_matrix_multiply_pilot.py`. The uncommitted edit in that
+   file is an unfinished experiment and is not evidence.
+3. **Build recipe** — the `android_neon/release/N.O.V.A.3` directory is generated
+   (absent from the tree); recover the TU list from
+   `trunk/prj/AndroidPrj/GameSpecific/_project_VisualStudio/Android.vcproj` and
+   `tools/{sln2gcc,sln2mk,sln2android}`.
+4. **Coverage ladder** — work down `coordination/source_correspondence.json` by
+   subsystem (`vox` startup → `glitch::core` → `glitch::video` → gameplay), one
+   unit per compile+compare cycle.
+
 ## 2026-11-02 (LATEST) — source-assisted decompilation
 
 The pre-release source is materialised at `reference/nova3_source/` (private,

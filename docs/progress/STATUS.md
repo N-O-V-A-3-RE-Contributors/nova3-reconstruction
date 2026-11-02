@@ -2,6 +2,26 @@
 
 **At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: the **Mission tab** in the DSH Web UI (or `python -m nova3_team.mission`).
 
+## ELF source correspondence and build configuration (2026-11-02, latest)
+
+Full-function correspondence now exists: 39,452 Premium `.symtab` functions
+extracted (11.6 MB of code, 2.69 M instructions, 329 PLT imports resolved,
+15,850 with data references, 0 Thumb, so the engine `.text` is ARM state only)
+and matched against the private pre-release tree: **21,705 `exact_body_found`**,
+8,072 `same_file_different_revision`, 9,675 `not_found`; 3,341 have strong body
+evidence (>=3 machine-code references, >=60% found). Report:
+`docs/progress/SOURCE_CORRESPONDENCE.md`; machine-readable
+`coordination/source_correspondence.json`. This is a *locating* result: no
+function became byte-matched in this pass.
+
+Build configuration settled from machine code: `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+is defined (no +0x40 flag access; `CMatrix4<float>` is 64 B), `GLITCH_FAST_MATH`
+is not (the `1e-08` tolerance literal at `0xebe08` plus the 16-element `1/det`
+scaling loop at the end of `getInverse`). `getInverse` (776 B) now has a known
+algorithm; `operator*` (564 B) is the `matrix4_ops.h` template, not the inferred
+model currently in the tree. Implementation totals are unchanged (13 ENGINE
+units IMPLEMENTED + TESTED); no new ARM-window match this pass.
+
 ## Pre-release source materialised; setup fixes (2026-11-02, latest)
 
 The owner's pre-release source drop is extracted as a **private reference** at

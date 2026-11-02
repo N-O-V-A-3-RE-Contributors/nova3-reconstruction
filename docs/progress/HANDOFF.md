@@ -1,5 +1,108 @@
 # Resume without chat history
 
+## 2026-11-02 (LATEST) — ELF↔source correspondence done; build configuration recovered
+
+Read this first, then `STATUS.md`, `NEXT.md`,
+`docs/progress/SOURCE_CORRESPONDENCE.md`, `docs/decisions/{ARCHITECTURE,BLOCKERS}.md`.
+
+### What is new (all measured this session)
+
+1. **Correspondence table for every function in the Premium ELF.**
+   `python -m tools.source_ref.extract_elf_symbols --write` decodes the whole
+   `.symtab` (39,452 defined functions, 11,613,092 code bytes, 2,693,722
+   instructions, 329 PLT imports resolved, 15,850 functions with data refs) into
+   the private `.cache/source_ref/elf_symbols.jsonl`. ARM/Thumb comes from the
+   `$a`/`$t`/`$d` mapping symbols: **the Premium `.text` is ARM state only**
+   (38,506 `$a`, 21,148 `$d`, 0 `$t`), so "ARM/Thumb" is settled for the whole
+   engine, including functions reached by `BL` from an ARM frame.
+   `python -m tools.source_ref.build_source_correspondence --write --markdown
+   docs/progress/SOURCE_CORRESPONDENCE.md` indexes 34k source files
+   (168,476 member definition sites, 92,412 free-function sites) and matches:
+   **21,705 `exact_body_found`** (3,341 with strong body evidence: ≥3 machine-code
+   references, ≥60% found in the body), 8,072 `same_file_different_revision`,
+   9,675 `not_found` (2,546 libstdc++, 2,393 plain-C third-party, 527 virtual
+   thunks, 3,910 engine/third-party). All 15 tracked units resolve to a file:line.
+   Committed metadata: `coordination/source_correspondence.json`
+   (schema `nova3-source-correspondence/1`), regenerable. Nothing from the tree is
+   committed; the tree stays under the ignored `reference/`.
+
+2. **Build configuration recovered from machine code, not guessed.** Two
+   `glitchConfig` switches and one constant are now settled by the binary:
+   * `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` **is defined**: no instruction in
+     `operator*` (0x006e7e60) or `getInverse` (0x000ebb08) reads or writes a byte
+     at matrix offset +0x40, and `CMatrix4<float>` measures 64 B (16 floats) at
+     every observed stride. `getDefinitelyIdentityMatrix()` therefore compiles to
+     `false` and the setter to nothing in this build — the identity short-cuts in
+     `matrix4_ops.h`/`matrix4.h` are eliminated code, which is why neither
+     function contains an identity branch.
+   * `GLITCH_FAST_MATH` is **not defined**: `getInverse` loads `1e-08` from
+     `0xebe08` for the `iszero(det)` test (= `ROUNDING_ERROR_64` in the
+     non-fast-math branch of `glitch/core/math.h`) and ends with the
+     `det = 1.0/det; out[i] = T(out[i]*det)` 16-element loop that only exists in
+     the `#if !defined(GLITCH_FAST_MATH)` path.
+   * `operator*<float, collada::SMatrix>` is the free template in
+     `extern/glitch/include/glitch/core/matrix4_ops.h:22`:
+     `CMatrix4<T> mat2(CMatrix4<T>::EM4CONST_NOTHING); if identity → copy 16; else
+     rowMatrixProduct34(mat2, mat, other.M); return mat2;` — with the flag removed
+     this compiles to the ctor call (`mov r1,#0` = `bl 0x108c54`) plus the inlined
+     affine product. The existing `collada_matrix_multiply.cpp` arithmetic is
+     therefore behaviourally right but was written as an inferred model; it should
+     be restated as the source's `rowMatrixProduct34` form before any byte claim.
+   * `glitch::collada::SMatrix` is `float M[16]` (64 B, column-major
+     `transformVect` usage) in
+     `extern/glitch/tools/ColladaConverter/include/SDatabaseCollada.h:987`;
+     `operator[](u32)` is inline. The runtime collada namespace reuses this
+     editor-side struct.
+
+3. **`getInverse` is no longer an unknown algorithm.** Its Cramer's-rule body is
+   `extern/glitch/include/glitch/core/matrix4.h:1251`: eleven 2x2 minors
+   (`t0..t11`) in double, `det`, `iszero(det)` → `return false`, `ft0..ft11 = T(tN)`
+   (no FAST_MATH), 16 explicit `out[k]` products, then the 1/det loop and
+   `return true`. Our reconstruction still has to be written and compiled.
+
+### The next concrete step (do this first)
+
+Replace the guessed bodies with source-verified ones, in this order, each as its
+own IMPLEMENTED + TESTED unit and a separate `.cache/gcc443-sweep` row:
+
+1. `reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp`:
+   `bool CMatrix4<float>::getInverse(CMatrix4<float>& out) const`, 0x000ebb08,
+   776 B, `-O3 -mfpu=vfpv3-d16 -mfloat-abi=softfp`, with
+   `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` defined and `GLITCH_FAST_MATH` not.
+   Compare with `tools/compare/gcc443_window_check.py` /
+   `gcc443_sweep.py`. This closes the last dangling dependency of
+   `collada_skin_cache_deps.h`.
+2. Rewrite `collada_matrix_multiply.cpp` to the `matrix4_ops.h` structure
+   (ctor value 0, then `rowMatrixProduct34`), keeping the existing 72-load
+   observation as the acceptance profile; expect the 6-`vldr` gap to change.
+3. Then go down `coordination/source_correspondence.json` by subsystem, starting
+   with the 3,341 strong-evidence functions (engine startup/vox/glitch before
+   gameplay), each verified with the GCC 4.4.3 window check.
+
+Rules that stay in force: the tree is private reference only — never commit it,
+never make it a build input; `reference/` is ignored. A correspondence row is not
+a byte-match claim.
+
+### Working state / commands
+
+```sh
+cd /home/jason/Projects/nova3_re
+.venv/bin/python -m tools.source_ref.extract_elf_symbols --write       # ~6 min, 39,452 rows
+.venv/bin/python -m tools.source_ref.build_source_correspondence --build-index
+.venv/bin/python -m tools.source_ref.build_source_correspondence --write \
+  --markdown docs/progress/SOURCE_CORRESPONDENCE.md
+.venv/bin/python -m pytest -q tools/source_ref/test_source_ref.py      # 14 pass
+.venv/bin/python -m tools.source_ref.build_source_correspondence --show 0x73f0a4
+```
+
+Committed this session: `1d3c38f` (tools + summary + report + tests).
+Uncommitted: `reconstruction/recovered/libNOVA3_neon/collada_matrix_multiply.cpp`
+(an earlier experiment, 19+/8-; decide against the source form above, do not
+commit it as-is).
+
+Disk ~19 GiB free, RAM 7.6 GiB, 4 cores: one heavyweight analyser at a time.
+Owner `jason` (uid 1000); original inputs read-only; nothing uploaded.
+
 ## 2026-11-02 (LATEST) — setup fixed, source materialised; start source-assisted decompilation
 
 This section supersedes the older resume notes below for the *next* session. Read

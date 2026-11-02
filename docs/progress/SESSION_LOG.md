@@ -763,3 +763,26 @@ flight when this note was written; the outcome is appended below.
   `reconstruction/tests/fixtures/`). Its approval record expires
   `2026-11-02T07:04:38Z`; a retry needs the checkout cleaned, the local cooldown reset,
   a requeue, and (after that expiry) a fresh owner waiver.
+
+## 2026-11-02 (evening) — correspondence pass
+
+- `tools/source_ref/extract_elf_symbols.py` (new): 39,452 STT_FUNC rows, ARM/Thumb
+  from `$a`/`$t`/`$d` mapping symbols (result: ARM only, 0 `$t`), direct BL/BLX
+  callees, PLT-to-imported-symbol map from `.rel.plt` (329 names), literal-pool
+  data refs (15,850 functions) and string literals (359). Runtime 6 min 22 s;
+  output `.cache/source_ref/elf_symbols.jsonl` (private).
+- Three real bugs found by measurement, not inspection: file hints were inherited
+  by globals after the last `STT_FILE`; the pc-relative literal test checked the
+  destination register instead of the memory base; body extraction dropped
+  string-literal text, so bodies containing paths never matched.
+- `tools/source_ref/build_source_correspondence.py` (new): definition index over
+  34k files (168,476 member + 92,412 free sites) and evidence-scored matching;
+  21,705 exact / 8,072 same-file / 9,675 not found, 3,341 strong.
+- Committed `coordination/source_correspondence.json`,
+  `docs/progress/SOURCE_CORRESPONDENCE.md`, `tools/source_ref/test_source_ref.py`
+  (14 passed, wired into `tools/check_all.sh`).
+- Recovered build switches from the binary (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+  defined; `GLITCH_FAST_MATH` undefined; `ROUNDING_ERROR_64 = 1e-8` at `0xebe08`)
+  and the real `operator*`/`getInverse` bodies from the tree. Not implemented yet.
+- Commit `1d3c38f` (tooling) ; no originals modified, nothing uploaded, no
+  packages installed.
