@@ -230,6 +230,7 @@ class Context:
     lease_inactive: bool = False
     control_dir: pathlib.Path | None = None
     attempt_started: float | None = None   # claim time; None counts all history
+    budget_consent: bool = False           # operator RESUME consumed for THIS session
 
 
 def _human_request(kind: str, task: str, detail: str, action: str, risk: str = '') -> dict:
@@ -252,7 +253,7 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
         # An explicit human request refills the HOURLY allowance only. The daily
         # window and the token cap still apply: this is "try again now", not
         # permission to spend the day's budget in one burst.
-        ignore_hourly_cap = resume_requested(context.control_dir)
+        ignore_hourly_cap = context.budget_consent or resume_requested(context.control_dir)
     if ledger.sessions_today(now=now) >= budget.sessions_per_day:
         return Decision(WAITING_APPROVAL,
                         f'daily session cap reached ({budget.sessions_per_day})',

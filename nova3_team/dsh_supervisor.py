@@ -318,13 +318,36 @@ class DshSupervisor:
         self.state.save(resume_for_cycle=int(time.time()))
         return True
 
-    def _spend_resume_for_cycle(self) -> bool:
-        """One-shot: true if this cycle may exceed the hourly cap by consent."""
+    def _consume_resume_consent(self) -> bool:
+        """One-shot: true if the next session may exceed the hourly cap.
+
+        Consumed exactly when a session is about to start, so an idle or capped
+        cycle does not silently throw the operator's request away.
+        """
         stamp = int(self.state.load().get('resume_for_cycle') or 0)
         if not stamp:
             return False
         self.state.save(resume_for_cycle=None, resume_used_unix=stamp)
         return True
+
+    def _session_allowed(self, task: str, *, started: float | None = None) -> bool:
+        """Admit one session, or leave a WAITING_APPROVAL state explaining why not."""
+        ledger = self.ledger
+        budget = dsh_policy.Budget.from_env()
+        consent = self._consume_resume_consent()
+        context = dsh_policy.Context(task=task, budget=budget, control_dir=None,
+                                     attempt_started=started, budget_consent=consent)
+        decision = dsh_policy.decide(_no_failure(), ledger, context)
+        if decision.state == dsh_policy.RUNNING:
+            return True
+        if consent:      # do not burn a consent that could not be used
+            self.state.save(resume_for_cycle=int(time.time()))
+        _log(f'not starting a session for {task}: {decision.state} ({decision.reason})')
+        self.state.save(state=decision.state, reason=decision.reason,
+                        next_check_unix=int(time.time()) + max(decision.delay_s, 300))
+        if decision.request:
+            self._request(**decision.request, task=task)
+        return False
 
     def _wait(self, seconds: int, why: str) -> str:
         """Sleep, watching the control files. Returns 'elapsed' | 'resume' | 'stop'."""
@@ -523,6 +546,8 @@ class DshSupervisor:
             if self._claim(number, issue.get('title', '')) is None:
                 return
             saved = self.state.load().get('task') or saved
+        if not self._session_allowed(str(number), started=float(saved.get('claimed_unix') or 0) or None):
+            return
         try:
             self.state.save(state=dsh_policy.RUNNING, reason='')
             self._presence('VERIFYING', number)
@@ -566,7 +591,6 @@ class DshSupervisor:
             lease_inactive=lease_inactive,
             control_dir=self.paths.state / 'control',
             attempt_started=float(saved.get('claimed_unix') or 0) or None)
-        self._spend_resume_for_cycle()
         decision = dsh_policy.decide(outcome, self.ledger, context)
         self.ledger.append({'task': str(number), 'status': outcome.status,
                             'error_code': outcome.error_code,
@@ -665,6 +689,8 @@ class DshSupervisor:
 
     # -- planning ------------------------------------------------------------
     def plan(self) -> None:
+        if not self._session_allowed('planner'):
+            return
         _log('queue is at the low-water mark; running a bounded planning pass')
         issues = self._issues()
         assessment = self._assessment()
@@ -696,7 +722,6 @@ class DshSupervisor:
         log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
         self._presence('PLANNING')
         _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
-        self._spend_resume_for_cycle()
         outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=self.project,
                                           log_path=log_path, timeout_s=plan_timeout_s(),
                                           cancel=lambda: bool(self.stop_signal))
@@ -841,6 +866,14 @@ def _read_json_list(path: pathlib.Path) -> list:
         return [x for x in value if isinstance(x, dict)] if isinstance(value, list) else []
     except (OSError, ValueError):
         return []
+
+
+def _no_failure() -> dsh_runtime.SessionOutcome:
+    """A synthetic 'nothing failed yet' outcome: used only to ask the policy
+    "may a session start now?", never to decide that a session succeeded."""
+    return dsh_runtime.SessionOutcome(status=dsh_runtime.COMPLETED, exit_code=None,
+                                      session_id=None, turn_reason=None, error_code=None,
+                                      error_message='', steps=0, tool_calls=0, elapsed_s=0.0)
 
 
 def _head(path: pathlib.Path, limit: int = 9000) -> str:
