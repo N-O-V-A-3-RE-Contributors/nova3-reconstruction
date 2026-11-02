@@ -243,11 +243,16 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
     budget = context.budget
 
     # 0. Operator controls and hard budgets come before any provider judgement.
+    ignore_hourly_cap = False
     if context.control_dir is not None:
         stop = stop_requested(context.control_dir)
         if stop:
             return Decision(BACKOFF, f'operator STOP file present: {stop}', delay_s=BACKOFF_CAP_S,
                             action='clear_stop', retry_same_task=False)
+        # An explicit human request refills the HOURLY allowance only. The daily
+        # window and the token cap still apply: this is "try again now", not
+        # permission to spend the day's budget in one burst.
+        ignore_hourly_cap = resume_requested(context.control_dir)
     if ledger.sessions_today(now=now) >= budget.sessions_per_day:
         return Decision(WAITING_APPROVAL,
                         f'daily session cap reached ({budget.sessions_per_day})',
@@ -258,7 +263,7 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
                             'Raise NOVA3_DSH_SESSIONS_PER_DAY, or wait until tomorrow; '
                             'the supervisor resumes automatically at the next count window.',
                             'Higher API spend on the configured model route.'))
-    if len(ledger.window(now=now, seconds=3600)) >= budget.sessions_per_hour:
+    if not ignore_hourly_cap and len(ledger.window(now=now, seconds=3600)) >= budget.sessions_per_hour:
         return Decision(BACKOFF, f'hourly session cap reached ({budget.sessions_per_hour})',
                         delay_s=300, retry_same_task=True)
     if ledger.tokens_today(now=now) >= budget.tokens_per_day:

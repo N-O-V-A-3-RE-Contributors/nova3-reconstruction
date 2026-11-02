@@ -306,6 +306,26 @@ class DshSupervisor:
         except Exception:
             pass
 
+    def _consume_resume_for_cycle(self) -> bool:
+        """True once per operator RESUME; the file is removed when consumed."""
+        control = self.paths.state / 'control'
+        if not dsh_policy.resume_requested(control):
+            return False
+        try:
+            (control / 'RESUME').unlink()
+        except OSError:
+            return False
+        self.state.save(resume_for_cycle=int(time.time()))
+        return True
+
+    def _spend_resume_for_cycle(self) -> bool:
+        """One-shot: true if this cycle may exceed the hourly cap by consent."""
+        stamp = int(self.state.load().get('resume_for_cycle') or 0)
+        if not stamp:
+            return False
+        self.state.save(resume_for_cycle=None, resume_used_unix=stamp)
+        return True
+
     def _wait(self, seconds: int, why: str) -> str:
         """Sleep, watching the control files. Returns 'elapsed' | 'resume' | 'stop'."""
         seconds = max(0, int(seconds))
@@ -384,6 +404,7 @@ class DshSupervisor:
 
     def cycle(self) -> None:
         self.state.save(cycle_errors=0)
+        self._consume_resume_for_cycle()
         if (self.state.load().get('state') or dsh_policy.RUNNING) == dsh_policy.RUNNING:
             if _read_json_list(self.paths.state / 'requests.open.json'):
                 self._update_open_requests(None, clear=True)
@@ -545,6 +566,7 @@ class DshSupervisor:
             lease_inactive=lease_inactive,
             control_dir=self.paths.state / 'control',
             attempt_started=float(saved.get('claimed_unix') or 0) or None)
+        self._spend_resume_for_cycle()
         decision = dsh_policy.decide(outcome, self.ledger, context)
         self.ledger.append({'task': str(number), 'status': outcome.status,
                             'error_code': outcome.error_code,
@@ -674,6 +696,7 @@ class DshSupervisor:
         log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
         self._presence('PLANNING')
         _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
+        self._spend_resume_for_cycle()
         outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=self.project,
                                           log_path=log_path, timeout_s=plan_timeout_s(),
                                           cancel=lambda: bool(self.stop_signal))

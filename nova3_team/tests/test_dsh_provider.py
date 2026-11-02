@@ -273,6 +273,23 @@ class PolicyTests(unittest.TestCase):
             self.assertFalse(decision.retry_same_task)
             self.assertIn('maintenance', decision.reason)
 
+    def test_resume_waives_the_hourly_cap_but_not_the_daily_one(self):
+        with tempfile.TemporaryDirectory() as folder:
+            control = pathlib.Path(folder)
+            for _ in range(2):
+                self.ledger.append({'task': '1', 'status': 'COMPLETED'})
+            budget = dsh_policy.Budget(sessions_per_hour=1)
+            capped = self.decide(outcome('COMPLETED'), budget=budget, control_dir=control)
+            self.assertEqual(capped.state, dsh_policy.BACKOFF)
+            (control / 'RESUME').touch()
+            resumed = self.decide(outcome('COMPLETED'), budget=budget, control_dir=control)
+            self.assertEqual(resumed.state, dsh_policy.RUNNING)
+            # The daily cap is still enforced even with an explicit resume.
+            daily = dsh_policy.Budget(sessions_per_hour=99, sessions_per_day=1)
+            self.assertEqual(self.decide(outcome('COMPLETED'), budget=daily,
+                                         control_dir=control).state,
+                             dsh_policy.WAITING_APPROVAL)
+
     def test_success_with_a_dead_lease_is_a_coordination_blocker(self):
         decision = self.decide(outcome('COMPLETED'), lease_inactive=True,
                                ok_with_inactive_lease=2)
