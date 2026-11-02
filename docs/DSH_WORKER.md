@@ -97,6 +97,7 @@ dsh --profile headless --patch <overlay> headless --json [--session-id ID] -
 | per-task session cap (3) without closing | `BLOCKED` (task) | forces a replan instead of repeating |
 | hourly/daily session or token budget | `BACKOFF` / `WAITING_APPROVAL` | hard spend stop |
 | operator `STOP` file | `BACKOFF` | honoured before any spend |
+| queue empty and planner finds nothing | `COMPLETE` | **idles** (30-min checks), never exits; cleared by `RESUME`, by approved work, or by new evidence |
 
 **The old restart trap.** `nova3-worker.service` carried
 `RestartPreventExitStatus=3`: a deliberate "exhausted" exit made systemd stop
@@ -104,6 +105,13 @@ restarting the worker, so one credit pause permanently disabled autonomy until a
 human ran `systemctl start`. The DSH unit has **no** `RestartPreventExitStatus`;
 a pause is a state *inside* the process. The process only exits for genuine
 configuration faults, and those are recorded in `worker-failure.json`.
+
+`Restart=always` was tried during the migration and is wrong: `COMPLETE` is a
+legitimate exit 0 and systemd respawned it every 30 s. The unit now uses
+`Restart=on-failure`, and `COMPLETE` no longer exits at all — it idles and polls,
+so a human approving a proposal is picked up within 30 minutes with no service
+action. `RestartPreventExitStatus=""` (empty) is the explicit opposite of the
+old unit's trap.
 
 ## Planning
 

@@ -10,8 +10,13 @@
 #     process (`WAITING_CREDITS`), the process stays alive, rechecks on a
 #     timer and resumes by itself. The only non-zero exits here are genuine
 #     configuration faults, and those are recorded in worker-failure.json.
-#   * Restart=always + a start-rate limit: a crash restarts promptly, but a
-#     crash LOOP backs off (30s..), it never spins.
+#   * Restart=on-failure + a start-rate limit: a crash (non-zero exit, OOM,
+#     signal) restarts promptly, but a crash LOOP backs off, and a clean
+#     `systemctl stop` (SIGTERM -> exit 0) stays stopped. `Restart=always`
+#     was tried and is WRONG here: a deliberate, meaningful exit 0 (state
+#     COMPLETE) got respawned every 30 s. A provider pause is not an exit at
+#     all -- it is the in-process WAITING_CREDITS state -- so no exit code is
+#     ever used to signal "wait"
 #   * CPUQuota/MemoryMax keep the Celeron responsive while one DSH session and
 #     its build steps run; OOMPolicy=stop + Restart re-arms cleanly after a
 #     kill instead of leaving a half-dead unit.
@@ -49,7 +54,7 @@ Environment=NOVA3_DSH_TOKENS_PER_DAY=6000000
 
 ExecStart=/usr/bin/python3 -u -m nova3_team.dsh_supervisor run --slot dsh --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction
 
-Restart=always
+Restart=on-failure
 RestartSec=30
 TimeoutStopSec=240
 KillMode=mixed

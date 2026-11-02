@@ -46,6 +46,10 @@ DEFAULT_PLAN_TIMEOUT_S = 900
 # review. Re-planning every poll would spend 2-3 sessions an hour on the same
 # evidence, since the queue stays empty until a human approves something.
 PLAN_RECHECK_S = 3600
+# Empty-queue settle checks before the supervisor declares COMPLETE (each one
+# is a cheap read of the queue, no model call).
+COMPLETE_SETTLES = 3
+COMPLETE_IDLE_S = 1800
 HEARTBEAT_EVERY_S = 20 * 60
 
 STATUSES = frozenset({
@@ -343,8 +347,11 @@ class DshSupervisor:
                                    f'{current}: {state.get("reason", "")}')
                         continue
                 if current == dsh_policy.COMPLETE:
-                    _log('state COMPLETE: no queued or plannable work remains')
-                    return 0
+                    # IDLE, not an exit: exiting here would be restarted by the
+                    # unit forever. The state is cleared only by RESUME, by a
+                    # human approving work, or by new evidence appearing.
+                    self._idle_complete(state)
+                    continue
                 if current == dsh_policy.BLOCKED:
                     _log('previous task was BLOCKED; moving on to different work')
                     self.state.save(state=dsh_policy.RUNNING, task=None, reason='')
@@ -405,6 +412,36 @@ class DshSupervisor:
             return
         self.state.save(state=dsh_policy.RUNNING, reason='no claimable task; idling')
         _log('no claimable task; polling the coordinator queue')
+
+    def _idle_complete(self, state: dict) -> None:
+        """Wait in COMPLETE, watching for work that a human or schedule adds."""
+        if self.stop_signal:
+            return
+        control = self.paths.state / 'control'
+        if dsh_policy.stop_requested(control):
+            self._wait(COMPLETE_IDLE_S, 'COMPLETE; STOP file present')
+            return
+        if dsh_policy.resume_requested(control):
+            try:
+                (control / 'RESUME').unlink()
+            except OSError:
+                pass
+            # An explicit human request beats a planner verdict: leave COMPLETE,
+            # run a full cycle (queue first, then one fresh planning pass), and
+            # let that cycle decide whether COMPLETE still holds.
+            _log('RESUME found; leaving COMPLETE for one full cycle')
+            self.state.save(state=dsh_policy.RUNNING, reason='operator resume',
+                            complete_settles=0, resume_requested=int(time.time()))
+            return
+        try:
+            if self._approved_and_awaiting_claim({'proposed': [1]}):
+                _log('queued work appeared; leaving COMPLETE')
+                self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
+                return
+        except Exception:
+            pass
+        self._wait(COMPLETE_IDLE_S, 'COMPLETE: no queued or plannable work remains '
+                                    '(idle; RESUME or new work resumes it)')
 
     def _approved_and_awaiting_claim(self, state: dict) -> int | None:
         """Count runnable tasks when a wait state is waiting on the human.
@@ -652,6 +689,7 @@ class DshSupervisor:
             if decision.request:
                 self._request(**decision.request, task='planner')
             return
+        self.state.save(resume_requested=None)   # consumed by this pass
         proposals, bad = dsh_planner.parse_proposals(_final_text(outcome),
                                                      evidence=assessment.evidence)
         proposals = dsh_planner.deduplicate(proposals, existing_texts=existing,
@@ -659,14 +697,26 @@ class DshSupervisor:
         for title, reason in bad:
             _log(f'planner rejected a proposal ({reason}): {title}')
         self._presence('ONLINE')
+        operator_resume = bool(self.state.load().get('resume_requested'))
         if not proposals:
             working = _working(issues)
-            complete = assessment.queue.runnable == 0 and not working
+            complete = assessment.queue.runnable == 0 and not working and not operator_resume
             _log('planner produced no acceptable new task; '
                  + ('nothing remains queued' if complete else
                     f'{len(working)} task(s) still in flight elsewhere'))
+            if complete:
+                # COMPLETE is only declared after a settle period in which the
+                # queue stayed empty across several checks: a human may approve
+                # a proposal minutes later, and autofeed runs on its own clock.
+                settles = int(self.state.load().get('complete_settles') or 0) + 1
+                if settles < COMPLETE_SETTLES:
+                    self.state.save(state=dsh_policy.RUNNING, complete_settles=settles,
+                                    reason=f'no plannable work; settling ({settles}/'
+                                           f'{COMPLETE_SETTLES})')
+                    return
             self.state.save(state=dsh_policy.COMPLETE if complete else dsh_policy.RUNNING,
-                            reason='planner: no honest task derived from evidence')
+                            reason='planner: no honest task derived from evidence',
+                            complete_settles=0 if not complete else None)
             if complete:
                 self._request('evidence', 'the planner found no honest, non-duplicate task',
                               'Run the discovery timer for new evidence, or narrow a blocked '

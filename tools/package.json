@@ -1,0 +1,11 @@
+{
+  "name": "nova3-tools-runtime",
+  "private": true,
+  "description": "Development runtime for the NOVA3 worker: the DeepSeek Harness command, pinned. Contributors never build this repository; they run `npx @deepseek-ai/dsh@<pin>` in their own directory (see docs/WORKER_LOOP.md).",
+  "devDependencies": {
+    "@deepseek-ai/dsh": "0.2.1-rc.5"
+  },
+  "scripts": {
+    "dsh": "node node_modules/@deepseek-ai/dsh/lib/bin.js"
+  }
+}
