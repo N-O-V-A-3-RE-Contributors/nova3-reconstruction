@@ -335,6 +335,8 @@ class DshSupervisor:
         ledger = self.ledger
         budget = dsh_policy.Budget.from_env()
         consent = self._consume_resume_consent()
+        if consent:
+            _log('operator RESUME consent applies to this session (hourly cap waived)')
         context = dsh_policy.Context(task=task, budget=budget, control_dir=None,
                                      attempt_started=started, budget_consent=consent)
         decision = dsh_policy.decide(_no_failure(), ledger, context)
@@ -367,6 +369,9 @@ class DshSupervisor:
                     (control / 'RESUME').unlink()
                 except OSError:
                     pass
+                # The file is gone from disk, but the consent it expressed must
+                # reach the point where a session is actually admitted.
+                self.state.save(resume_for_cycle=int(time.time()))
                 return 'resume'
             time.sleep(min(15, max(1, end - time.time())))
         return 'elapsed'
@@ -427,7 +432,6 @@ class DshSupervisor:
 
     def cycle(self) -> None:
         self.state.save(cycle_errors=0)
-        self._consume_resume_for_cycle()
         if (self.state.load().get('state') or dsh_policy.RUNNING) == dsh_policy.RUNNING:
             if _read_json_list(self.paths.state / 'requests.open.json'):
                 self._update_open_requests(None, clear=True)

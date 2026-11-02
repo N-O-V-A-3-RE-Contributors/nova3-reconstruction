@@ -290,6 +290,23 @@ class PolicyTests(unittest.TestCase):
                                          control_dir=control).state,
                              dsh_policy.WAITING_APPROVAL)
 
+    def test_budget_consent_works_without_a_control_directory(self):
+        """Regression: the supervisor asks 'may a session start?' with
+        control_dir=None and passes the consumed RESUME as budget_consent. The
+        consent was once only read inside the `control_dir is not None` branch,
+        so it silently had no effect at the one place that spends."""
+        for _ in range(6):
+            self.ledger.append({'task': 'planner', 'status': 'COMPLETED'})
+        budget = dsh_policy.Budget(sessions_per_hour=6, sessions_per_day=48)
+        self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
+                                           dsh_policy.Context(task='planner', budget=budget)).state,
+                         dsh_policy.BACKOFF)
+        self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
+                                           dsh_policy.Context(task='planner', budget=budget,
+                                                              budget_consent=True,
+                                                              control_dir=None)).state,
+                         dsh_policy.RUNNING)
+
     def test_success_with_a_dead_lease_is_a_coordination_blocker(self):
         decision = self.decide(outcome('COMPLETED'), lease_inactive=True,
                                ok_with_inactive_lease=2)

@@ -244,16 +244,18 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
     budget = context.budget
 
     # 0. Operator controls and hard budgets come before any provider judgement.
-    ignore_hourly_cap = False
+    # An explicit human request refills the HOURLY allowance only. The daily
+    # window and the token cap still apply: this is "try again now", not
+    # permission to spend the day's budget in one burst. The consent is passed
+    # in by the caller that consumed the RESUME (control_dir may be None when a
+    # caller asks "may a session start now?").
+    ignore_hourly_cap = bool(context.budget_consent)
     if context.control_dir is not None:
         stop = stop_requested(context.control_dir)
         if stop:
             return Decision(BACKOFF, f'operator STOP file present: {stop}', delay_s=BACKOFF_CAP_S,
                             action='clear_stop', retry_same_task=False)
-        # An explicit human request refills the HOURLY allowance only. The daily
-        # window and the token cap still apply: this is "try again now", not
-        # permission to spend the day's budget in one burst.
-        ignore_hourly_cap = context.budget_consent or resume_requested(context.control_dir)
+        ignore_hourly_cap = ignore_hourly_cap or resume_requested(context.control_dir)
     if ledger.sessions_today(now=now) >= budget.sessions_per_day:
         return Decision(WAITING_APPROVAL,
                         f'daily session cap reached ({budget.sessions_per_day})',
