@@ -178,6 +178,21 @@ if(BUILD_TESTING)
     add_test(NAME driver_callback_init_behaviour
              COMMAND driver_callback_init_behaviour_test)
 
+    # Behaviour of the recovered A32 unit at ELF VA 0x000d39f0 (JNI_OnLoad entry
+    # plus the ComputeCRC and UseTextureETC helpers it calls).  The test includes
+    # the recovered TU unchanged and supplies its own JNI-style stubs, so the
+    # CRC vectors, the 0x4c/-2E texture-format store and the GetEnv status handling
+    # are asserted on the host.  The optional Python/Unicorn oracle is emitted only
+    # with `--emit-oracle` and is never a build or CI dependency.  This is host
+    # behaviour testing only, not a byte or instruction-window match.
+    add_executable(block_000d39f0_test
+        reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp)
+    set_property(TARGET block_000d39f0_test PROPERTY CXX_STANDARD 17)
+    target_include_directories(block_000d39f0_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(block_000d39f0_test PRIVATE -UNDEBUG)
+    add_test(NAME block_000d39f0 COMMAND block_000d39f0_test)
+
     # Behaviour of three recovered CSoftwareSkinTechnique leaves
     # (checkAvailability 0x00710b50, needOutputBuffer 0x00710b48, attach
     # 0x00710b58; 8 B each, A32, no relocation).  The test includes the recovered
