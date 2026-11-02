@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 import ntpath
+import pathlib
 import os
 import re
 import shutil
@@ -71,6 +72,11 @@ class ProviderSpec:
     # rests entirely on documented capability tokens from `help`, never a
     # guessed minimum version.
     version_required: bool = True
+    # Runtime layout of every other provider: executable, then its documented
+    # help arguments. A provider that is itself an application INSIDE a larger
+    # runtime (DeepSeek Harness: `dsh --profile <name> [app] args`) supplies its
+    # own adapter instead, so no generic argv is ever assembled for it.
+    argv_compatible: bool = True
 
 
 @dataclass(frozen=True)
@@ -217,6 +223,28 @@ if hermes_runtime is not None:
         ),
     )
 
+# NOVA3_DSH_PROVIDER_V1: DeepSeek Harness as a first-class execution provider.
+# It is the project's own runtime (installed by the NOVA3 launcher), so it is
+# always registered -- its readiness is decided by the adapter's bounded probe
+# (nova3_team.dsh_runtime.probe_endpoint), never by assembling vendor argv here.
+_SPECS += (
+    ProviderSpec(
+        id='dsh', display_name='DeepSeek Harness (DSH headless)', executable='dsh',
+        docs_url='https://github.com/deepseek-ai/deepseek-harness',
+        install_url='https://github.com/N-O-V-A-3-RE-Contributors/nova3-reconstruction'
+                    '#the-nova3-worker-loop-deepseek-harness',
+        login_guidance='Sign in once in the DSH Web Models page, or save the key in the '
+                       'DSH credential store; headless sessions reuse it.',
+        help_args=('--version',),
+        required_help=(),
+        permission_profile='dsh --profile headless --patch <overlay> headless --json '
+                           '--session-id <id> - (prompt on stdin; DSH_PERMISSION_MODE='
+                           'workspace-write by default)',
+        version_required=False,
+        argv_compatible=False,
+    ),
+)
+
 # Stable, ordered, read-only API for the subsequent account manager.
 PROVIDERS: Mapping[str, ProviderSpec] = MappingProxyType({s.id: s for s in _SPECS})
 
@@ -357,6 +385,9 @@ def _probe(argv: list[str]) -> _Probe:
 
 def probe_provider(provider_id: str) -> ProviderStatus:
     spec = get_provider(provider_id)
+    if not spec.argv_compatible:
+        # The provider owns its adapter; its bounded probe decides readiness.
+        return _probe_adapter(provider_id)
     path = shutil.which(spec.executable)
     if not path:
         return ProviderStatus(spec.id, RuntimeState.MISSING,
@@ -451,6 +482,10 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
     by `prepare_aux_files`, so the bound is a real file the CLI reads.
     """
     spec = get_provider(provider_id)
+    if not spec.argv_compatible:
+        raise ProviderUnavailable(
+            'This provider is driven by its own adapter, not an assembled argv; '
+            'use nova3_team.dsh_runtime for DSH sessions.')
     if not isinstance(prompt, str) or not prompt.strip() or '\0' in prompt:
         raise ProviderUnavailable('A nonempty text prompt without NUL bytes is required.')
     # Some CLI parsers treat a dash-prefixed -p value as a new option. The
@@ -522,6 +557,44 @@ def build_command(provider_id: str, prompt: str, *, codex_json: bool = False,
     raise ProviderUnavailable('No verified writable headless command is available.')
 
 
+def _probe_adapter(provider_id: str) -> ProviderStatus:
+    """Readiness for a provider whose runtime is an application, not a CLI.
+
+    DSH readiness = the discovered runtime answers `headless --help`, the
+    overlay composes (`--dump-config`) and it contains the route/credential
+    reference. That is a local, free check: no model call, no login, no spend.
+    The credential *value* is never read here; only the reference's presence in
+    DSH's own store is reported, which the supervisor needs to choose between
+    RUNNING and WAITING_CREDITS without burning a session attempt.
+    """
+    if provider_id != 'dsh':
+        return ProviderStatus(provider_id, RuntimeState.INCOMPATIBLE,
+                              reason='No adapter probe is implemented for this provider.')
+    try:
+        from . import dsh_runtime
+        home = dsh_runtime.discover_home()
+        binary = dsh_runtime.discover_binary(pathlib.Path.cwd(), home=home)
+        if not binary:
+            return ProviderStatus('dsh', RuntimeState.MISSING,
+                                  reason='DeepSeek Harness runtime not found. Install the NOVA3 '
+                                         'launcher or set NOVA3_DSH_BIN.')
+        overlay = pathlib.Path.home() / '.cache' / 'nova3-team' / 'dsh-probe-overlay.yml'
+        endpoint = dsh_runtime.DshEndpoint(binary=binary, home=home, patch=overlay)
+        dsh_runtime.write_overlay(overlay, endpoint)
+        record = dsh_runtime.probe_endpoint(endpoint)
+    except (ImportError, OSError, RuntimeError, ValueError) as exc:
+        return ProviderStatus('dsh', RuntimeState.PROBE_FAILED,
+                              reason=f'DSH adapter probe failed: {type(exc).__name__}')
+    capabilities = ('--json', '--session-id', '--patch', '--dump-config')
+    if not record.get('ok'):
+        return ProviderStatus('dsh', RuntimeState.INCOMPATIBLE, binary, record.get('version'),
+                              reason=f'DSH endpoint unusable: {record.get("reason")}',
+                              capabilities=capabilities)
+    return ProviderStatus('dsh', RuntimeState.AVAILABLE, binary, record.get('version'),
+                          'DSH headless contract and profile composition verified locally; '
+                          'no model call tested.', capabilities)
+
+
 def check_auth(provider_id: str) -> AuthEvidence:
     """Status only. Absence of API keys is not evidence against vendor OAuth.
 
@@ -530,9 +603,33 @@ def check_auth(provider_id: str) -> AuthEvidence:
     credential files. UNKNOWN never initiates login or a paid readiness prompt.
     """
     spec = get_provider(provider_id)
-    path = shutil.which(spec.executable)
-    if not path:
-        return AuthEvidence(AuthState.UNAVAILABLE, 'Optional provider CLI is absent.')
+    if provider_id != 'dsh':
+        path = shutil.which(spec.executable)
+        if not path:
+            return AuthEvidence(AuthState.UNAVAILABLE, 'Optional provider CLI is absent.')
+    if provider_id == 'dsh':
+        # Readiness already proved the runtime and overlay; here only the
+        # credential REFERENCE's presence is checked -- never its value. Where
+        # it comes from (Web Models page = DSH store, or the launching
+        # environment / .env files) is DSH's documented resolution order.
+        try:
+            from . import dsh_runtime
+            ref = os.environ.get('NOVA3_DSH_KEY_REF') or dsh_runtime.DEFAULT_KEY_REF
+            home = dsh_runtime.discover_home()
+            if dsh_runtime.credential_present(home, ref):
+                return AuthEvidence(AuthState.AUTHENTICATED,
+                                    f'The DSH credential store names {ref}; a model call is '
+                                    'still unverified until the first session.')
+            if os.environ.get(ref):
+                return AuthEvidence(AuthState.AUTHENTICATED,
+                                    f'{ref} is exported in the launching environment.')
+            return AuthEvidence(AuthState.UNKNOWN,
+                                f'Neither the DSH credential store nor the environment names '
+                                f'{ref}; a session would fail with MISSING_CREDENTIAL. '
+                                + spec.login_guidance)
+        except (ImportError, OSError) as exc:
+            return AuthEvidence(AuthState.UNKNOWN,
+                                f'Credential reference check failed: {type(exc).__name__}.')
     if provider_id != 'codex' or ntpath.splitext(path)[1].lower() in ('.bat', '.cmd'):
         return AuthEvidence(AuthState.UNKNOWN, 'No verified offline status command is configured. '
                             + spec.login_guidance)

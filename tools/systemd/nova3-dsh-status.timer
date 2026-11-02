@@ -1,0 +1,12 @@
+[Unit]
+Description=Publish NOVA3 DSH worker status every 30 minutes
+
+[Timer]
+OnCalendar=*-*-* *:05,35:00
+AccuracySec=2min
+RandomizedDelaySec=90s
+Persistent=false
+Unit=nova3-dsh-status.service
+
+[Install]
+WantedBy=timers.target

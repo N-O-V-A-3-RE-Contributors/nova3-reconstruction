@@ -226,6 +226,94 @@ def run_provider(cmd, cwd, log, timeout, activity=None, env=None):
 def note(s):
     s = provider_runtime.redact_diagnostic(s)
     print(f'[{datetime.now().strftime("%H:%M:%S")}] {s}', flush=True)
+
+
+# NOVA3_DSH_PROVIDER_V1 -------------------------------------------------------
+# DeepSeek Harness is an execution provider IN this worker architecture, not a
+# second worker: it reuses this module's claim, checkout, scope, verify, commit
+# and publish path, and differs only in how one bounded AI session is launched
+# and classified. The whole DSH call is stashed in `dsh_last` so `work_one` can
+# persist objective counters (status, session id, steps, tokens) as soon as the
+# session ends -- before any later step could crash and lose them.
+#
+# Why `dsh_last` instead of changing every return type: `run_provider` is an
+# established seam with 1000+ tests behind the surrounding flow; adding one
+# module-level record keeps the change reviewable and keeps the Codex path
+# byte-for-byte unchanged.
+
+def dsh_endpoint(work=None, root=None):
+    """Resolve the DSH endpoint for one session (profile, patch, route)."""
+    from . import dsh_runtime
+    from . import dsh_supervisor
+    base = pathlib.Path(root or (state_root(get_repo(None)) / '.nova-slots' / DEFAULT_SLOT
+                                 / 'state'))
+    overlay = base / 'dsh-overlay.yml'
+    endpoint = dsh_supervisor.endpoint_from_env(pathlib.Path.cwd(), overlay)
+    dsh_runtime.write_overlay(overlay, endpoint)
+    return endpoint
+
+
+def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
+    """One bounded DSH session, reduced to objective counters.
+
+    Contract with `work_one`, which is unchanged:
+      * exit 0    -> DSH reported a completed turn; `work_one` then applies the
+                     unchanged scope guard, independent `verify()` and publish.
+      * exit 124  -> wall-clock timeout; the caller quarantines as PROVIDER_TIMEOUT.
+      * exit 1    -> the turn failed. The failure is already recorded locally as
+                     `dsh_status`, so the supervisor routes credits/auth/backoff
+                     instead of repeating an identical session; `work_one`'s
+                     bounded retry then sees fresh context.
+    """
+    from . import dsh_runtime
+    global dsh_last
+    log = pathlib.Path(log)
+    if os.name == 'posix':
+        log.parent.chmod(0o700)
+    activity = activity or activity_feed.ActivityFeed(log, structured=True)
+    _publish_activity(activity, force=True)
+    try:
+        endpoint = dsh_endpoint(cwd, root)
+        outcome = dsh_runtime.run_session(
+            endpoint, prompt, cwd=pathlib.Path(cwd), log_path=log, timeout_s=int(timeout),
+            cancel=lambda: False)
+    except (dsh_runtime.DshUnavailable, dsh_runtime.DshLaunchError) as exc:
+        dsh_last = {'status': dsh_runtime.EXECUTION_ERROR, 'reason': str(exc)[:300]}
+        raise provider_runtime.ProviderUnavailable(str(exc)) from None
+    summary = outcome.summary()
+    dsh_last = {**summary, 'spend': {'input_tokens': outcome.input_tokens,
+                                     'output_tokens': outcome.output_tokens}}
+    note(f'DSH session: status={outcome.status} exit={outcome.exit_code} '
+         f'session={outcome.session_id} steps={outcome.steps} tools={outcome.tool_calls} '
+         f'tokens={outcome.input_tokens}/{outcome.output_tokens} '
+         f'elapsed={int(outcome.elapsed_s)}s')
+    code = 0 if outcome.ok else (124 if outcome.status == dsh_runtime.SESSION_TIMEOUT else 1)
+    _publish_activity(activity, force=True, returncode=code)
+    return subprocess.CompletedProcess(
+        [endpoint.binary, '--profile', endpoint.profile, 'headless', '--json', '-'],
+        code, stdout=_tail_file(log),
+        stderr='' if outcome.ok else f'{outcome.status}: {outcome.error_code or ""} '
+                                     f'{provider_runtime.redact_diagnostic(outcome.error_message)}')
+
+
+dsh_last = {}
+
+
+def record_dsh_checkpoint(root, number):
+    """Persist DSH counters immediately after a session, before anything else."""
+    if not dsh_last or root is None or number is None:
+        return
+    try:
+        recovery.update(root, number,
+                        dsh_status=dsh_last.get('status'),
+                        dsh_session=dsh_last.get('session_id'),
+                        dsh_turn_reason=dsh_last.get('turn_reason'),
+                        dsh_error_code=dsh_last.get('error_code'),
+                        dsh_error_message=dsh_last.get('error_message'),
+                        dsh_steps=dsh_last.get('steps'),
+                        dsh_spend=dsh_last.get('spend'))
+    except Exception:
+        pass
     # NOVA3_WORKER_PRESENCE_V1: nonblocking best-effort status; never logs credentials.
     reporter = globals().get('_nova_presence')
     if reporter is not None:
@@ -555,6 +643,39 @@ At session end create or update docs only if docs/worker-notes/ is allowed. Othe
 Do not start nested AI sessions. End after this bounded slice; supervisor handles further sessions.'''
 
 
+def dsh_session_prompt(issue,round_num,prior,allowed,binary_root):
+    """DSH session text: the Codex prompt plus the objective-check contract.
+
+    DSH runs the full depth of a checkout, so the prompt states what the
+    supervisor will independently verify afterwards and makes the evidence
+    rules explicit where a generic coding agent would otherwise assume that a
+    passing build proves a match. It never forbids reading the repository; it
+    bounds what may be *claimed* and *published*.
+    """
+    base=session_prompt(issue,round_num,prior,allowed,binary_root)
+    return base+f'''
+
+DEEPSEEK HARNESS SESSION CONTRACT
+- The supervisor, not you, decides whether this task succeeded. After this
+  session it runs the scope guard, then `bash tools/check_all.sh` (or the
+  project's documented checks) and refuses to publish on failure. Make that
+  check pass locally before you finish: run it yourself and fix what you broke.
+- Report only what the commands actually showed. If a test failed, say so and
+  stop; do not describe intended work as done.
+- Separate states stay separate and must be written explicitly:
+  COMPILES | TESTED | BEHAVIOURALLY COMPARED | INSTRUCTION-WINDOW MATCHED |
+  VERIFIED. Anything you did not independently check is NOT MATCHED / UNKNOWN.
+- Synthetic objects or assembly extracted from a linked .so are never original
+  .o files; never describe them as such.
+- Do not modify files outside the allowed paths above, even if a fix seems
+  obvious: report it in your final handoff instead.
+- If the task cannot be done honestly with the evidence present (missing
+  reference bytes, unknown semantics, a tool that is not installed), say which
+  evidence is missing and stop. That is a successful session outcome; a guess
+  is not.
+'''
+
+
 def verify(workdir):
     """Independent bounded checks, all build artifacts outside the tracked checkout."""
     root=pathlib.Path(workdir)
@@ -684,12 +805,24 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                                 provider_calls=current_calls+1,
                                 provider_started_unix=int(time.time()),
                                 provider_exit=None)
-                prompt=session_prompt(issue,k,handoff,allowed,binary_root)
+                prompt=(dsh_session_prompt(issue,k,handoff,allowed,binary_root)
+                        if provider == 'dsh' else session_prompt(issue,k,handoff,allowed,binary_root))
                 log=private_round_log(work,k)
                 # Bounded agent/profile files live beside the private log only.
                 aux_dir=log.parent/'provider-aux'
                 provider_env_extra={}
-                if provider == 'hermes':
+                if provider == 'dsh':
+                    # NOVA3_DSH_PROVIDER_V1: the DSH headless session reads the
+                    # prompt from stdin (never argv), keeps one persistent
+                    # session id in the checkpoint, and is classified from its
+                    # structured event stream, not from prose.
+                    dsh_last.clear()
+                    cp=run_dsh(provider,prompt,work,log,timeout=ai_session_timeout(),root=root)
+                    record_dsh_checkpoint(root,n)
+                    timed_out_session = cp.returncode == 124
+                    session_failed = cp.returncode != 0
+                    cmd=[provider_runtime.PROVIDERS['dsh'].executable,'--profile','headless','--json','-']
+                elif provider == 'hermes':
                     # File-based adapter: prompt stays in a private 0600 file.
                     invocation=hermes_command(prompt,work,aux_dir,provider_status)
                     cmd=list(invocation.argv)
@@ -698,14 +831,17 @@ def work_one(gh,upstream,user,issue,provider,root,rounds,binary_root,provider_st
                     provider_runtime.prepare_aux_files(provider,aux_dir)
                     cmd=command_for(provider,prompt,status=provider_status,aux_dir=aux_dir)
                 note(f'#{n} AI session {k}/{rounds} ({provider}); provider launched')
-                structured=provider == 'codex' and '--json' in cmd[2:-1]
-                activity=activity_feed.ActivityFeed(log, structured=structured)
-                provider_env={**os.environ, **provider_runtime.build_environment(provider),
-                              **provider_env_extra}
-                cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
-                                env=provider_env)
+                if provider != 'dsh':
+                    structured=provider == 'codex' and '--json' in cmd[2:-1]
+                    activity=activity_feed.ActivityFeed(log, structured=structured)
+                    provider_env={**os.environ, **provider_runtime.build_environment(provider),
+                                  **provider_env_extra}
+                    cp=run_provider(cmd,work,log,timeout=ai_session_timeout(),activity=activity,
+                                    env=provider_env)
                 recovery.update(root,n,provider_completed_unix=int(time.time()),
                                 provider_exit=cp.returncode)
+                if provider == 'dsh':
+                    activity=activity_feed.ActivityFeed(log, structured=True)
                 try:
                     gh.comment(n,f'/nova heartbeat {token} AI_FINISHED')
                 except Exception as exc:
