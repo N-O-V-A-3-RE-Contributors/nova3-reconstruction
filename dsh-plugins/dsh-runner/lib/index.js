@@ -14,9 +14,10 @@
  *   POST /dsh-runner/api/session
  *     {workspacePath, prompt, agentPreset?, permission?, provider?, model?,
  *      reasoningEffort?, title?}
- *     -> registers or reuses a Workspace for that path, creates a session in it,
+ *     -> creates a session that OWNS that directory (`session.create` takes a
+ *        `cwd`; no Workspace registration is needed or possible from here),
  *        names it, applies permission and model, sends the prompt, and returns
- *        {sessionId, workspaceId, permissionApplied, modelApplied}.
+ *        {sessionId, cwd, permissionApplied, modelApplied}.
  *
  *   GET /dsh-runner/api/session/{id}
  *     -> {sessionId, live} for the Host's own agent registry.
@@ -147,13 +148,11 @@ export function apply(ctx, config = {}) {
       if (!workspacePath || !workspacePath.startsWith('/')) {
         return refuse(res, 400, 'invalid_request', 'workspacePath must be absolute')
       }
-      const created = await call('workspace', 'create', { path: workspacePath })
-      const workspaceId = created?.workspace?.workspaceId
-      if (typeof workspaceId !== 'string' || !workspaceId) {
-        return refuse(res, 502, 'workspace_failed', 'the Host returned no workspace id')
-      }
+      // `session.create` takes either a workspaceId or an explicit cwd. cwd is
+      // what a per-task checkout needs, and it needs no workspace controller
+      // (that service is not mounted in this Web profile).
       const session = await call('session', 'create', {
-        workspaceId,
+        cwd: workspacePath,
         ...(text(body.agentPreset, 'agentPreset', 200) === undefined
           ? {} : { agentPreset: text(body.agentPreset, 'agentPreset', 200) }),
       })
@@ -198,7 +197,7 @@ export function apply(ctx, config = {}) {
         mode: 'queue',
         content: [{ type: 'text', text: prompt }],
       })
-      return reply(res, { sessionId, workspaceId, permissionApplied, modelApplied })
+      return reply(res, { sessionId, cwd: workspacePath, permissionApplied, modelApplied })
     } catch (error) {
       return refuse(res, 502, error.code || 'runner_failed', String(error.message || error))
     }

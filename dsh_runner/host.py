@@ -151,7 +151,8 @@ class HostClient:
         """Create a native session in an explicit directory via the dsh-runner plugin.
 
         This is what keeps a Host run inside a per-task checkout: the plugin
-        registers or reuses a Workspace for that path first.
+        passes the path as the session's own `cwd` (`session.create` accepts
+        either a workspaceId or a cwd), so no Workspace registration is needed.
         """
         payload = {'workspacePath': workspace_path, 'prompt': prompt}
         for key, value in (('permission', permission), ('model', model),

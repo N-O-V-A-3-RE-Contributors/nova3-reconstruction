@@ -9,7 +9,6 @@ function harness({ agents = new Map(), commands } = {}) {
     typertGateway: {
       invoke: async (call) => {
         calls.push(call)
-        if (call.namespace === 'workspace') return { workspace: { workspaceId: 'ws-1' }, created: true }
         if (call.method === 'create') return { sessionId: 's-1' }
         return {}
       },
@@ -52,16 +51,15 @@ test('creates a workspace for the path, then a session in it, then prompts', asy
   }), res)
   assert.equal(res.status, 200)
   assert.equal(res.body.sessionId, 's-1')
-  assert.equal(res.body.workspaceId, 'ws-1')
+  assert.equal(res.body.cwd, '/tmp/checkout-1')
   assert.equal(res.body.permissionApplied, true)
   assert.equal(res.body.modelApplied, true)
   assert.deepEqual(calls.map((c) => `${c.namespace}.${c.method}`),
-    ['workspace.create', 'session.create', 'session.rename', 'session.selectModel', 'session.prompt'])
-  assert.deepEqual(calls[0].args.request, { path: '/tmp/checkout-1' })
-  assert.deepEqual(calls[1].args.request, { workspaceId: 'ws-1' })
-  assert.deepEqual(calls[3].args.request,
+    ['session.create', 'session.rename', 'session.selectModel', 'session.prompt'])
+  assert.deepEqual(calls[0].args.request, { cwd: '/tmp/checkout-1' })
+  assert.deepEqual(calls[2].args.request,
     { sessionId: 's-1', provider: 'openrouter', model: 'demo', reasoningEffort: 'high' })
-  assert.equal(calls[4].args.request.content[0].text, 'do work')
+  assert.equal(calls[3].args.request.content[0].text, 'do work')
 })
 
 test('refuses a non-local origin and a relative path', async () => {
