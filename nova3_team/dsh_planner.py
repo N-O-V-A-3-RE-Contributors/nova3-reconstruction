@@ -40,6 +40,10 @@ DENIED_PREFIXES = ('originals/', 'analysis/', 'research/', 'generated/', 'Archiv
                    'build/', 'materials/', 'synthetic/', '.github/', '.codex/',
                    'analysis_db/', 'coordination/evidence/', '.venv/')
 ALLOWED_PREFIXES = ('reconstruction/', 'nova3_team/', 'tools/', 'docs/', 'coordination/')
+# Root-level files a proposal may own; everything else outside the prefixes
+# above is rejected because it is shared build/CI infrastructure that a single
+# task must not rewrite on its own.
+ALLOWED_ROOT_FILES = ('CMakeLists.txt',)
 MUTATING_IGNORED_PREFIXES = ('coordination/function_ledger.json',
                              'coordination/discovery_config.json')
 
@@ -193,7 +197,7 @@ def safe_path(value: object) -> str | None:
         return None
     if text.startswith(DENIED_PREFIXES):
         return None
-    if not text.startswith(ALLOWED_PREFIXES):
+    if not text.startswith(ALLOWED_PREFIXES) and text not in ALLOWED_ROOT_FILES:
         return None
     if text.startswith(MUTATING_IGNORED_PREFIXES):
         return None
@@ -270,7 +274,9 @@ def validate_proposal(raw: object, *, evidence: tuple) -> tuple[Proposal | None,
         return None, 'unsafe_path'
     if not isinstance(verify, list):
         return None, 'bad_verify'
-    verify = tuple(str(x).strip()[:200] for x in verify if str(x).strip())[:6]
+    verify = tuple(str(x).strip()[:600] for x in verify if str(x).strip())[:6]
+    if any(len(x) < 4 or '\n' in x for x in verify):
+        return None, 'bad_verify'
     try:
         priority = int(raw.get('priority', 50))
     except (TypeError, ValueError):

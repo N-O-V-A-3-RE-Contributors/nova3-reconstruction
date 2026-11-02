@@ -335,11 +335,26 @@ class PlannerTests(unittest.TestCase):
     def test_prohibited_paths_are_rejected(self):
         for bad in ('originals/x.cpp', 'analysis/lib.so', 'research/elf/a.cpp',
                     'generated/ghidra/a.cpp', '.github/workflows/x.yml',
-                    'coordination/function_ledger.json', '../escape.cpp', '/abs/path.cpp'):
+                    'coordination/function_ledger.json', '../escape.cpp', '/abs/path.cpp',
+                    '.cache/gcc443-sweep/x.json', 'build/host/x', 'AGENTS.md'):
             raw = dict(GOOD, allowed_paths=[bad])
             proposal, reason = dsh_planner.validate_proposal(raw, evidence=())
             self.assertIsNone(proposal, bad)
             self.assertEqual(reason, 'unsafe_path', bad)
+
+    def test_owned_paths_are_accepted_including_decisions_and_the_root_build_file(self):
+        raw = dict(GOOD, allowed_paths=['docs/decisions/BLOCKERS.md', 'CMakeLists.txt'])
+        proposal, reason = dsh_planner.validate_proposal(raw, evidence=())
+        self.assertEqual(reason, 'ok', reason)
+        self.assertEqual(proposal.allowed_paths, ('docs/decisions/BLOCKERS.md', 'CMakeLists.txt'))
+
+    def test_verification_commands_are_kept_whole(self):
+        long = 'cd ~/Projects/nova3_re && python -' + 'x' * 400 + ' -q'
+        proposal, reason = dsh_planner.validate_proposal(dict(GOOD, verify=[long]), evidence=())
+        self.assertEqual(reason, 'ok')
+        self.assertEqual(proposal.verify, (long,))     # never silently truncated
+        self.assertIsNone(dsh_planner.validate_proposal(
+            dict(GOOD, verify=['multi\nline']), evidence=())[0])
 
     def test_bad_shape_is_rejected(self):
         self.assertEqual(dsh_planner.validate_proposal(
