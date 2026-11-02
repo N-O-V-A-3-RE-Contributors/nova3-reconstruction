@@ -273,10 +273,17 @@ def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
     activity = activity or activity_feed.ActivityFeed(log, structured=True)
     _publish_activity(activity, force=True)
     try:
-        endpoint = dsh_endpoint(cwd, root)
         if _dsh_session is not None:
+            # The supervisor injected the runner (it owns the approved route
+            # list and the state). Resolving a LOCAL endpoint here would make
+            # the injected path fail on a machine with no DSH install, and it
+            # would repeat work the supervisor already did.
+            binary = str(os.environ.get('NOVA3_DSH_BIN') or 'dsh')
+            profile = str(os.environ.get('NOVA3_DSH_PROFILE') or 'headless')
             outcome = _dsh_session(prompt, cwd, log, int(timeout))
         else:
+            endpoint = dsh_endpoint(cwd, root)
+            binary, profile = endpoint.binary, endpoint.profile
             outcome = dsh_runtime.run_session(
                 endpoint, prompt, cwd=pathlib.Path(cwd), log_path=log, timeout_s=int(timeout),
                 cancel=lambda: False)
@@ -293,7 +300,7 @@ def run_dsh(provider, prompt, cwd, log, timeout, activity=None, root=None):
     code = 0 if outcome.ok else (124 if outcome.status == dsh_runtime.SESSION_TIMEOUT else 1)
     _publish_activity(activity, force=True, returncode=code)
     return subprocess.CompletedProcess(
-        [endpoint.binary, '--profile', endpoint.profile, 'headless', '--json', '-'],
+        [binary, '--profile', profile, 'headless', '--json', '-'],
         code, stdout=_tail_file(log),
         stderr='' if outcome.ok else f'{outcome.status}: {outcome.error_code or ""} '
                                      f'{provider_runtime.redact_diagnostic(outcome.error_message)}')

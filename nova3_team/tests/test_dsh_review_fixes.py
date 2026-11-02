@@ -370,6 +370,46 @@ class SpendAccountingTests(unittest.TestCase):
         self.assertEqual(calls['n'], 1, 'no credits: never start a second round')
         self.assertTrue(pause.called)
 
+    def test_injected_session_does_not_require_a_local_dsh_install(self):
+        """The supervisor injects the runner; endpoint resolution must be skipped.
+
+        CI has no DSH runtime, so resolving a local endpoint inside run_dsh made
+        the round-loop tests see zero sessions. The injected path must not
+        depend on ~/.local/share/nova3-dsh or a `dsh` on PATH.
+        """
+        (self.root / '.nova-state').mkdir(parents=True, exist_ok=True)
+        (self.root / '.nova-state' / '1.json').write_text(json.dumps(
+            {'issue': 1, 'repo': 'O/R', 'user': 'crjase', 'token': 'tok',
+             'phase': 'checkout'}))
+        work = self.root / 'work'
+        work.mkdir()
+        (work / '.git').mkdir()
+        calls = {'n': 0}
+
+        def fake_session(prompt, cwd, log_path, timeout_s):
+            calls['n'] += 1
+            return dsh_runtime.SessionOutcome(
+                status='EXECUTION_ERROR', exit_code=1, session_id='session-x',
+                turn_reason='error', error_code='BOOM', error_message='boom',
+                steps=1, tool_calls=0, elapsed_s=1.0, input_tokens=5, output_tokens=1)
+
+        gh = _CoordinatorLikeGitHub()
+        with mock.patch.object(worker, 'claim', return_value='tok'), \
+                mock.patch.object(worker, 'prepare_checkout',
+                                  return_value=(work, 'nova/issue-1-x', 'O/R')), \
+                mock.patch.object(worker, 'validate_scope', return_value=[]), \
+                mock.patch.object(worker, 'record_handoff', return_value='h'), \
+                mock.patch.object(worker, 'pause_failed_task', return_value=False), \
+                mock.patch.object(worker, 'dsh_endpoint',
+                                  side_effect=dsh_runtime.DshUnavailable('no runtime')):
+            worker._dsh_session = fake_session
+            try:
+                worker.work_one(gh, 'O/R', 'crjase', gh.issue(1), 'dsh', self.root, 1, '')
+            finally:
+                worker._dsh_session = None
+        self.assertEqual(calls['n'], 1,
+                         'the injected runner must not need a local DSH install')
+
     def test_supervisor_summary_never_double_counts_tokens(self):
         supervisor_entries = [{'task': '7', 'status': 'COMPLETED', 'summary': True,
                                'task_tokens': 5000}]
