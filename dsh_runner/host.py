@@ -137,8 +137,9 @@ class HostClient:
 
     # -- native session bridge (dsh-runner plugin) ---------------------------
     def bridge_available(self) -> bool:
+        """True when the dsh-runner plugin answered (any non-404 response)."""
         try:
-            self._call('/dsh-runner/api/session/__probe__')
+            self._call('/dsh-runner/api/session/status?id=probe')
             return True
         except HostUnavailable as exc:
             return 'HTTP 404' not in str(exc)

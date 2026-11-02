@@ -88,8 +88,8 @@ test('fails closed when permission services are absent', async () => {
 test('status reports whether the Host still holds the session', async () => {
   const { routes } = harness({ agents: new Map([['s-1', {}]]) })
   const live = response()
-  await routes.get('/dsh-runner/api/session/')({
-    method: 'GET', headers: LOCAL, url: '/dsh-runner/api/session/s-1',
+  await routes.get('/dsh-runner/api/session/status')({
+    method: 'GET', headers: LOCAL, url: '/dsh-runner/api/session/status?id=s-1',
   }, live)
   assert.equal(live.status, 200)
   assert.equal(live.body.sessionId, 's-1')

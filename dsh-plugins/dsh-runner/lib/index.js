@@ -189,29 +189,34 @@ export function apply(ctx, config = {}) {
     }
   }
 
-  const sessionStatus = async (req, res, sessionId) => {
+  const sessionStatus = async (req, res) => {
     if (!sameMachine(req)) return refuse(res, 403, 'forbidden', 'local browser only')
+    const url = new URL(String(req.url || '/'), 'http://127.0.0.1')
+    const sessionId = url.searchParams.get('id') || ''
+    if (!sessionId) return refuse(res, 400, 'invalid_request', 'the id query parameter is required')
     const agents = ctx.get?.('agents')
     const live = Boolean(agents?.get?.(sessionId))
     return reply(res, { sessionId, live })
   }
 
   ctx.effect(() => {
+    // Exact routes only: this Host's webServer route kinds are proven for
+    // `exact` by @nova3/dsh-control; a prefix route is what silently kept this
+    // plugin from mounting (the route 404'd and nothing was logged).
     const disposers = [
       ctx.webServer.register({ kind: 'exact', path: '/dsh-runner/api/session',
         handler: (req, res) => {
           if (req.method !== 'POST') return refuse(res, 405, 'method_not_allowed', 'POST only')
           return createSession(req, res)
         } }),
-      ctx.webServer.register({ kind: 'prefix', path: '/dsh-runner/api/session/',
+      ctx.webServer.register({ kind: 'exact', path: '/dsh-runner/api/session/status',
         handler: (req, res) => {
           if (req.method !== 'GET') return refuse(res, 405, 'method_not_allowed', 'GET only')
-          const id = String(req.url || '').split('?')[0]
-            .slice('/dsh-runner/api/session/'.length)
-          if (!id) return refuse(res, 400, 'invalid_request', 'a session id is required')
-          return sessionStatus(req, res, decodeURIComponent(id))
+          return sessionStatus(req, res)
         } }),
     ]
+    console.info('[dsh-runner] mounted /dsh-runner/api/session (POST) and '
+      + '/dsh-runner/api/session/status (GET)')
     return () => { for (const dispose of disposers) dispose() }
   }, 'dsh-runner: session routes')
 }
