@@ -24,6 +24,21 @@ fail. Live recheck: COMPLETED in 20.7 seconds, 3 steps, 2 tool calls, session
 remain mandatory: completed transport is not completed reconstruction.
 
 
+### Where to SEE the agent (added 2026-11-03)
+
+The DSH Web UI lists Web-profile agents; the reconstruction agent is a
+`dsh --profile headless` child of `nova3-dsh-worker.service`, so it never appears
+in that list. Visibility now comes from the Mission tab payload: `agent` with
+`running`, `provider`/`model`, `purpose`, `session_id`, real `steps`/`tool_calls`
+and `last_event_age_s` parsed from the private round log, plus future
+`cooldowns` and the route `catalog`. `running` is true only when an actual
+`dsh --json` child exists. Commands: `python -m nova3_team.mission`,
+`curl -s localhost:3080/nova3/api/mission | jq .agent`,
+`python -m nova3_team.dsh_status`. The client half is symlinked from
+`dsh-plugins/nova3-control`, so a page refresh picks it up; only a cached bundle
+needs `systemctl --user restart nova3-dsh.service` (which ends the chat, never
+the worker).
+
 ### Post-reboot proof (2026-11-03 01:17-01:18, after an unrelated host restart)
 
 Linger is enabled, so the unit returned by itself with no login:

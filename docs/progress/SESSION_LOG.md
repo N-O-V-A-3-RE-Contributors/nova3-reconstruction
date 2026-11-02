@@ -854,3 +854,16 @@ flight when this note was written; the outcome is appended below.
 - Classification fix committed as c02fde1: usage/billing-cap messages are
   provider-level (WAITING_CREDITS, failover-eligible); other PI_AI_ERROR
   messages remain task failures and never spend a second model.
+
+## 2026-11-03 (01:27-01:35) — why no agent was visible in DSH, and the fix
+
+- The agent was running the whole time (task #195, 46-56 steps, 57-69 tool calls,
+  last event a few seconds old). It was invisible because supervisor sessions are
+  `dsh --profile headless` children of the systemd unit; the Web UI's agent list
+  only shows Web-profile sessions.
+- Added an `agent` block to `nova3_team/mission.py` (durable state + router route +
+  real activity from the private round log; `running` requires an actual
+  `dsh --json` child) and an agent pill plus model/steps line in the Mission tab.
+  Verified live through `/nova3/api/mission`: running true,
+  openrouter/deepseek-v4.1-flash-1017, 56 steps, 69 tools, last event 2.8 s.
+- 4 new tests (`test_mission_agent.py`); full suite 1247 passed; plugin tests 4 pass.
