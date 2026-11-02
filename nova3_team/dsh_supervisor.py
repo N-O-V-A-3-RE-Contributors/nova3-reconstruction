@@ -345,8 +345,17 @@ class DshSupervisor:
         if consent:      # do not burn a consent that could not be used
             self.state.save(resume_for_cycle=int(time.time()))
         _log(f'not starting a session for {task}: {decision.state} ({decision.reason})')
-        self.state.save(state=decision.state, reason=decision.reason,
-                        next_check_unix=int(time.time()) + max(decision.delay_s, 300))
+        # A budget guard refusing a session is a WAIT, not a task verdict: keep
+        # the task link so the next claim attempt is the same task, and do not
+        # let a stale reason survive once the window resets.
+        state_now = self.state.load()
+        self.state.save(state=(dsh_policy.BACKOFF if decision.state == dsh_policy.BLOCKED
+                               else decision.state),
+                        reason=decision.reason,
+                        next_check_unix=int(time.time()) + max(decision.delay_s, 300),
+                        task=(state_now.get('task') if task == 'planner' or
+                              str((state_now.get('task') or {}).get('number')) == str(task)
+                              else state_now.get('task')))
         if decision.request:
             self._request(**decision.request, task=task)
         return False

@@ -290,6 +290,21 @@ class PolicyTests(unittest.TestCase):
                                          control_dir=control).state,
                              dsh_policy.WAITING_APPROVAL)
 
+    def test_planner_is_exempt_from_the_per_task_cap(self):
+        for _ in range(4):
+            self.ledger.append({'task': 'planner', 'status': 'COMPLETED'})
+        self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
+                                           dsh_policy.Context(task='planner')).state,
+                         dsh_policy.RUNNING)
+        # A real task still hits the cap (with the hourly window widened so the
+        # hourly guard is not the thing under test).
+        roomy = dsh_policy.Budget(sessions_per_hour=100)
+        for _ in range(4):
+            self.ledger.append({'task': '81', 'status': 'COMPLETED'})
+        self.assertEqual(dsh_policy.decide(outcome('COMPLETED'), self.ledger,
+                                           dsh_policy.Context(task='81', budget=roomy)).state,
+                         dsh_policy.BLOCKED)
+
     def test_budget_consent_works_without_a_control_directory(self):
         """Regression: the supervisor asks 'may a session start?' with
         control_dir=None and passes the consumed RESUME as budget_consent. The

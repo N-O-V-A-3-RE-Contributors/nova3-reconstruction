@@ -296,7 +296,11 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
             return Decision(RUNNING, 'session completed; lease reconciliation pending',
                             retry_same_task=True)
         # Never loop on one task: a per-task session cap forces a replan.
-        if ledger.sessions_for_task(task, since=context.attempt_started) >= budget.sessions_per_task:
+        # A 'success' that does not close the task is exactly the loop this cap
+        # exists for -- EXCEPT for the planner, whose sessions are expected to
+        # end without closing anything (it files proposals for a human).
+        if task != 'planner' and \
+                ledger.sessions_for_task(task, since=context.attempt_started) >= budget.sessions_per_task:
             return Decision(BLOCKED,
                             f'per-task session cap reached ({budget.sessions_per_task}) '
                             'without closing the task',
