@@ -73,9 +73,7 @@ def collect(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
     task = state.get('task') or {}
     try:
         from . import autopilot as autopilot_mod
-        auto_grant = autopilot_mod.load_grant(autopilot_mod.default_dir(repo))
-        autopilot_state = {'live': autopilot_mod.grant_live(auto_grant),
-                           'remaining': autopilot_mod.remaining(auto_grant)}
+        autopilot_state = autopilot_mod.state(repo)
     except Exception:
         autopilot_state = None
     try:
@@ -211,9 +209,12 @@ def render(data: dict) -> str:
                      f'{queue.get("blocked")} blocked · {queue.get("open_prs")} open PRs')
     auto = data.get('autopilot')
     if auto:
-        lines.append('**Autopilot:** ' + (
-            f'LIVE · {auto["remaining"]} approval(s) left' if auto.get('live')
-            else 'off'))
+        mode = auto.get('mode') or ('on' if auto.get('enabled') else 'off')
+        label = {'on': 'ON (persistent, no expiry)',
+                 'paused_credits': 'PAUSED — credit depleted; resumes automatically',
+                 'off': 'off', 'unset': 'not configured'}.get(mode, mode)
+        lines.append(f'**Autopilot:** {label} · auto-merge '
+                     f"{'on' if auto.get('auto_merge') else 'off'}")
     project = data.get('project') or {}
     snapshot, estimate = project.get('snapshot'), project.get('estimate')
     if snapshot and estimate:

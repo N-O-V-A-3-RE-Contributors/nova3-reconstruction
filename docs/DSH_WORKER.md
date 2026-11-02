@@ -163,9 +163,9 @@ cat $S/requests.jsonl        # outstanding actionable human requests
 | `NOVA3_DSH_MODEL` / `_ROUTE` / `_BASE_URL` / `_KEY_REF` | OpenRouter DeepSeek V4.1 Flash | model routing; failover = point these at another approved route |
 | `NOVA3_DSH_MAX_STEPS` | 120 | model steps per session |
 | `NOVA3_AI_SESSION_TIMEOUT` | 1200 | wall clock per session (300–1800) |
-| `NOVA3_DSH_SESSIONS_PER_HOUR` / `_PER_DAY` | 6 / 48 | spend caps |
-| `NOVA3_DSH_TOKENS_PER_DAY` | 6,000,000 | token cap |
-| `NOVA3_DSH_SESSIONS_PER_TASK` | 3 | anti-loop cap |
+| `NOVA3_DSH_SESSIONS_PER_HOUR` / `_PER_DAY` | 0 / 0 (unlimited) | optional spend caps; 0 means no cap |
+| `NOVA3_DSH_TOKENS_PER_DAY` | 0 (unlimited) | optional token cap; 0 means no cap |
+| `NOVA3_DSH_SESSIONS_PER_TASK` | 3 | anti-loop cap (quality control, not a time limit) |
 | `NOVA3_DSH_PLAN_TIMEOUT` | 900 | planner session bound |
 | `NOVA3_REFERENCE_ROOT` | `<repo>/analysis` | local read-only oracles |
 

@@ -1098,9 +1098,13 @@ class DshSupervisor:
         if kind == 'budget':
             ledger = self.ledger
             budget = dsh_policy.Budget.from_env()
-            return (ledger.sessions_today() < budget.sessions_per_day
-                    and ledger.tokens_today() < budget.tokens_per_day
-                    and ledger.sessions_last_hour() < budget.sessions_per_hour)
+            # 0 = unlimited; only a positive ceiling can refuse a start.
+            return ((not budget.sessions_per_day
+                     or ledger.sessions_today() < budget.sessions_per_day)
+                    and (not budget.tokens_per_day
+                         or ledger.tokens_today() < budget.tokens_per_day)
+                    and (not budget.sessions_per_hour
+                         or ledger.sessions_last_hour() < budget.sessions_per_hour))
         if kind == 'publish':
             number = int(str(record.get('task') or '0') or 0)
             if not number:

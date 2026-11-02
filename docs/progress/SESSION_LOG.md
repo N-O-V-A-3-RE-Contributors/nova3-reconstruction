@@ -1,5 +1,37 @@
 # Session log
 
+## 2026-11-02 — setup: persistent automation, Mission tab, keyless search, source reference
+
+- Read the owner-supplied `NOVA3_DEV_SOURCECODE.zip`: six 7z volumes
+  (11,922,012,346 B) inside; listed the inner archive with 7z (`39,283,825,872 B`,
+  131,126 files, LZMA+BCJ+7zAES). Extracted the source subset to the ignored
+  `reference/nova3_source/` — **595 MiB, 40,820 files** (trunk/src, prj, docs,
+  tools, build, lib; extern engine/vox code; all source/header/shader/Java/C#
+  extensions).
+- `tools/source_ref/index_source_reference.py`: tree manifest hash, counts,
+  DWARF-path cross-check. Premium ELF: 813 source paths, 808 resolved, **783
+  present (96.9%)**; missing are generated UnityBuild files and a few
+  renamed/moved files. Symbol locations for all already-touched engine classes
+  were found.
+- `nova3_team/autopilot.py` rewritten to schema v2: persistent `enabled` switch,
+  **no expiry, no task budget**; only `WAITING_CREDITS` pauses (temporarily);
+  new reviewed-green merge gate (`merge_decision`, `merge_validated`, audit
+  `merge-audit.jsonl`); v1 grant migration. 16 tests pass.
+- `dsh_policy.Budget`: session/hour/day and token ceilings default to **0 =
+  unlimited**; explicit positive values still enforced; supervisor/status
+  updated; unit files updated (`daemon-reload` done).
+- `/nova` replaced by the **Mission** tab: `nova3_team/mission.py` payload,
+  host routes (`/nova3/api/mission|automation|run`) and a browser-side
+  `conversation.view` registration in `dsh-plugins/nova3-control/lib/client.js`.
+  Node tests pass (4 host + 4 parser).
+- Keyless DuckDuckGo provider (`dsh-plugins/nova3-websearch`), selected in the
+  web profile; live search returned 10 results; parser tests pass.
+- Merged validated PRs **#181** (task #172) and **#180** (task #174) with the new
+  autopilot path after `review` returned `pass` and checks were green.
+- Full `nova3_team/tests`: 1195 passed, 13 order-dependent pre-existing failures
+  in `test_planning_memory.py` / `test_chatgpt_planner_auth.py` (`store-in-repo`);
+  both pass in isolation and are unrelated to the changed files.
+
 ## 2026-11-01 — sixth run: `CMatrix4<float>(CMatrix4<float> const&, eConstructor)` recovered
 
 - Decoded `0x00108c8c` (240 B, A32) with Capstone from the Premium ELF

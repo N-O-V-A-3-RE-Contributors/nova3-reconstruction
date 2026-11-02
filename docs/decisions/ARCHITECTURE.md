@@ -1,5 +1,28 @@
 # Architecture decisions — 2026-10-25
 
+## 2026-11-02 — source-assisted reconstruction (reference, never production input)
+
+The owner supplied a 2012 pre-release source tree. It is materialised as a
+**private reference** under `reference/nova3_source/` (ignored by Git, never
+committed, never shipped) and indexed by
+`tools/source_ref/index_source_reference.py`. The Premium ELF's DWARF source
+paths resolve to the tree at 96.9% (783/808), which is evidence of the same
+engine branch (`glitch`/`vox`, Android `GLLegacy*` port) but not proof of a
+byte-identical commit.
+
+Decision: use the source **to understand and verify behaviour and to recover the
+build recipe**, then write/compile our own source. It does not change the
+end-state rule: the final APK is built from this project's source plus permitted
+OSS dependencies, with no original executable, and the reference tree may not be
+linked, copied, packaged or required at runtime. Every function claim keeps the
+separate states `source present`, `host tests passed`, `ARM object built`,
+`original instruction window measured`, `behaviourally compared`.
+
+The decompilation order inverts from decompiler-first to
+correspondence-first: map Premium symbols to source definitions, recover the
+UnityBuild/Android.mk translation units and GCC 4.4.3 flags, then verify the
+already-implemented units before expanding by subsystem.
+
 Production C++17 is isolated in reconstruction/, built by root CMakeLists.txt without reading APKs, ELF references, archives, generated decompiler output, or Python research packages. No original executable is linked, loaded or shipped. Host command-line harnesses are the first targets; there is no Android application yet.
 
 Premium is primary because its symbols preserve game/engine names. DWARF is restricted to GCC/libgcc compilation units: do not plan game-class layout recovery from these types. Exact symbol names are observed evidence; signatures inferred by decompilers remain provisional.

@@ -86,3 +86,7 @@ __pycache__/
 /source-release/
 /nova3-source/
 /prerelease/
+# Extracted pre-release source reference (proprietary; local analysis only)
+/reference/
+# Local derived source index (regenerate with tools/source_ref/index_source_reference.py)
+/coordination/source_index.json
