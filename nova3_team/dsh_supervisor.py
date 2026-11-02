@@ -762,6 +762,43 @@ class DshSupervisor:
         same failure. Without an approved route the outcome is returned as-is so
         the caller pauses in the right state.
         """
+        if os.environ.get('NOVA3_DSH_AUTO_ROUTE', '').lower() in ('1', 'true', 'yes'):
+            from . import dsh_model_router
+            router = getattr(self, '_model_router', None)
+            if router is None:
+                router = dsh_model_router.Router(
+                    self.endpoint, self.paths.state / 'model-router')
+                self._model_router = router
+            task = self.state.load().get('task') or {}
+            title = ('planner' if log_path.name.startswith('planner-') else
+                     str(task.get('title') or 'semantic reconstruction'))
+            def failed_attempt(outcome, route):
+                self.ledger.append({
+                    'task': str(task.get('number') or 'planner'),
+                    'status': outcome.status, 'error_code': outcome.error_code,
+                    'input_tokens': outcome.input_tokens,
+                    'output_tokens': outcome.output_tokens, 'route': route,
+                    'session_id': outcome.session_id})
+            def selected(route):
+                self.state.save(active_model=route, endpoint={
+                    'profile': self.endpoint.profile, 'route': route['provider'],
+                    'model': route['model'], 'ok': True,
+                    'reason': 'configured_task_routing'})
+                _log(f'model selected: {route["provider"]}/{route["model"]} '
+                     f'for {dsh_model_router.purpose(title)} work')
+            try:
+                return router.run(
+                    prompt, task=title, cwd=cwd, log_path=log_path,
+                    timeout_s=timeout_s, cancel=lambda: bool(self.stop_signal),
+                    on_failure=failed_attempt, on_selected=selected)
+            except dsh_model_router.ConfigError as exc:
+                # Keep the supervisor alive; do not silently resurrect a model
+                # the owner removed from Web settings or retry a paid task.
+                return dsh_runtime.SessionOutcome(
+                    status=dsh_runtime.WAITING_CREDITS, exit_code=None,
+                    session_id=None, turn_reason=None,
+                    error_code='NO_AVAILABLE_CONFIGURED_MODEL',
+                    error_message=str(exc), steps=0, tool_calls=0, elapsed_s=0.0)
         outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=cwd, log_path=log_path,
                                           timeout_s=timeout_s,
                                           cancel=lambda: bool(self.stop_signal))

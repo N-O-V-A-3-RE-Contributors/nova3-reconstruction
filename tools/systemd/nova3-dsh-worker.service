@@ -57,6 +57,10 @@ Environment=NOVA3_AI_SESSION_TIMEOUT=1200
 # written (task #169, STEP_LIMIT). Still a bounded session, and the
 # per-task session cap still prevents a loop.
 Environment=NOVA3_DSH_MAX_STEPS=240
+# Re-read models configured in Web settings for each bounded session. Prefer
+# the Web default for semantic reconstruction/planning; flash models for routine
+# work, with authenticated-route fallback only on provider-level failures.
+Environment=NOVA3_DSH_AUTO_ROUTE=1
 # Usage ceilings are 0 = UNLIMITED by default: automation must not stop while
 # credit remains. The only pause is real provider exhaustion, handled in-process
 # as WAITING_CREDITS. Set a positive value here to restore a hard envelope.

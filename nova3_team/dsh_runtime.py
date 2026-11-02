@@ -606,6 +606,18 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
                 else:
                     acc.truncated = True
                 _observe(acc, event)
+                if acc.saw_final and acc.turn_kind is not None:
+                    # Some provider plugins retain transport handles after the
+                    # headless driver has emitted its authoritative terminal
+                    # turn_end + final pair. Do not wait until the TASK timeout
+                    # and misclassify completed work as SESSION_TIMEOUT. Allow
+                    # normal teardown briefly, then clean up this process group;
+                    # the terminal reason still decides success versus failure.
+                    try:
+                        proc.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        killed = _stop(proc)
+                    break
                 if acc.steps >= endpoint.max_steps:
                     killed = _stop(proc)
                     break

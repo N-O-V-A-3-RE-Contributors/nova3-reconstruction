@@ -1,6 +1,43 @@
 # Resume without chat history
 
-## 2026-11-03 (LATEST) — why sessions stopped, and the fix (standing waivers)
+## 2026-11-03 — persistent worker and configured-model routing
+
+The persistent agent is `nova3-dsh-worker.service`, not this Web chat turn.
+It launches bounded DSH sessions, independently verifies/checkpoints each task,
+then continues to the next one. User lingering is enabled, so it survives logout.
+Model routing implementation: `nova3_team/dsh_model_router.py`; enabled by
+`NOVA3_DSH_AUTO_ROUTE=1` in the worker unit. It re-reads Web model settings each
+session: Web default for semantic work, configured flash/mini for routine work.
+Currently discovered/authenticated: `openai-codex/gpt-6.1-sol` (high reasoning)
+and `openrouter/deepseek/deepseek-v4.1-flash-1017`. This ranking is a preference
+heuristic, not a benchmark. Provider-only failover has a shared wall-clock bound,
+per-route cooldowns and accounting; task errors/timeouts do not spend another
+model. Credentials stay in DSH. Each route has its own content-addressed overlay.
+
+Important live-discovered fix: the native Codex plugin emitted terminal
+`turn_end.completed` + `final: PASS` but kept transport handles alive, causing a
+false SESSION_TIMEOUT at 180 seconds. `dsh_runtime.run_session` now allows one
+second of teardown after a confirmed terminal pair and then cleans up the
+process group without changing its terminal verdict. Incomplete streams still
+fail. Live recheck: COMPLETED in 20.7 seconds, 3 steps, 2 tool calls, session
+`session-b9943894-9668-46ec-9ed6-7bea248e953b`. Independent work checks still
+remain mandatory: completed transport is not completed reconstruction.
+
+The previous DeepSeek task #167 really timed out at 20 minutes (148 tool calls);
+its checkout/history were preserved and it was quarantined, not reset. The
+supervisor then automatically started #170. Do not erase those attempts to
+requeue it. Activate changes at a completed-task checkpoint rather than killing
+an active task. Routing diagnostics live in slot `state/model-router/status.json`;
+supervisor `active_model` records the actual selected route.
+
+Memory tooling is unavailable, not silently working: Hindsight has no config or
+API token (`hindsight_diagnose` confirmed); OpenViking has neither connection
+config nor a running local server. The operator was given the missing setup
+requirements. Do not retry those tools repeatedly or invent credentials. Keep
+using on-disk project records, and never upload private game inputs to memory
+services.
+
+## 2026-11-03 (earlier) — why sessions stopped, and the fix (standing waivers)
 
 Root cause (measured from the worker journal and GitHub): the gate refuses any
 approval record older than `MAX_APPROVAL_AGE` (1 h). The two queued tasks had
