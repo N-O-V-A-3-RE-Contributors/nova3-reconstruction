@@ -169,6 +169,24 @@ cat $S/requests.jsonl        # outstanding actionable human requests
 | `NOVA3_DSH_PLAN_TIMEOUT` | 900 | planner session bound |
 | `NOVA3_REFERENCE_ROOT` | `<repo>/analysis` | local read-only oracles |
 
+## Independent review fixes (2026-11-02 15:12 snapshot)
+
+Every finding was confirmed against the code and fixed, with a regression test
+that failed on the earlier snapshot (`nova3_team/tests/test_dsh_review_fixes.py`).
+
+| Finding | Fix |
+| --- | --- |
+| P0 claim race: supervisor claimed, then `work_one` claimed again and skipped the task it had won | claiming is split out: `work_one` claims then calls `work_claimed()`; the supervisor calls `work_claimed()` with the lease it holds |
+| P0 silent process: deadline checked only while output flowed | watchdog thread kills the process group on the deadline; the reader loop only decides *why* it stopped |
+| P0 spend: 3 sessions, 1 ledger row | every session is recorded when it ends, by the component that spent it; the supervisor writes a token-free summary row; terminal credit/auth stops the round loop |
+| P1 planner only proposes | unchanged by design — it files proposals a human approves through the coordinator gate; approval remains a human act |
+| P1 completion | `COMPLETE` now requires the project acceptance check; an empty queue becomes `WAITING_APPROVAL: evidence needed` |
+| P1 request handling | requests are resolved one at a time, each when its own condition holds |
+| P1 `--plan-only` | plans and never claims or executes |
+| P1 two loops | `tools/dsh_loop` refuses to start while a systemd worker is enabled or running |
+| P1 provider fallback | `NOVA3_DSH_FALLBACK=route[:model][,route...]` declares approved pi-ai routes over the same credential; failover only for provider-level failures |
+| Dry run | a session that completes without changing anything is `EXECUTION_ERROR/NO_EFFECT`, never `RUNNING` |
+
 ## Operator controls and budget consent
 
 `control/RESUME` is the general "act now" button. It wakes any wait, and it
