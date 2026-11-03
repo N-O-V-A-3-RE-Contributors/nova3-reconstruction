@@ -5,7 +5,10 @@ in the project.  It is generated from ``coordination/source_correspondence.json`
 by ``tools.source_ref.build_source_correspondence.render_markdown``; that
 function is pure given the summary object.  This module fails when the
 committed report is not byte-for-byte the render of the committed JSON, so a
-stale published report cannot survive a test run.
+stale published report cannot survive a test run.  A passing run means the
+fresh report shows the two committed artifacts are consistent with each
+other; it is not evidence that any tracked function is reconstructed, present
+in source or equivalent to the original machine code.
 
 The check reads only the two committed text artifacts and imports the pure
 renderer.  It does not read the Premium ELF, an APK, an OBB or the private
@@ -103,7 +106,23 @@ def _assert_fresh(published: str, expected: str) -> None:
     )
 
 
-def test_published_markdown_is_current_render():
+def test_exactly_one_artifact_present_fails_the_gate():
+    # The module-level skip fires only when *neither* artifact exists; a lone
+    # artifact must fail here, because pytest reports the assertion as a
+    # failure for that artifact even though the module "ran" otherwise.
+    assert SUMMARY_PRESENT and PUBLISHED_PRESENT, (
+        "freshness gate cannot run: "
+        f"{SUMMARY_JSON.relative_to(ROOT).as_posix()} present={SUMMARY_PRESENT}, "
+        f"{PUBLISHED_MD.relative_to(ROOT).as_posix()} present={PUBLISHED_PRESENT}; "
+        "a fresh report needs both artifacts (both absent means a "
+        "pre-correspondence checkout, which skips)"
+    )
+
+
+def test_published_report_is_current_render_of_committed_summary():
+    # A fresh report shows the two committed artifacts are consistent with
+    # each other; it does not show any function is reconstructed or that any
+    # reconstructed unit is equivalent to the original machine code.
     summary = _load_summary()
     assert summary.get("schema") == SCHEMA
 
@@ -111,7 +130,7 @@ def test_published_markdown_is_current_render():
     _assert_fresh(published, _published_render(summary))
 
 
-def test_render_contains_every_tracked_unit_address():
+def test_render_lists_every_tracked_unit_address():
     summary = _load_summary()
     tracked = summary.get("tracked_units")
     assert isinstance(tracked, list), "tracked_units must be a JSON array"
@@ -129,7 +148,7 @@ def test_render_contains_every_tracked_unit_address():
         )
 
 
-def test_in_memory_drift_changes_render():
+def test_in_memory_summary_mutation_breaks_the_equality():
     summary = _load_summary()
     published = _load_published()
     _assert_fresh(published, _published_render(summary))
@@ -140,6 +159,20 @@ def test_in_memory_drift_changes_render():
     assert _published_render(status_probe) != published, (
         "changing a status count did not change the rendered report; the "
         "comparison is vacuous"
+    )
+
+    renamed_probe = copy.deepcopy(summary)
+    status_keys = sorted(renamed_probe["status"])
+    # A real status spelling must be replaced by another key the status table
+    # renders, otherwise the rendered row would be byte-identical.
+    target = next(key for key in ("not_found", "exact_body_found",
+                                  "same_file_different_revision")
+                  if key in renamed_probe["status"] and key != status_keys[0])
+    moved = renamed_probe["status"].pop(status_keys[0])
+    renamed_probe["status"][target] += moved
+    assert _published_render(renamed_probe) != published, (
+        "merging a status bucket into another did not change the rendered "
+        "report; the comparison is vacuous"
     )
 
     unit_probe = copy.deepcopy(summary)
