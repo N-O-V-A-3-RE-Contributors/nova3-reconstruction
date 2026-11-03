@@ -61,9 +61,7 @@ Environment=NOVA3_DSH_MAX_STEPS=240
 # the Web default for semantic reconstruction/planning; flash models for routine
 # work, with authenticated-route fallback only on provider-level failures.
 Environment=NOVA3_DSH_AUTO_ROUTE=1
-# Native DSH Host sessions (visible in the Agents tab) through the dsh-runner
-# bridge plugin. Falls back to headless if the bridge is unavailable.
-Environment=NOVA3_DSH_NATIVE=1
+Environment=NOVA3_DEBUG=1
 # Usage ceilings are 0 = UNLIMITED by default: automation must not stop while
 # credit remains. The only pause is real provider exhaustion, handled in-process
 # as WAITING_CREDITS. Set a positive value here to restore a hard envelope.
