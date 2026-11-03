@@ -74,9 +74,22 @@ class Waiver:
     issued_at: int
     expires_at: int
     task_spec: dict            # "163" -> task_spec_sha256 bound at waiver time
+    standing: bool = False     # owner wrote "standing": true (autopilot-gated)
+    renew_autopilot: bool = False  # owner allows renewing autopilot-approved tasks
 
-    def is_live(self, now: int | None = None) -> bool:
+    def is_live(self, now: int | None = None, *, standing_enabled: bool = False) -> bool:
+        """A one-run waiver is clock-bound; a standing one needs the owner switch.
+
+        The standing form does not extend the *approval record* window: the gate
+        still refuses any record older than MAX_APPROVAL_AGE, so the automated
+        approver must renew records.  What it removes is the need for the owner
+        to re-post a waiver every hour while the persistent autopilot switch is
+        on.  Turning the switch off makes every standing waiver dead at once.
+        """
         now = int(time.time()) if now is None else int(now)
+        if self.standing:
+            return bool(self.issued_at) and bool(standing_enabled) \
+                and 0 < self.issued_at <= now
         return (bool(self.issued_at) and self.issued_at <= now < self.expires_at
                 and 0 < self.expires_at - self.issued_at <= policy.MAX_APPROVAL_AGE)
 
@@ -84,13 +97,17 @@ class Waiver:
     def live(self) -> bool:
         return self.is_live()
 
-    def covers(self, number: int, now: int | None = None) -> bool:
-        return int(number) in set(self.issues) and self.is_live(now)
+    def covers(self, number: int, now: int | None = None, *,
+               standing_enabled: bool = False) -> bool:
+        return int(number) in set(self.issues) and self.is_live(
+            now, standing_enabled=standing_enabled)
 
     def as_dict(self) -> dict:
         return {'policy': POLICY_VERSION, 'comment_id': self.comment_id,
                 'issues': list(self.issues), 'issued_at': self.issued_at,
-                'expires_at': self.expires_at, 'task_spec': dict(self.task_spec)}
+                'expires_at': self.expires_at, 'standing': self.standing,
+                'renew_autopilot': self.renew_autopilot,
+                'task_spec': dict(self.task_spec)}
 
 
 def task_spec_sha256(issue: dict) -> str:
@@ -114,7 +131,8 @@ def label_names(issue: dict) -> list:
 
 
 def waiver_text(issues, *, ttl_seconds: int = DEFAULT_TTL_S, now: int | None = None,
-                logins: dict | None = None) -> str:
+                logins: dict | None = None, standing: bool = False,
+                renew_autopilot: bool = False) -> str:
     """The comment the OWNER posts once (copy from the report, paste into GitHub).
 
     It carries only issue numbers, digests and a short expiry -- no secrets. The
@@ -125,11 +143,26 @@ def waiver_text(issues, *, ttl_seconds: int = DEFAULT_TTL_S, now: int | None = N
     ttl = max(60, min(MAX_TTL_S, int(ttl_seconds)))
     numbers = sorted({int(item['number']) for item in issues})
     spec = {str(item['number']): task_spec_sha256(item) for item in issues}
-    body = {'policy': POLICY_VERSION, 'issues': numbers,
-            'task_spec': {str(n): spec[str(n)] for n in numbers},
-            'expires_at': now + ttl,
-            'note': 'One-run authorisation: the automated approver may approve ONLY these '
-                    'issue numbers, at EXACTLY these task texts, before expires_at.'}
+    if standing:
+        body = {'policy': POLICY_VERSION, 'issues': numbers,
+                'task_spec': {str(n): spec[str(n)] for n in numbers},
+                'standing': True,
+                **({'renew_autopilot': True} if renew_autopilot else {}),
+                'note': 'Standing authorisation: while the persistent autopilot switch is '
+                        'ON the automated approver may (re)issue short-lived approvals for '
+                        'ONLY these issue numbers, at EXACTLY these task texts. Turning '
+                        'the switch off revokes this immediately; editing a task text '
+                        'requires a new waiver.' + (
+                            ' Issues the autopilot already approved (local audit log, '
+                            'exact task text) may also be renewed.' if renew_autopilot
+                            else '')}
+    else:
+        body = {'policy': POLICY_VERSION, 'issues': numbers,
+                'task_spec': {str(n): spec[str(n)] for n in numbers},
+                'expires_at': now + ttl,
+                'note': 'One-run authorisation: the automated approver may approve ONLY '
+                        'these issue numbers, at EXACTLY these task texts, before '
+                        'expires_at.'}
     return ('<!-- ' + MARKER + ': ' + _canonical(body) + ' -->')
 
 
@@ -151,6 +184,8 @@ def parse_waiver(text: str, *, comment_id: int = 0, actor_id: int = 0,
         spec = {str(k): str(v) for k, v in (body.get('task_spec') or {}).items()}
     except (TypeError, ValueError):
         return None
+    standing = body.get('standing') is True
+    renew_autopilot = body.get('renew_autopilot') is True and standing
     if not issues or any(n <= 0 for n in issues):
         return None
     if len(issues) > 20 or any(not re.fullmatch(r'[0-9a-f]{64}', v) for v in spec.values()):
@@ -159,9 +194,12 @@ def parse_waiver(text: str, *, comment_id: int = 0, actor_id: int = 0,
     # creation time and can never exceed the protocol maximum, so a waiver
     # cannot extend itself.
     issued = int(created_at or 0)
+    if standing:
+        return Waiver(int(comment_id), int(actor_id), str(actor_login), issues,
+                      issued, 0, spec, True, renew_autopilot)
     bound = issued + policy.MAX_APPROVAL_AGE if issued else expires
     return Waiver(int(comment_id), int(actor_id), str(actor_login), issues,
-                  issued, min(expires, bound) if issued else expires, spec)
+                  issued, min(expires, bound) if issued else expires, spec, False)
 
 
 def safety_blockers(issue: dict) -> tuple:
@@ -246,7 +284,9 @@ def _github_time(seconds: int) -> str:
 
 def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
           fetch_issue=None, now: int | None = None,
-          ttl_seconds: int = DEFAULT_TTL_S, waiver_source: dict | None = None) -> dict:
+          ttl_seconds: int = DEFAULT_TTL_S, waiver_source: dict | None = None,
+          standing_enabled: bool = False, previous=None,
+          audit_specs: dict | None = None) -> dict:
     """Approve only waiver-covered, unchanged, safe issues; write one record each.
 
     `reserve(number) -> bool` takes a durable one-shot slot for an issue and
@@ -297,12 +337,25 @@ def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
         report['reason'] = 'waiver_author_not_owner'
         return report
     waiver = Waiver(waiver.comment_id, actor_id, waiver.actor_login, waiver.issues,
-                    waiver.issued_at, waiver.expires_at, waiver.task_spec)
+                    waiver.issued_at, waiver.expires_at, waiver.task_spec,
+                    waiver.standing, waiver.renew_autopilot)
     report['waiver'] = waiver.as_dict()
-    if not waiver.is_live(now):
-        report['reason'] = 'waiver_expired'
+    if not waiver.is_live(now, standing_enabled=standing_enabled):
+        report['reason'] = ('standing_waiver_needs_autopilot' if waiver.standing
+                            else 'waiver_expired')
         return report
-    for target in waiver.issues:
+    targets = list(waiver.issues)
+    if waiver.standing and waiver.renew_autopilot and audit_specs:
+        # The owner's standing waiver may also renew issues the AUTOPILOT already
+        # approved: the local audit log is the authorization, not a GitHub label
+        # (labels are contributor-writable), and the audited task-spec digest is
+        # rechecked against the live issue, so an edited task is still refused.
+        targets += sorted(int(number) for number in audit_specs
+                          if int(number) not in set(waiver.issues))
+    if targets != list(waiver.issues):
+        report['audit_coverage'] = sorted(int(number) for number in targets
+                                          if int(number) not in set(waiver.issues))
+    for target in targets:
         issue = fetch(target)
         if issue is None:
             report['skipped'].append((target, 'issue_missing'))
@@ -314,9 +367,24 @@ def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
         if waiver.task_spec.get(str(target)) not in (None, task_spec_sha256(issue)):
             report['skipped'].append((target, 'task_text_changed_since_waiver'))
             continue
+        audited = (audit_specs or {}).get(str(target)) or (audit_specs or {}).get(target)
+        if audited and audited != task_spec_sha256(issue):
+            report['skipped'].append((target, 'task_text_changed_since_autopilot_approval'))
+            continue
+        # A reservation whose recorded expiry has passed is renewed: the gate
+        # refuses records older than MAX_APPROVAL_AGE, so continuity requires a
+        # fresh record.  A reservation with no recorded expiry is permanent and
+        # never re-issued (the legacy one-shot behaviour).
+        prior = previous(target) if previous is not None else None
+        if isinstance(prior, dict) and prior:
+            prior_expiry = int(prior.get('expires_at') or 0)
+            if prior_expiry == 0 or prior_expiry > now:
+                report['skipped'].append((target, 'already_approved'))
+                continue
         if not reserve(target):
             report['skipped'].append((target, 'already_approved'))
             continue
+        renewal = isinstance(prior, dict) and bool(prior)
         body = approval_record(issue=issue, waiver=waiver, repository=repository,
                                created_at=now, ttl_seconds=ttl_seconds)
         try:
@@ -327,8 +395,50 @@ def admit(*, issues, repository: dict, reserve, verify_role, post_comment,
             report['skipped'].append((target, 'comment_failed'))
             continue
         report['approved'].append({'issue': target, 'comment_id': comment.get('id'),
+                                   'renewal': renewal,
                                    'task_spec_sha256': task_spec_sha256(issue)})
     return report
+
+
+def standing_enabled_for(repo: str) -> bool:
+    """True only while the owner's persistent autopilot switch is enabled.
+
+    Standing waivers are live exactly as long as this is true, so turning the
+    switch off revokes every one of them without touching GitHub.
+    """
+    try:
+        from . import autopilot
+        grant = autopilot.load_grant(autopilot.default_dir(repo))
+        return bool(grant) and grant.get('enabled') is True
+    except Exception:
+        return False
+
+
+def autopilot_audit_specs(repo: str) -> dict:
+    """Issue number -> task-spec digest for tasks the AUTOPILOT already approved.
+
+    Read from the local, owner-owned audit log only (never a GitHub label, which
+    any contributor can write).  A missing or unreadable log yields no coverage.
+    """
+    specs: dict = {}
+    try:
+        from . import autopilot
+        folder = autopilot.default_dir(repo)
+        path = folder / autopilot.AUDIT
+        for line in path.read_text(encoding='utf-8').splitlines():
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(record, dict):
+                continue
+            number = record.get('issue')
+            spec = record.get('task_spec_sha256')
+            if isinstance(number, int) and isinstance(spec, str) and spec:
+                specs[number] = spec
+    except Exception:
+        return {}
+    return specs
 
 
 def _fetch_issue(number: int):
@@ -365,26 +475,71 @@ def _issue_payload(repo: str, number: int) -> dict:
     return _api(f'repos/{repo}/issues/{number}')
 
 
-def request_waiver(repo: str, issues: list, *, ttl_seconds: int = DEFAULT_TTL_S) -> str:
+def request_waiver(repo: str, issues: list, *, ttl_seconds: int = DEFAULT_TTL_S,
+                   standing: bool = False, renew_autopilot: bool = False) -> str:
     """Print the waiver comment for the OWNER to post. Writes nothing."""
     payloads = [_issue_payload(repo, n) for n in issues]
-    return waiver_text(payloads, ttl_seconds=ttl_seconds)
+    return waiver_text(payloads, ttl_seconds=ttl_seconds, standing=standing,
+                       renew_autopilot=renew_autopilot)
 
 
-def reserve_factory(path: pathlib.Path):
-    """Durable one-shot reservations (O_EXCL), outside any model conversation."""
+def reserve_factory(path: pathlib.Path, *, ttl_seconds: int = DEFAULT_TTL_S):
+    """Durable reservations, outside any model conversation.
+
+    A reservation records ``expires_at`` so a renewal is a deliberate, auditable
+    replacement of an *expired* approval record rather than a second approval of
+    a live one.  A reservation without ``expires_at`` (or with 0) is permanent
+    and stays single-use, which is what the legacy tests assert.
+    """
     path = pathlib.Path(path)
+    ttl = max(60, min(policy.MAX_APPROVAL_AGE, int(ttl_seconds)))
 
     def reserve(number: int) -> bool:
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         target = path / f'{int(number)}.approved'
+        lock = path / f'{int(number)}.lock'
+        now = int(time.time())
         try:
-            descriptor = os.open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
-            return False
-        with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
-            handle.write(json.dumps({'at': int(time.time())}))
-        return True
+            try:
+                stale = now - int(lock.stat().st_mtime) > 120
+            except OSError:
+                stale = True
+            if not stale:
+                return False
+            try:
+                lock.unlink()
+            except OSError:
+                return False
+            try:
+                descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                return False
+        try:
+            current = {}
+            try:
+                current = json.loads(target.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                current = {}
+            if isinstance(current, dict) and current:
+                expiry = int(current.get('expires_at') or 0)
+                if expiry == 0 or expiry > now:
+                    return False
+            temporary = path / f'.{int(number)}.pending'
+            with open(temporary, 'w', encoding='utf-8') as handle:
+                handle.write(json.dumps({'at': now, 'expires_at': now + ttl}))
+            os.replace(temporary, target)
+            return True
+        finally:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            try:
+                lock.unlink()
+            except OSError:
+                pass
 
     return reserve
 
@@ -436,9 +591,15 @@ def _queue_labels(repo: str, number: int, comment_id: int) -> dict:
     names = set(label_names(current))
     if {'nova:blocked', 'nova:claimed', 'nova:review'} & names:
         raise RuntimeError(f'issue #{number} moved to {sorted(names)} state; not queueing')
-    names |= {'nova:queued', f'nova:approved:{int(comment_id)}'}
+    # Replace, never accumulate, approval locators: the gate refuses an issue
+    # that names two approval comments (ambiguous), which is exactly what a
+    # renewal would produce if the superseded locator were kept.
+    wanted = {name for name in names if not name.startswith('nova:approved:')}
+    wanted |= {'nova:queued', f'nova:approved:{int(comment_id)}'}
+    if wanted == names and f'nova:approved:{int(comment_id)}' in names:
+        return current                       # already correct; no write
     return _api(f'repos/{repo}/issues/{number}', method='PATCH',
-                payload={'labels': sorted(names)})
+                payload={'labels': sorted(wanted)})
 
 
 def run(repo: str, *, holder: int, state_dir: pathlib.Path,
@@ -506,11 +667,22 @@ def run(repo: str, *, holder: int, state_dir: pathlib.Path,
         return _api(f'repos/{repo}/issues/{number}/comments', method='POST',
                     payload={'body': body})
 
+    reserved_dir = state_dir / 'reserved'
+
+    def previous(number: int):
+        try:
+            return json.loads((reserved_dir / f'{int(number)}.approved')
+                              .read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return None
+
     report = admit(issues=[], repository=_repo_payload(repo),
-                   reserve=reserve_factory(state_dir / 'reserved'),
+                   reserve=reserve_factory(reserved_dir, ttl_seconds=ttl_seconds),
                    verify_role=verify_role, post_comment=post_comment,
                    fetch_issue=lambda n: _issue_payload(repo, n),
-                   ttl_seconds=ttl_seconds, waiver_source=waiver_source, now=now)
+                   ttl_seconds=ttl_seconds, waiver_source=waiver_source, now=now,
+                   standing_enabled=standing_enabled_for(repo), previous=previous,
+                   audit_specs=autopilot_audit_specs(repo))
     report.setdefault('finalized', [])
     reserved = state_dir / 'reserved'
     # A failed POST must not burn the one-shot slot forever.
@@ -523,25 +695,33 @@ def run(repo: str, *, holder: int, state_dir: pathlib.Path,
         try:
             _queue_labels(repo, entry['issue'], entry['comment_id'])
             entry['queued'] = True
-            _update_reservation(reserved, entry['issue'], queued=True)
+            _update_reservation(reserved, entry['issue'], queued=True,
+                                label_comment_id=entry['comment_id'])
         except Exception as exc:                 # keep the comment; retry labels
             entry['queued'] = False
             entry['label_error'] = str(exc)[:200]
     # Recover approvals whose comment landed but whose labels did not, without
     # posting a second approval comment.
+    # Label repair for EVERY recorded approval, not only the ones whose first
+    # label write failed: a renewal supersedes the old locator, and an issue that
+    # carries two locators is refused by the gate as ambiguous. _queue_labels is
+    # idempotent and writes nothing when the label set is already correct.
     for path in sorted(reserved.glob('*.approved')) if reserved.is_dir() else []:
         try:
             state = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             continue
         number, comment_id = int(path.stem), int(state.get('comment_id') or 0)
-        if state.get('queued') or not comment_id:
+        if not comment_id:
             continue
+        if (state.get('queued')
+                and int(state.get('label_comment_id') or 0) == comment_id):
+            continue                        # labels already name this record
         try:
             _queue_labels(repo, number, comment_id)
         except Exception:
             continue
-        _update_reservation(reserved, number, queued=True)
+        _update_reservation(reserved, number, queued=True, label_comment_id=comment_id)
         report['finalized'].append({'issue': number, 'comment_id': comment_id})
     _write_report(state_dir, report)
     return report
@@ -557,6 +737,12 @@ def main(argv=None) -> int:
                         help='issue that carries the owner waiver comment')
     parser.add_argument('--state', default=None)
     parser.add_argument('--ttl', type=int, default=DEFAULT_TTL_S)
+    parser.add_argument('--renew-autopilot', action='store_true',
+                        help='waiver command: also allow renewing issues the autopilot '
+                             'already approved (local audit log, exact task text)')
+    parser.add_argument('--standing', action='store_true',
+                        help='waiver command: emit a standing waiver (live while the '
+                             'autopilot switch is ON) instead of a one-run waiver')
     args = parser.parse_args(argv)
     state = pathlib.Path(args.state or (pathlib.Path.home() / '.cache' / 'nova3-team'
                                         / args.repo.replace('/', '_') / 'autoadmit'))
@@ -564,13 +750,17 @@ def main(argv=None) -> int:
         numbers = [int(x) for x in args.issues.split(',') if x.strip()]
         if not numbers:
             parser.error('--issues is required for waiver')
-        print(request_waiver(args.repo, numbers, ttl_seconds=args.ttl))
+        print(request_waiver(args.repo, numbers, ttl_seconds=args.ttl,
+                             standing=args.standing,
+                             renew_autopilot=args.renew_autopilot))
         return 0
     report = run(args.repo, holder=args.holder, state_dir=state, ttl_seconds=args.ttl)
     print(json.dumps(report, indent=2))
+    # A timer run with nothing to do is SUCCESS, not failure: returning 3 for an
+    # idle tick made systemd mark the unit failed every ten minutes. Exit 3 is
+    # reserved for an approval that was written but could not be queued.
     unqueued = [e for e in report.get('approved') or [] if not e.get('queued')]
-    done = bool(report.get('approved') or report.get('finalized'))
-    return 0 if done and not unqueued else 3
+    return 3 if unqueued else 0
 
 
 if __name__ == '__main__':
