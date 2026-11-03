@@ -1,0 +1,12 @@
+[Unit]
+Description=Renew standing-waiver approvals every 10 minutes
+
+[Timer]
+OnCalendar=*:5/10
+AccuracySec=1min
+RandomizedDelaySec=20s
+Persistent=false
+Unit=nova3-autoadmit.service
+
+[Install]
+WantedBy=timers.target
