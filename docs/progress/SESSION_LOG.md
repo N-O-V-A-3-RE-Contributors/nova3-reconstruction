@@ -877,3 +877,29 @@ flight when this note was written; the outcome is appended below.
 - Scheduled a transient `nova3-web-reload` unit (01:53:12) to restart the Web
   service so the boot-time plugin `rev` changes and the Mission tab renders the
   `agent RUNNING` pill. The worker unit is separate and unaffected.
+
+### Task #187: register the host test for the A32 unit at 0x000d39f0
+
+- Change: one `add_executable(block_000d39f0_test ...)` + one
+  `add_test(NAME block_000d39f0 ...)` in the `BUILD_TESTING` block of the root
+  `CMakeLists.txt`, in the same style as `driver_callback_init_behaviour`
+  (C++17, `-UNDEBUG`, include dir `reconstruction/recovered/libNOVA3_neon`,
+  source `reconstruction/tests/recovered/libNOVA3_neon/block_000d39f0_test.cpp`).
+  Nothing else changed; the recovered `.cpp` and the `_test.cpp` have no diff.
+- The test's optional Python/Unicorn oracle is emitted only by
+  `block_000d39f0_test --emit-oracle`; it is not built, run or fetched by CMake/CTest,
+  and neither the original ELF nor `analysis/` is read at build or test time.
+- Commands and results:
+  - `cmake -S . -B build/host -G Ninja -DBUILD_TESTING=ON && cmake --build build/host -j2`
+    -> exit 0.
+  - `ctest --test-dir build/host -R block_000d39f0 --output-on-failure`
+    -> exit 0: `1/1 Test #18: block_000d39f0 ... Passed`.
+  - Direct run prints `PASS: 4100 CRC comparisons + 2 known/empty vectors, 4 ETC
+    objects, 16 JNI cases`.
+  - `git diff --stat` -> only `CMakeLists.txt` and this log entry, 2 files changed.
+  - Guard check: deleting `build/host/block_000d39f0_test` makes CTest report
+    "Not Run" (exit 8), so the test really executes the built binary; rebuilt and
+    re-ran -> exit 0.
+- Status: REGISTERED, COMPILES, TESTED on the host. This is host behaviour testing
+  only: it is NOT a byte match, NOT an instruction-window match and NOT a claim of
+  equivalence with the original A32 code.
