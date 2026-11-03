@@ -1039,6 +1039,14 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
         current=recovery.load(root,n)
         verified=current.get('verified',False)
         checklog=current.get('checklog','No verification run')
+        if current.get('phase') in ('committed','pushed') and not verified:
+            # A checkpoint recorded before verification succeeded must not be
+            # published as a draft forever: re-run the independent checks in the
+            # same checkout and publish verified when they pass.
+            verified,checklog=verify(work,issue.get('body',''))
+            recovery.update(root,n,verified=verified,checklog=checklog[-1600:])
+            note(f'#{n} resumed at {current.get("phase")}: independent tests '
+                 f'{"PASS" if verified else "FAIL (draft PR)"}')
         if gate is not None and current.get('phase') in ('committed','pushed'):
             # Revalidate owner/admin approval with fresh evidence immediately
             # before any push or PR; never publish unapproved work. Leases
