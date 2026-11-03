@@ -1,6 +1,74 @@
 # Status — source resource, mesh and texture reconstruction
 
-**At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: `python -m nova3_team.analysis` (or `/nova eta` in DSH).
+**At a glance:** 1,165 of 39,092 ELF functions recorded (3.0%, inventory not complete); 18 source mappings (7 ARM-matched, 8 behavioural, 3 utility modules); no playable game, renderer, gameplay, audio or saves yet. Everything below is evidence, not a completion claim. Machine-readable baseline: [`coordination/progress_state.json`](../../coordination/progress_state.json); dynamic ETA: the **Mission tab** in the DSH Web UI (or `python -m nova3_team.mission`).
+
+## Unattended continuity fixed: standing waivers + renewal (2026-11-03)
+
+The worker was alive but idle: every queued task's approval record had expired
+(1 h gate window), so each cycle denied admission. Fixed with owner-authored
+**standing waivers** (live only while the persistent autopilot switch is on,
+pinned to exact task texts) and a 10-minute renewal timer that re-issues
+short-lived records for covered tasks. Live: #167 admitted and a DSH session
+started; #170 approved and queued. Details and revocation:
+`docs/progress/AUTO_CONTINUITY.md`. Tests: 17 new (`test_autoadmit_standing.py`);
+full `nova3_team/tests` 1223 passed.
+
+## getInverse reconstructed; 776-byte window measured (2026-11-03)
+
+`glitch::core::CMatrix4<float>::getInverse` (0x000ebb08, 776 B) is now
+IMPLEMENTED (`reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.cpp`)
+and TESTED (7 groups, ctest now 40/40), closing the last dangling dependency of
+`collada_skin_cache_deps.h`. The body is Cramer's rule with eleven float minors
+widened to double, the measured `1e-08` determinant tolerance, 16 explicit
+cofactor outputs and the non-fast-math `1/det` scaling loop; no identity-flag
+branch, consistent with `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` being defined.
+
+ARM measurement with NDK r8e GCC 4.4.3 (`-O3 -mfpu=vfpv3-d16
+-mfloat-abi=softfp`, `tools/compare/collada_matrix4_inverse_pilot.py`):
+**776/776 bytes and 194/194 instructions**, but the class multiset differs by
+exactly four (candidate 38 `vmul` vs 34, 15 `vfp_other` vs 19; nothing unique on
+either side; first divergence at instruction 5). Window status: **DIFFERENT →
+NOT MATCHED** — recorded as such, `source_matching_verified=false`. This is a
+size- and shape-identical candidate with a four-operation scheduling/expression
+residual, not a byte match.
+
+## ELF source correspondence and build configuration (2026-11-02, latest)
+
+Full-function correspondence now exists: 39,452 Premium `.symtab` functions
+extracted (11.6 MB of code, 2.69 M instructions, 329 PLT imports resolved,
+15,850 with data references, 0 Thumb, so the engine `.text` is ARM state only)
+and matched against the private pre-release tree: **21,705 `exact_body_found`**,
+8,072 `same_file_different_revision`, 9,675 `not_found`; 3,341 have strong body
+evidence (>=3 machine-code references, >=60% found). Report:
+`docs/progress/SOURCE_CORRESPONDENCE.md`; machine-readable
+`coordination/source_correspondence.json`. This is a *locating* result: no
+function became byte-matched in this pass.
+
+Build configuration settled from machine code: `GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+is defined (no +0x40 flag access; `CMatrix4<float>` is 64 B), `GLITCH_FAST_MATH`
+is not (the `1e-08` tolerance literal at `0xebe08` plus the 16-element `1/det`
+scaling loop at the end of `getInverse`). `getInverse` (776 B) now has a known
+algorithm; `operator*` (564 B) is the `matrix4_ops.h` template, not the inferred
+model currently in the tree. Implementation totals are unchanged (13 ENGINE
+units IMPLEMENTED + TESTED); no new ARM-window match this pass.
+
+## Pre-release source materialised; setup fixes (2026-11-02, latest)
+
+The owner's pre-release source drop is extracted as a **private reference** at
+`reference/nova3_source/` (595 MiB, 40,820 files; ignored by Git). The Premium
+ELF's DWARF source paths resolve to it at **783/808 = 96.9%**, which establishes
+the same engine branch (`glitch`/`vox`) without yet proving a byte-identical
+commit. Index/reproduce: `python -m tools.source_ref.index_source_reference --write`
+→ `coordination/source_index.json`.
+
+Setup changes: autopilot is now a persistent switch (no expiry, no task budget;
+automation pauses only on depleted credit, then resumes) and merges PRs only
+after the read-only review passes with green checks; local session/token ceilings
+default to unlimited; `/nova` is replaced by the **Mission** tab (host API +
+client plugin) showing ETA/completion/automation; keyless **DuckDuckGo** search
+replaces the unavailable DeepSeek search provider. PRs #180 and #181 were
+reviewed green and merged. See `HANDOFF.md` for the exact resume procedure.
+
 
 ## Where the reconstruction stands
 

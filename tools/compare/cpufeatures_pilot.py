@@ -26,8 +26,10 @@ Example:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -51,6 +53,155 @@ REFERENCE_BSS_LAYOUT = {
     "g_cpuFeatures": 8,
     "g_cpuFamily": 16,
 }
+
+# The old sources/cpufeatures/Android.mk redirects to this source directory.
+STATE_SOURCES = Path(
+    "reference/nova3_source/NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/"
+    "android-ndk/sources/android/cpufeatures"
+)
+
+
+def resolve_reference(reference: Path) -> Path:
+    """Locate a read-only reference without copying it into a worker checkout.
+
+    Existing paths and absolute paths are authoritative. Only a missing
+    project-relative analysis/... path may use NOVA3_REFERENCE_ROOT (the
+    analysis directory), or the documented local project when unset.
+    """
+    reference = reference.expanduser()
+    if reference.is_file():
+        return reference
+    if (not reference.is_absolute() and reference.parts
+            and reference.parts[0] == "analysis" and ".." not in reference.parts):
+        configured = os.environ.get("NOVA3_REFERENCE_ROOT")
+        root = (Path(configured).expanduser() if configured else
+                Path.home() / "Projects/nova3_re/analysis")
+        candidate = root.joinpath(*reference.parts[1:])
+        if candidate.is_file():
+            return candidate.resolve()
+    raise FileNotFoundError(
+        f"reference not found: {reference}; pass an existing --reference path "
+        "or set NOVA3_REFERENCE_ROOT to the local analysis directory"
+    )
+
+
+def inventory_state_sources(directory: Path) -> list[dict]:
+    """Read the shipped C files as text; inventory file-scope static scalars.
+
+    This deliberately covers the simple scalar declarations in cpufeatures,
+    not arbitrary C syntax. Order is one-based within each source file and
+    says nothing about compiler/linker storage order. No preprocessing, build
+    or execution of the prebuilt sources/library takes place.
+    """
+    files = sorted(directory.rglob("*.c"))
+    if not files:
+        raise ValueError(f"no cpufeatures C sources found under {directory}")
+    inventory = []
+    for path in files:
+        with path.open(encoding="utf-8", newline="") as stream:
+            text = stream.read()
+        # Mask comments and literals without moving declaration positions.
+        masked = re.sub(
+            r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'',
+            lambda m: re.sub(r"[^\n]", " ", m.group()), text, flags=re.S,
+        )
+        depths = [0]
+        for char in masked:
+            depths.append(depths[-1] + (char == "{") - (char == "}"))
+        declarations = re.finditer(
+            r"^[ \t]*static\s+(?P<type>(?:[A-Za-z_]\w*\s+)+)"
+            r"(?P<name>[A-Za-z_]\w*)\s*(?:=[^;{}]*)?;", masked, re.M,
+        )
+        order = 0
+        for declaration in declarations:
+            if depths[declaration.start()] != 0:
+                continue
+            order += 1
+            inventory.append({
+                "source_file": str(path.relative_to(directory)),
+                "source_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "declaration_order": order,
+                "declared_type": " ".join(declaration["type"].split()),
+                "name": declaration["name"],
+            })
+    return inventory
+
+
+def state_layout(inventory: list[dict], readelf_text: str, nm_text: str) -> dict:
+    """Join text-only declaration inventory to two independent symbol listings.
+
+    Values are linked ELF virtual addresses, not file offsets. Relative offsets
+    use g_once only when that tool reports exactly one such symbol. Preserve
+    duplicate names rather than guessing which object belongs to this TU.
+    """
+    names = {row["name"] for row in inventory} | {"g_once"}
+    symbols: dict[str, dict[str, list[dict]]] = {"readelf": {}, "nm": {}}
+    in_symtab = False
+    for line in readelf_text.splitlines():
+        if line.startswith("Symbol table "):
+            in_symtab = line.startswith("Symbol table '.symtab'")
+        fields = line.split()
+        if (in_symtab and len(fields) == 8 and fields[0].endswith(":")
+                and fields[3] == "OBJECT" and fields[6].isdigit()
+                and fields[7] in names):
+            symbols["readelf"].setdefault(fields[7], []).append({
+                "value": int(fields[1], 16), "size": int(fields[2], 0),
+                "section_index": int(fields[6]),
+            })
+    # nm defaults to the regular symbol table; -D/--dynamic is never requested.
+    for line in nm_text.splitlines():
+        fields = line.split()
+        if len(fields) in (3, 4) and fields[0] in names:
+            symbols["nm"].setdefault(fields[0], []).append({
+                "value": int(fields[2], 16),
+                "size": int(fields[3], 16) if len(fields) == 4 else None,
+                "symbol_type": fields[1],
+            })
+    for listing in symbols.values():
+        anchors = listing.get("g_once", [])
+        base = anchors[0]["value"] if len(anchors) == 1 else None
+        for entries in listing.values():
+            for entry in entries:
+                value = entry["value"]
+                entry["value"] = f"0x{value:08x}"
+                entry["offset_from_g_once"] = value - base if base is not None else None
+    rows = []
+    for declaration in inventory:
+        row = dict(declaration)
+        for tool, listing in symbols.items():
+            entries = listing.get(row["name"], [])
+            row[tool] = {"status": "present" if entries else "absent", "symbols": entries}
+        rows.append(row)
+    return {
+        "matching": "NOT MATCHED",
+        "evidence_scope": (
+            "Text-only state declarations and name-based Premium .symtab observations; "
+            "a hypothesis about the delta source, not proof of TU ownership, storage "
+            "order, source equivalence or an instruction-window match."
+        ),
+        "rows": rows,
+    }
+
+
+def reference_state_layout(reference: Path, directory: Path | None = None) -> dict:
+    if directory is None:
+        # Also support a disposable worker checkout using a read-only ELF from
+        # the main project, without copying or building its reference sources.
+        directory = next((root / STATE_SOURCES
+                          for root in (SCRIPTS, *reference.resolve().parents)
+                          if (root / STATE_SOURCES).is_dir()), SCRIPTS / STATE_SOURCES)
+    inventory = inventory_state_sources(directory)
+    commands = {
+        "readelf": ["readelf", "--wide", "--symbols", str(reference)],
+        "nm": ["nm", "--defined-only", "--format=posix", "--no-demangle", str(reference)],
+    }
+    listings = {tool: subprocess.run(command, check=True, capture_output=True,
+                                    text=True, timeout=60).stdout
+                for tool, command in commands.items()}
+    report = state_layout(inventory, listings["readelf"], listings["nm"])
+    report["source_directory"] = str(directory)
+    report["commands"] = commands
+    return report
 
 
 def candidate_bss_layout(obj_path: Path) -> dict:
@@ -143,9 +294,12 @@ def compile_candidate(entry: dict, source: Path, include_dirs: list[Path], out: 
 
 
 def run(reference: Path, source: Path, workdir: Path, include_dirs: list[Path],
-        matrix: list[dict], keep_objects: bool) -> dict:
+        matrix: list[dict], keep_objects: bool, state_sources: Path | None = None) -> dict:
+    requested_reference = reference
+    reference = resolve_reference(reference)
     workdir.mkdir(parents=True, exist_ok=True)
     ref_bytes = reference.read_bytes()
+    layout_inventory = reference_state_layout(reference, state_sources)
     results = []
     for entry in matrix:
         obj_path = workdir / f"candidate_{entry['name']}.o"
@@ -193,8 +347,10 @@ def run(reference: Path, source: Path, workdir: Path, include_dirs: list[Path],
     return {
         "schema": "nova3.cpufeatures-pilot/1",
         "reference": str(reference),
+        "requested_reference": str(requested_reference),
         "reference_sha256": REFERENCE_SHA256,
         "source": str(source),
+        "state_layout": layout_inventory,
         "toolchains": results,
         "source_matching_verified": False,
         "original_compiler_verified": False,
@@ -217,6 +373,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ndk", type=Path, default=DEFAULT_NDK_R8E)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--keep-objects", action="store_true")
+    parser.add_argument("--state-sources", type=Path,
+                        help="Read-only prebuilt cpufeatures C source directory")
     args = parser.parse_args(argv)
 
     include_dirs = [args.source.parent]
@@ -226,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     report = run(args.reference, args.source, args.workdir, include_dirs, matrix,
-                 args.keep_objects)
+                 args.keep_objects, args.state_sources)
     out = args.out or (args.workdir / "cpufeatures_pilot.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

@@ -1,5 +1,23 @@
 # Outstanding blockers — 2026-10-25
 
+## 2026-11-02 — pre-release source: provenance and partial-tree limits
+
+* **Licensing/provenance is unresolved.** The source is a 2012 proprietary tree
+  from a third-party archive. It is reference-only: never commit, never make it
+  a build input, never ship it. The final product must remain source-owned +
+  permitted OSS. Do not quote substantial source in public issues/PRs.
+* **Version identity is evidence-level, not proven.** 96.9% of Premium DWARF
+  source paths exist in the tree, but 25 are missing (generated `UB_*.cpp` and a
+  few renamed/moved files), and the extracted tree is a subset. A differing
+  commit or build configuration is still possible; verify per function.
+* **The full archive cannot be extracted on this host.** Decompressed size is
+  39.3 GB; ~19 GiB free. The source subset is materialised; game assets and the
+  full `.svn` pristine tree are not. Extract selectively, never `7z x` the whole
+  archive.
+* **Order-dependent test failures** in the full `nova3_team/tests` run (13 in
+  `test_planning_memory.py` / `test_chatgpt_planner_auth.py`, `store-in-repo`);
+  modules pass in isolation and are unrelated to current changes.
+
 ## Publication blocked on run capability, not on repository setup (2026-10-31)
 
 `git push` from an automated session fails at authentication with the runtime

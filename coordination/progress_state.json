@@ -2,7 +2,7 @@
   "schema": "nova3-progress/1",
   "updated_at": "2026-11-02",
   "work_started": "2026-10-25",
-  "provenance": "docs/progress/STATUS.md (2026-11-01 checkpoint) and coordination/function_ledger.json; counts are mappings and boundaries, NOT whole-subsystem completion",
+  "provenance": "docs/progress/STATUS.md (2026-11-02 checkpoint) and coordination/function_ledger.json; counts are mappings and boundaries, NOT whole-subsystem completion",
   "functions_recorded": 1165,
   "elf_functions": 39092,
   "functions_with_exports": 62,
@@ -12,10 +12,22 @@
   "mappings_behavioural": 8,
   "utilities_verified": 3,
   "source_modules": 13,
+  "source_reference": {
+    "present": true,
+    "path": "reference/nova3_source",
+    "files": 41955,
+    "bytes": 648489917,
+    "manifest_sha256": "7aabaf922b06fb024d529cc424066a8893dc7c016f3d635afc880beb3350b066",
+    "elf_source_paths_resolved": 808,
+    "elf_source_paths_present": 783,
+    "elf_source_paths_present_ratio": 0.969059405940594,
+    "index": "coordination/source_index.json",
+    "note": "Proprietary reference only: never commit, link, package or ship. Correspondence and per-function re-verification still pending."
+  },
   "notes": [
     "1165 is tool-identified function-boundary metadata in a 39,092-function ELF; it is not proof that those functions were reconstructed.",
     "18 = 3 complete native utility mappings + 15 scoped address-to-source mappings recorded in STATUS.md.",
-    "The owner is supplying additional pre-release source; re-baseline this file after it is indexed, before trusting any ETA.",
+    "The pre-release source is now materialised and indexed (96.9% DWARF-path match). Re-baseline only after the correspondence table and build recipe exist; the ETA stays provisional.",
     "Update this file after each milestone so the analysis can measure a rate instead of assuming one."
   ]
 }

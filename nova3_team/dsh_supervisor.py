@@ -35,6 +35,7 @@ import re
 import signal
 import sys
 import time
+import traceback
 import uuid
 
 from . import dsh_planner, dsh_policy, dsh_runtime, recovery
@@ -386,7 +387,7 @@ class DshSupervisor:
                               str((state_now.get('task') or {}).get('number')) == str(task)
                               else state_now.get('task')))
         if decision.request:
-            self._request(**decision.request, task=task)
+            self._request(**{**decision.request, 'task': task})
         return False
 
     def _wait(self, seconds: int, why: str) -> str:
@@ -451,6 +452,10 @@ class DshSupervisor:
                 break
             except Exception as exc:          # one bad cycle never kills the loop
                 _log(f'cycle error: {type(exc).__name__}: {_redact(exc)[:400]}')
+                if os.environ.get('NOVA3_DEBUG', '').lower() in ('1', 'true', 'yes'):
+                    # A bare "TypeError" with an empty message is undiagnosable;
+                    # opt-in tracebacks make the next occurrence actionable.
+                    _log('traceback:\n' + traceback.format_exc()[:4000])
                 count = int(self.state.load().get('cycle_errors') or 0) + 1
                 self.state.save(cycle_errors=count, state=dsh_policy.BACKOFF,
                                 reason=f'cycle error: {type(exc).__name__}')
@@ -746,7 +751,7 @@ class DshSupervisor:
                         ok_with_inactive_lease=ok_inactive,
                         last_decision=decision.as_dict())
         if decision.request:
-            self._request(**decision.request, task=str(number))
+            self._request(**{**decision.request, 'task': str(number)})
         if decision.state in (dsh_policy.BLOCKED, dsh_policy.WAITING_CREDITS) \
                 or not decision.retry_same_task:
             self.state.save(task=None)
@@ -762,6 +767,58 @@ class DshSupervisor:
         same failure. Without an approved route the outcome is returned as-is so
         the caller pauses in the right state.
         """
+        native = os.environ.get('NOVA3_DSH_NATIVE', '').lower() in ('1', 'true', 'yes')
+        if native:
+            # Native Host session: same task, same checkout, visible in the DSH
+            # Agents tab. Model routing still comes from the supervisor's router.
+            from . import host_runner
+            task = self.state.load().get('task') or {}
+            title = str(task.get('title') or 'reconstruction task')
+            try:
+                return host_runner.run_native(
+                    prompt=prompt, cwd=cwd, timeout_s=timeout_s, title=title,
+                    model=f'{self.endpoint.route}/{self.endpoint.model}',
+                    effort='')
+            except Exception as exc:
+                _log(f'native session unavailable, falling back to headless: '
+                     f'{_redact(exc)[:200]}')
+        if os.environ.get('NOVA3_DSH_AUTO_ROUTE', '').lower() in ('1', 'true', 'yes'):
+            from . import dsh_model_router
+            router = getattr(self, '_model_router', None)
+            if router is None:
+                router = dsh_model_router.Router(
+                    self.endpoint, self.paths.state / 'model-router')
+                self._model_router = router
+            task = self.state.load().get('task') or {}
+            title = ('planner' if log_path.name.startswith('planner-') else
+                     str(task.get('title') or 'semantic reconstruction'))
+            def failed_attempt(outcome, route):
+                self.ledger.append({
+                    'task': str(task.get('number') or 'planner'),
+                    'status': outcome.status, 'error_code': outcome.error_code,
+                    'input_tokens': outcome.input_tokens,
+                    'output_tokens': outcome.output_tokens, 'route': route,
+                    'session_id': outcome.session_id})
+            def selected(route):
+                self.state.save(active_model=route, endpoint={
+                    'profile': self.endpoint.profile, 'route': route['provider'],
+                    'model': route['model'], 'ok': True,
+                    'reason': 'configured_task_routing'})
+                _log(f'model selected: {route["provider"]}/{route["model"]} '
+                     f'for {dsh_model_router.purpose(title)} work')
+            try:
+                return router.run(
+                    prompt, task=title, cwd=cwd, log_path=log_path,
+                    timeout_s=timeout_s, cancel=lambda: bool(self.stop_signal),
+                    on_failure=failed_attempt, on_selected=selected)
+            except dsh_model_router.ConfigError as exc:
+                # Keep the supervisor alive; do not silently resurrect a model
+                # the owner removed from Web settings or retry a paid task.
+                return dsh_runtime.SessionOutcome(
+                    status=dsh_runtime.WAITING_CREDITS, exit_code=None,
+                    session_id=None, turn_reason=None,
+                    error_code='NO_AVAILABLE_CONFIGURED_MODEL',
+                    error_message=str(exc), steps=0, tool_calls=0, elapsed_s=0.0)
         outcome = dsh_runtime.run_session(self.endpoint, prompt, cwd=cwd, log_path=log_path,
                                           timeout_s=timeout_s,
                                           cancel=lambda: bool(self.stop_signal))
@@ -959,7 +1016,7 @@ class DshSupervisor:
                             next_check_unix=int(time.time()) + delay,
                             last_outcome=outcome.summary())
             if decision.request:
-                self._request(**decision.request, task='planner')
+                self._request(**{**decision.request, 'task': 'planner'})
             return
         self.state.save(resume_requested=None)   # consumed by this pass
         proposals, bad = dsh_planner.parse_proposals(_final_text(outcome),
@@ -1098,9 +1155,13 @@ class DshSupervisor:
         if kind == 'budget':
             ledger = self.ledger
             budget = dsh_policy.Budget.from_env()
-            return (ledger.sessions_today() < budget.sessions_per_day
-                    and ledger.tokens_today() < budget.tokens_per_day
-                    and ledger.sessions_last_hour() < budget.sessions_per_hour)
+            # 0 = unlimited; only a positive ceiling can refuse a start.
+            return ((not budget.sessions_per_day
+                     or ledger.sessions_today() < budget.sessions_per_day)
+                    and (not budget.tokens_per_day
+                         or ledger.tokens_today() < budget.tokens_per_day)
+                    and (not budget.sessions_per_hour
+                         or ledger.sessions_last_hour() < budget.sessions_per_hour))
         if kind == 'publish':
             number = int(str(record.get('task') or '0') or 0)
             if not number:
