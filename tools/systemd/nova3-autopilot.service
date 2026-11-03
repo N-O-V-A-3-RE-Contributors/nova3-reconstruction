@@ -13,5 +13,5 @@ Environment=PYTHONPATH=%h/Projects/nova3_re
 Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=HOME=%h
 ExecStart=/usr/bin/python3 -m nova3_team.autopilot run --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction
-TimeoutStartSec=180
+TimeoutStartSec=900
 Nice=10
