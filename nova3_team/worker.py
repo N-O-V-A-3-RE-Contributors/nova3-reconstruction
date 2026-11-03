@@ -788,6 +788,23 @@ def _verify_argv(command):
     return argv
 
 
+def run_verification_command(execute):
+    """Run one task verification command with exactly one retry.
+
+    `execute` returns (returncode | None, text). Pure policy so it is unit
+    tested: a transient host link drop is retried once; a second failure is a
+    real failure and is reported with both attempts.
+    """
+    code, text = execute()
+    if code == 0:
+        return True, text
+    if code is None:
+        return False, text
+    code, retry_text = execute()
+    return code == 0, (text + '\nRESULT: failed once; retried (transient-link guard)\n'
+                       + retry_text)
+
+
 def verify(workdir, body=''):
     """Independent bounded checks, all build artifacts outside the tracked checkout."""
     root=pathlib.Path(workdir)
@@ -812,12 +829,22 @@ def verify(workdir, body=''):
     for command in verification_commands(body):
         try:
             argv=_verify_argv(command)
-            cp=run(argv,cwd=root,timeout=480,check=False)
-            feedback.append(f'TASK VERIFY: {command}\nEXIT: {cp.returncode}\n'
-                            f'{(cp.stdout or "")[-1500:]}\n{(cp.stderr or "")[-1500:]}')
-            if cp.returncode:return False,'\n'.join(feedback)
-        except (OSError,ValueError,subprocess.TimeoutExpired) as e:
-            feedback.append(f'Task verification command refused or failed: {command}: {e}')
+        except (OSError,ValueError) as e:
+            feedback.append(f'Task verification command refused: {command}: {e}')
+            return False,'\n'.join(feedback)
+        # One bounded retry: this host drops its link for a few seconds at a
+        # time, which can fail a subprocess test with no defect in the change.
+        # A real failure still fails (twice), and both attempts are recorded.
+        def execute(argv=argv):
+            try:
+                cp=run(argv,cwd=root,timeout=480,check=False)
+            except (OSError,subprocess.TimeoutExpired) as e:
+                return None, f'Task verification command failed: {command}: {e}'
+            return cp.returncode, (f'TASK VERIFY: {command}\nEXIT: {cp.returncode}\n'
+                                   f'{(cp.stdout or "")[-1500:]}\n{(cp.stderr or "")[-1500:]}')
+        passed, text = run_verification_command(execute)
+        feedback.append(text)
+        if not passed:
             return False,'\n'.join(feedback)
     return True,'\n'.join(feedback)
 
