@@ -190,6 +190,24 @@ export function apply(ctx, config) {
     }
   }
 
+
+  // One row per autonomous task round: the supervisor's own record, not a chat.
+  const runsRoute = async (req, res) => {
+    if (!sameOrigin(req)) {
+      sendJson(res, 403, { error: 'cross-origin request refused' })
+      return
+    }
+    try {
+      const state = await mission()
+      // The supervisor exposes one live agent record; the Runs view presents it
+      // as a session card. There is no second run history to invent.
+      sendJson(res, 200, { ok: true, agent: state.agent || null,
+        worker: state.worker || null })
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: String(error.message || error) })
+    }
+  }
+
   ctx.effect(() => {
     const disposers = [
       ctx.webServer.register({ kind: 'exact', path: '/nova3/api/mission', handler: missionRoute }),

@@ -299,9 +299,9 @@ window.__ModuleLoader__.load({
             ]),
           ]),
 
-          // ETA
+          // Throughput (never a years projection: see analysis._human)
           h("div", { key: "eta", style: { marginTop: "12px" } },
-            h(Card, { label: "eta · dynamic, evidence-based" }, [
+            h(Card, { label: "throughput · measured, not an ETA" }, [
               etaReady
                 ? h("div", { key: "b", style: { display: "flex", gap: "10px", flexWrap: "wrap" } }, [
                     h(Scenario, { key: "r", name: "recorded inventory",
@@ -309,7 +309,7 @@ window.__ModuleLoader__.load({
                     h(Scenario, { key: "f", name: "full ELF (naive floor)",
                       scenario: scenarios.full_elf_at_recorded_rate, accent: "#f0c24c" }),
                   ])
-                : h("div", { key: "u", className: "nv3m-note" }, "ETA unavailable: " +
+                : h("div", { key: "u", className: "nv3m-note" }, "throughput unavailable: " +
                     (estimate.reasons || []).join("; ")),
               h("div", { key: "r", className: "nv3m-small", style: { marginTop: "10px" } },
                 "rate " + (rate.mappings_per_day !== undefined
@@ -403,6 +403,53 @@ window.__ModuleLoader__.load({
         ]));
     }
 
+
+    function RunsView() {
+      const [data, setData] = useState(null);
+      const [error, setError] = useState("");
+      useEffect(() => {
+        let alive = true;
+        const load = () => fetch("/nova3/api/runs", { cache: "no-store" })
+          .then((r) => r.json()).then((v) => { if (alive) setData(v); })
+          .catch((e) => { if (alive) setError(String(e)); });
+        load();
+        const t = setInterval(load, 5000);
+        return () => { alive = false; clearInterval(t); };
+      }, []);
+      const agent = (data && data.agent) || {};
+      const running = agent.running === true;
+      const badge = running ? "RUNNING" : "IDLE";
+      const since = agent.last_event_age_s;
+      return h("div", { className: "nv3m", style: { padding: "20px" } }, [
+        h("div", { key: "h", style: { display: "flex", alignItems: "center", gap: "10px" } }, [
+          h("span", { key: "t", style: { fontSize: "15px", fontWeight: 600 } },
+            "Autonomous worker"),
+          h("span", { key: "b", className: "nv3m-pill " + (running ? "on" : "") }, badge),
+          h("span", { key: "n", className: "nv3m-note" },
+            "systemd unit · not a chat · this session is not part of your conversation history"),
+        ]),
+        error ? h("div", { key: "e", className: "nv3m-note" }, error) : null,
+        h("div", { key: "c", className: "nv3m-card", style: { marginTop: "14px" } }, [
+          row("task", agent.task == null ? "—" : ("#" + agent.task)),
+          row("title", agent.title || "—"),
+          row("state", agent.state || "—"),
+          row("model", (agent.provider || "—") + " / " + (agent.model || "—")),
+          row("steps · tools", String(agent.steps || 0) + " · " + String(agent.tool_calls || 0)),
+          row("last event", since == null ? "—" : (since + "s ago")),
+          row("checkout", agent.checkout || "—"),
+        ]),
+        h("div", { key: "f", className: "nv3m-note", style: { marginTop: "12px" } },
+          "Toggling and running the agent is /nova in chat (status, on, off, run)."),
+      ]);
+    }
+
+    function row(label, value) {
+      return h("div", { key: label, style: { display: "flex", gap: "10px", padding: "4px 0" } }, [
+        h("span", { key: "l", className: "nv3m-note", style: { width: "120px" } }, label),
+        h("span", { key: "v", className: "nv3m-mono" }, String(value)),
+      ]);
+    }
+
     function apply(ctx) {
       injectCss();
       ctx.slots.inject("conversation.view", () => ctx.slots.register({
@@ -411,6 +458,12 @@ window.__ModuleLoader__.load({
         order: 25,
         label: () => "Mission",
       }, MissionView));
+      ctx.slots.inject("conversation.view", () => ctx.slots.register({
+        name: "conversation.view",
+        id: "worker",
+        order: 26,
+        label: () => "Worker",
+      }, RunsView));
     }
 
     exports.apply = apply;
