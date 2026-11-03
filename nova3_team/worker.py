@@ -195,12 +195,17 @@ def run_provider(cmd, cwd, log, timeout, activity=None, env=None):
                 _stop_provider_group(proc)
                 raise
             finally:
-                relay.join(timeout=1)
+                # proc.wait() returns the instant the child exits, while the
+                # relay thread may still be copying its last lines. Draining
+                # before the final activity publish is correct regardless of how
+                # the earlier misses were caused; the bound stops an inherited
+                # stdout from stalling the round.
+                relay.join(timeout=10)
                 if relay.is_alive():
                     # A child retaining stdout must not keep the log relay alive.
                     _stop_provider_group(proc)
                     proc.stdout.close()
-                    relay.join(timeout=1)
+                    relay.join(timeout=2)
                 else:
                     proc.stdout.close()
             if relay_errors:
@@ -1039,6 +1044,14 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
         current=recovery.load(root,n)
         verified=current.get('verified',False)
         checklog=current.get('checklog','No verification run')
+        if current.get('phase') in ('committed','pushed') and not verified:
+            # A checkpoint recorded before verification succeeded must not be
+            # published as a draft forever: re-run the independent checks in the
+            # same checkout and publish verified when they pass.
+            verified,checklog=verify(work,issue.get('body',''))
+            recovery.update(root,n,verified=verified,checklog=checklog[-1600:])
+            note(f'#{n} resumed at {current.get("phase")}: independent tests '
+                 f'{"PASS" if verified else "FAIL (draft PR)"}')
         if gate is not None and current.get('phase') in ('committed','pushed'):
             # Revalidate owner/admin approval with fresh evidence immediately
             # before any push or PR; never publish unapproved work. Leases
