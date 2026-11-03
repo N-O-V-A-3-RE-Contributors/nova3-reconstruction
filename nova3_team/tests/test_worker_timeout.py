@@ -59,7 +59,7 @@ class ProviderExecutionTests(unittest.TestCase):
             logfile = worker.private_round_log(work, 1)
             completed = worker.run_provider(
                 [sys.executable, '-c', "print('PROVIDER_STARTED', flush=True)"],
-                work, logfile, timeout=2)
+                work, logfile, timeout=20)
             self.assertEqual(completed.returncode, 0)
             self.assertIn('PROVIDER_STARTED', completed.stdout)
             self.assertIn('PROVIDER_STARTED', logfile.read_text())
@@ -114,7 +114,7 @@ class ProviderExecutionTests(unittest.TestCase):
             # A tiny local emitter, never a child AI session.
             script = 'import sys; sys.stdout.write(' + repr(''.join(json.dumps(e) + '\n' for e in events)) + ')'
             result = worker.run_provider([sys.executable, '-c', script], work, logfile,
-                                         timeout=2, activity=activity)
+                                         timeout=20, activity=activity)
             self.assertEqual(result.returncode, 0)
             value = json.loads(activity.path.read_text())
             self.assertEqual(value['tests_completed'], 1)

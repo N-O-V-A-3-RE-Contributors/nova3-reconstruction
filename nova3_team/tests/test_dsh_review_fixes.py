@@ -294,6 +294,49 @@ class DeadlineTests(unittest.TestCase):
         self.assertEqual(outcome.status, dsh_runtime.CANCELLED)
         self.assertLess(elapsed, 30)
 
+    def test_completed_turn_with_leaked_transport_handle_finishes_promptly(self):
+        # Reproduces the native Codex plugin: final PASS already printed, but
+        # an open transport handle kept Node alive until the 180-second deadline.
+        with tempfile.TemporaryDirectory() as folder:
+            script = self._script(folder, (
+                'import json, time\n'
+                'print(json.dumps({"type":"status","phase":"turn_end",'
+                '"reason":{"kind":"completed"}}), flush=True)\n'
+                'print(json.dumps({"type":"final","text":"PASS"}), flush=True)\n'
+                'time.sleep(600)\n'))
+            started = time.monotonic()
+            result = dsh_runtime.run_session(
+                self._endpoint(script), 'task', cwd=pathlib.Path(folder),
+                log_path=pathlib.Path(folder) / 'log', timeout_s=20)
+        self.assertEqual(result.status, dsh_runtime.COMPLETED)
+        self.assertEqual(result.turn_reason, 'completed')
+        self.assertLess(time.monotonic() - started, 15)
+        self.assertIsNone(result.exit_code, 'cleanup kill is not a process success')
+
+    def test_terminal_error_with_leaked_handle_preserves_error_class(self):
+        with tempfile.TemporaryDirectory() as folder:
+            script = self._script(folder, (
+                'import json, time\n'
+                'print(json.dumps({"type":"status","phase":"turn_end",'
+                '"reason":{"kind":"error","error":{"code":"AUTH"}}}), flush=True)\n'
+                'print(json.dumps({"type":"final","text":""}), flush=True)\n'
+                'time.sleep(600)\n'))
+            result = dsh_runtime.run_session(
+                self._endpoint(script), 'task', cwd=pathlib.Path(folder),
+                log_path=pathlib.Path(folder) / 'log', timeout_s=20)
+        self.assertEqual(result.status, dsh_runtime.AUTH)
+        self.assertNotEqual(result.status, dsh_runtime.COMPLETED)
+
+    def test_final_without_turn_end_is_not_proof_of_success(self):
+        with tempfile.TemporaryDirectory() as folder:
+            script = self._script(folder, (
+                'import json\n'
+                'print(json.dumps({"type":"final","text":"PASS"}), flush=True)\n'))
+            result = dsh_runtime.run_session(
+                self._endpoint(script), 'task', cwd=pathlib.Path(folder),
+                log_path=pathlib.Path(folder) / 'log', timeout_s=20)
+        self.assertEqual(result.status, dsh_runtime.EXECUTION_ERROR)
+
     def test_a_completed_stream_is_still_completed(self):
         with tempfile.TemporaryDirectory() as folder:
             script = self._script(folder, (
