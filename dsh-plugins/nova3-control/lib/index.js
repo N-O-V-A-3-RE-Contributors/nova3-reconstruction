@@ -20,7 +20,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 export const name = 'nova3-control'
-export const inject = ['webServer']
+export const inject = ['webServer', 'commands']
 
 const MISSION_TTL_MS = 15000
 const MAX_BODY = 64 * 1024
@@ -94,6 +94,51 @@ function sameOrigin(req) {
     return new URL(origin).host === String(req.headers.host || '')
   } catch {
     return false
+  }
+}
+
+
+/**
+ * `/nova` — manage the worker from chat.
+ *
+ * Registered here, not in a separate plugin: this row is proven to mount (its
+ * routes answer). A separate command-only row composed but never registered, and
+ * a command that never registers is simply typed into the chat as text.
+ */
+function novaCommand({ repo, github }) {
+  const run = (args, timeoutMs) => new Promise((resolve) => {
+    execFile(join(repo, '.venv/bin/python'), args,
+      { cwd: repo, timeout: timeoutMs, maxBuffer: 1 << 20 },
+      (error, stdout, stderr) => resolve({
+        ok: !error, out: String(stdout || '').trim(), err: String(stderr || '').trim(),
+      }))
+  })
+  return async (invocation) => {
+    const text = String((invocation && invocation.input) || '').trim()
+    const verb = text.split(/\s+/)[0]
+    if (!verb || verb === 'status') {
+      const r = await run(['-m', 'nova3_team.dsh_status'], 30000)
+      return r.ok
+        ? { kind: 'success', text: r.out.slice(0, 1800) }
+        : { kind: 'error', text: `status failed: ${(r.err || r.out).slice(0, 600)}` }
+    }
+    if (verb === 'on' || verb === 'off') {
+      const r = await run(['-m', 'nova3_team.autopilot', verb, '--repo', github], 60000)
+      return { kind: r.ok ? 'success' : 'error',
+               text: `autopilot ${verb}: ${(r.out || r.err).slice(0, 600)}` }
+    }
+    if (verb === 'run') {
+      const r = await run(['-m', 'nova3_team.autopilot', 'run', '--repo', github, '--json'], 180000)
+      if (!r.ok) return { kind: 'error', text: `run failed: ${r.err.slice(0, 500)}` }
+      try {
+        const report = JSON.parse(r.out)
+        const merged = (report.merged || []).map((m) => `#${m.pr}`).join(', ') || 'none'
+        return { kind: 'success', text: `one pass: state=${report.state} approved=${(report.approved || []).length} merged=${merged}` }
+      } catch {
+        return { kind: 'success', text: r.out.slice(0, 800) }
+      }
+    }
+    return { kind: 'error', text: 'Usage: /nova status | on | off | run' }
   }
 }
 
@@ -217,4 +262,20 @@ export function apply(ctx, config) {
     ]
     return () => { for (const dispose of disposers) dispose() }
   }, 'nova3-control: Mission routes')
+
+  ctx.effect(() => {
+    const registry = ctx.commands || (ctx.get ? ctx.get('commands') : undefined)
+    if (!registry) {
+      console.warn('[nova3-control] no command registry; /nova is unavailable')
+      return () => {}
+    }
+    const dispose = registry.register({
+      definitionId: '@nova3/dsh-control/nova',
+      name: 'nova',
+      description: 'Manage the autonomous NOVA3 worker: status, on, off, run',
+      handler: novaCommand({ repo, github }),
+    })
+    console.info('[nova3-control] registered /nova')
+    return () => Promise.resolve(dispose).then((d) => typeof d === 'function' && d())
+  }, 'nova3-control: /nova command')
 }
