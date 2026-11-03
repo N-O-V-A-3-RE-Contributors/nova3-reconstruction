@@ -97,7 +97,7 @@ class ApproveTests(unittest.TestCase):
     def test_approval_writes_labels_and_audit(self):
         posted, patched = {}, {}
         with tempfile.TemporaryDirectory() as folder:
-            record = autopilot.approve(
+            record = autopilot.approve_proposal(
                 repo='O/R', issue=issue(), grant=grant(), folder=pathlib.Path(folder),
                 post_comment=lambda n, body: (posted.update(number=n, body=body), {'id': 555})[1],
                 patch_labels=lambda n, labels: patched.update(number=n, labels=labels),
