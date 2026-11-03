@@ -83,6 +83,15 @@ class ClassificationTests(unittest.TestCase):
                          dsh_runtime.RATE_LIMIT)
         self.assertEqual(dsh_runtime.classify(None, 'unauthorized'), dsh_runtime.AUTH)
         self.assertEqual(dsh_runtime.classify(None, 'ECONNREFUSED'), dsh_runtime.PROVIDER_OUTAGE)
+        # Observed live: the Codex adapter reports an account cap under a plain
+        # provider error code. It must be a provider pause (failover-eligible),
+        # never a task failure that quarantines the work.
+        self.assertEqual(dsh_runtime.classify('PI_AI_ERROR',
+                                              'Codex error: The usage limit has been reached'),
+                         dsh_runtime.WAITING_CREDITS)
+        self.assertIn(dsh_runtime.WAITING_CREDITS, dsh_runtime.FAILOVER_STATUSES)
+        self.assertEqual(dsh_runtime.classify('PI_AI_ERROR', 'bad tool arguments'),
+                         dsh_runtime.EXECUTION_ERROR)
 
     def test_exit_status_fallback(self):
         self.assertEqual(dsh_runtime.classify_exit(0), dsh_runtime.COMPLETED)
