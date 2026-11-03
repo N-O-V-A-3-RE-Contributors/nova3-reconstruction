@@ -119,11 +119,16 @@ window.__ModuleLoader__.load({
     function Scenario({ name, scenario, accent }) {
       if (!scenario) return null;
       const days = scenario.days || [null, null, null];
+      // A projection that starts from unrecorded functions and a rate measured
+      // over a week is not an estimate of the product. Render it as a labelled
+      // extrapolation and never as the headline number.
+      const naive = /NOT AN ESTIMATE/i.test(String(scenario.label || ""));
+      const headline = naive ? "extrapolation" : humanDays(days[1]);
       return h("div", { className: "nv3m-card", style: { flex: "1 1 260px" } }, [
         h("div", { key: "l", className: "nv3m-label" }, name),
         h("div", { key: "b", className: "nv3m-big", style: { color: accent } },
-          humanDays(days[1])),
-        h("div", { key: "d", className: "nv3m-small nv3m-mono" },
+          headline),
+        naive ? null : h("div", { key: "d", className: "nv3m-small nv3m-mono" },
           dayDate(days[0]) + "  →  " + dayDate(days[2])),
         h("div", { key: "r", className: "nv3m-small", style: { marginTop: "6px" } },
           num(scenario.remaining) + " remaining · " + (scenario.label || "")),
