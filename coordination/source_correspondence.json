@@ -1,0 +1,373 @@
+{
+  "by_evidence_ratio": {
+    "0/10": 28113,
+    "1/10": 435,
+    "10/10": 3864,
+    "2/10": 932,
+    "3/10": 1127,
+    "4/10": 489,
+    "5/10": 1982,
+    "6/10": 1125,
+    "7/10": 669,
+    "8/10": 635,
+    "9/10": 81
+  },
+  "confidence": {
+    "definition_only": 7382,
+    "file_hint": 45,
+    "none": 9675,
+    "signature_match": 2088,
+    "strong": 3603,
+    "unique_site": 4926,
+    "weak": 11733
+  },
+  "functions": 39452,
+  "index": {
+    "definitions": 168476,
+    "files": 37446,
+    "free_definitions": 92412,
+    "free_keys": 43472,
+    "keys": 80351
+  },
+  "not_found_reasons": {
+    "cxx_runtime_boost": 299,
+    "cxx_runtime_std": 2546,
+    "engine_or_third_party": 3910,
+    "plain_c_name": 2393,
+    "virtual_thunk": 527
+  },
+  "notes": [
+    "A correspondence row says a definition site and its body evidence exist in the reference tree. It is not a compiler-flag, object-code or commit-equality claim.",
+    "evidence_ratio = machine-code references (direct callees, data symbols, string-literal tokens) found in the candidate body.",
+    "file_hint is the ELF STT_FILE scope of a *local* symbol; it is empty for globals because .symtab orders those by section, not by file."
+  ],
+  "schema": "nova3-source-correspondence/1",
+  "status": {
+    "exact_body_found": 21705,
+    "not_found": 9675,
+    "same_file_different_revision": 8072
+  },
+  "status_by_subsystem": {
+    "NOVA3/extern/AndroidPortTemplate": {
+      "exact_body_found": 63,
+      "same_file_different_revision": 12
+    },
+    "NOVA3/extern/GLLegacy": {
+      "exact_body_found": 759,
+      "same_file_different_revision": 1111
+    },
+    "NOVA3/extern/GLLegacyConfig": {
+      "exact_body_found": 3
+    },
+    "NOVA3/extern/GLOT": {
+      "exact_body_found": 23,
+      "same_file_different_revision": 14
+    },
+    "NOVA3/extern/GLOnline": {
+      "exact_body_found": 383,
+      "same_file_different_revision": 346
+    },
+    "NOVA3/extern/bullet": {
+      "exact_body_found": 672,
+      "same_file_different_revision": 282
+    },
+    "NOVA3/extern/curl": {
+      "exact_body_found": 3
+    },
+    "NOVA3/extern/editor": {
+      "exact_body_found": 414,
+      "same_file_different_revision": 208
+    },
+    "NOVA3/extern/glXPlayer": {
+      "exact_body_found": 567,
+      "same_file_different_revision": 230
+    },
+    "NOVA3/extern/glf": {
+      "exact_body_found": 627,
+      "same_file_different_revision": 245
+    },
+    "NOVA3/extern/glitch": {
+      "exact_body_found": 5950,
+      "same_file_different_revision": 2204
+    },
+    "NOVA3/extern/glwebtools": {
+      "exact_body_found": 12,
+      "same_file_different_revision": 2
+    },
+    "NOVA3/extern/lua": {
+      "exact_body_found": 440
+    },
+    "NOVA3/extern/openssl": {
+      "exact_body_found": 3083
+    },
+    "NOVA3/extern/pugixml10": {
+      "exact_body_found": 153,
+      "same_file_different_revision": 6
+    },
+    "NOVA3/extern/sdl": {
+      "exact_body_found": 3
+    },
+    "NOVA3/extern/tinyxml": {
+      "exact_body_found": 41,
+      "same_file_different_revision": 37
+    },
+    "NOVA3/extern/vox": {
+      "exact_body_found": 862,
+      "same_file_different_revision": 329
+    },
+    "NOVA3/extern/xor": {
+      "exact_body_found": 2
+    },
+    "NOVA3/extern/yakidi": {
+      "exact_body_found": 14,
+      "same_file_different_revision": 2
+    },
+    "NOVA3/trunk/src": {
+      "exact_body_found": 7631,
+      "same_file_different_revision": 3044
+    }
+  },
+  "strong_evidence": 3341,
+  "top_subsystems": [
+    [
+      "NOVA3/trunk/src",
+      10675
+    ],
+    [
+      "(none)",
+      9675
+    ],
+    [
+      "NOVA3/extern/glitch",
+      8154
+    ],
+    [
+      "NOVA3/extern/openssl",
+      3083
+    ],
+    [
+      "NOVA3/extern/GLLegacy",
+      1870
+    ],
+    [
+      "NOVA3/extern/vox",
+      1191
+    ],
+    [
+      "NOVA3/extern/bullet",
+      954
+    ],
+    [
+      "NOVA3/extern/glf",
+      872
+    ],
+    [
+      "NOVA3/extern/glXPlayer",
+      797
+    ],
+    [
+      "NOVA3/extern/GLOnline",
+      729
+    ],
+    [
+      "NOVA3/extern/editor",
+      622
+    ],
+    [
+      "NOVA3/extern/lua",
+      440
+    ],
+    [
+      "NOVA3/extern/pugixml10",
+      159
+    ],
+    [
+      "NOVA3/extern/tinyxml",
+      78
+    ],
+    [
+      "NOVA3/extern/AndroidPortTemplate",
+      75
+    ],
+    [
+      "NOVA3/extern/GLOT",
+      37
+    ],
+    [
+      "NOVA3/extern/yakidi",
+      16
+    ],
+    [
+      "NOVA3/extern/glwebtools",
+      14
+    ],
+    [
+      "NOVA3/extern/curl",
+      3
+    ],
+    [
+      "NOVA3/extern/GLLegacyConfig",
+      3
+    ],
+    [
+      "NOVA3/extern/sdl",
+      3
+    ],
+    [
+      "NOVA3/extern/xor",
+      2
+    ]
+  ],
+  "tracked_units": [
+    {
+      "address": "0x000d2f10",
+      "confidence": "unique_site",
+      "demangled": "android_getCpuCount",
+      "evidence": "0/1",
+      "file": "NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c",
+      "line": 425,
+      "status": "exact_body_found",
+      "unit": "cpu-features getter 1"
+    },
+    {
+      "address": "0x000d2f3c",
+      "confidence": "unique_site",
+      "demangled": "android_getCpuFeatures",
+      "evidence": "0/1",
+      "file": "NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c",
+      "line": 417,
+      "status": "exact_body_found",
+      "unit": "cpu-features getter 2"
+    },
+    {
+      "address": "0x000d2f6c",
+      "confidence": "unique_site",
+      "demangled": "android_getCpuFamily",
+      "evidence": "0/1",
+      "file": "NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c",
+      "line": 409,
+      "status": "exact_body_found",
+      "unit": "cpu-features getter 3"
+    },
+    {
+      "address": "0x000d2f98",
+      "confidence": "unique_site",
+      "demangled": "android_cpuInit",
+      "evidence": "0/13",
+      "file": "NOVA3/extern/GLLegacy/AndroidPortTemplate/tools/android-ndk/sources/android/cpufeatures/cpu-features.c",
+      "line": 256,
+      "status": "exact_body_found",
+      "unit": "android_cpuInit"
+    },
+    {
+      "address": "0x000eba84",
+      "confidence": "definition_only",
+      "demangled": "glitch::core::CMatrix4<float>::getTransposed(glitch::core::CMatrix4<float>&) const",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/include/glitch/core/matrix4.h",
+      "line": 1458,
+      "status": "exact_body_found",
+      "unit": "CMatrix4<float>::getTransposed"
+    },
+    {
+      "address": "0x000ebb08",
+      "confidence": "definition_only",
+      "demangled": "glitch::core::CMatrix4<float>::getInverse(glitch::core::CMatrix4<float>&) const",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/include/glitch/core/matrix4.h",
+      "line": 1251,
+      "status": "exact_body_found",
+      "unit": "CMatrix4<float>::getInverse"
+    },
+    {
+      "address": "0x00108c54",
+      "confidence": "definition_only",
+      "demangled": "glitch::core::CMatrix4<float>::CMatrix4(glitch::core::CMatrix4<float>::eConstructor)",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/include/glitch/core/matrix4.h",
+      "line": 448,
+      "status": "exact_body_found",
+      "unit": "CMatrix4<float>::CMatrix4(eConstructor)"
+    },
+    {
+      "address": "0x00108c8c",
+      "confidence": "strong",
+      "demangled": "glitch::core::CMatrix4<float>::CMatrix4(glitch::core::CMatrix4<float> const&, glitch::core::CMatrix4<float>::eConstructor)",
+      "evidence": "2/3",
+      "file": "NOVA3/extern/glitch/include/glitch/core/matrix4.h",
+      "line": 480,
+      "status": "exact_body_found",
+      "unit": "CMatrix4<float>::CMatrix4(const&, eConstructor)"
+    },
+    {
+      "address": "0x006e7e60",
+      "confidence": "signature_match",
+      "demangled": "glitch::core::CMatrix4<float> glitch::core::operator*<float, glitch::collada::SMatrix>(glitch::core::CMatrix4<float> const&, glitch::collada::SMatrix const&)",
+      "evidence": "1/1",
+      "file": "NOVA3/extern/glitch/include/glitch/core/matrix4_ops.h",
+      "line": 22,
+      "status": "exact_body_found",
+      "unit": "operator*<float, collada::SMatrix>"
+    },
+    {
+      "address": "0x00710b48",
+      "confidence": "definition_only",
+      "demangled": "glitch::collada::detail::CSoftwareSkinTechnique::needOutputBuffer() const",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp",
+      "line": 38,
+      "status": "exact_body_found",
+      "unit": "CSoftwareSkinTechnique::needOutputBuffer"
+    },
+    {
+      "address": "0x00710b50",
+      "confidence": "definition_only",
+      "demangled": "glitch::collada::detail::CSoftwareSkinTechnique::checkAvailability(glitch::video::STechnique const&, unsigned int) const",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp",
+      "line": 976,
+      "status": "exact_body_found",
+      "unit": "CSoftwareSkinTechnique::checkAvailability"
+    },
+    {
+      "address": "0x00710b58",
+      "confidence": "definition_only",
+      "demangled": "glitch::collada::detail::CSoftwareSkinTechnique::attach(glitch::scene::ISceneNode*)",
+      "evidence": "0/0",
+      "file": "NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp",
+      "line": 982,
+      "status": "exact_body_found",
+      "unit": "CSoftwareSkinTechnique::attach"
+    },
+    {
+      "address": "0x0073f0a4",
+      "confidence": "strong",
+      "demangled": "glitch::collada::detail::CSoftwareSkinTechnique::prepareCache()",
+      "evidence": "3/5",
+      "file": "NOVA3/extern/glitch/source/glitch/collada/detail/CColladaSoftwareSkinTechnique.cpp",
+      "line": 988,
+      "status": "exact_body_found",
+      "unit": "CSoftwareSkinTechnique::prepareCache"
+    },
+    {
+      "address": "0x009d53f4",
+      "confidence": "weak",
+      "demangled": "vox::DriverCallbackInterface::Init(void*)",
+      "evidence": "1/1",
+      "file": "NOVA3/extern/vox/src/vox_driver_callback_template.cpp",
+      "line": 3383,
+      "status": "exact_body_found",
+      "unit": "DriverCallbackInterface::Init"
+    },
+    {
+      "address": "0x009dad14",
+      "confidence": "weak",
+      "demangled": "vox::DriverCallbackSourceInterface::DetectNeon()",
+      "evidence": "2/2",
+      "file": "NOVA3/extern/vox/src/vox_driver_callback_template_neon.cpp",
+      "line": 19,
+      "status": "exact_body_found",
+      "unit": "DriverCallbackSourceInterface::DetectNeon"
+    }
+  ]
+}
