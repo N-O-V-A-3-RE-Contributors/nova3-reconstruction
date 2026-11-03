@@ -1,5 +1,28 @@
 # Architecture decisions — 2026-10-25
 
+## 2026-11-02 — source-assisted reconstruction (reference, never production input)
+
+The owner supplied a 2012 pre-release source tree. It is materialised as a
+**private reference** under `reference/nova3_source/` (ignored by Git, never
+committed, never shipped) and indexed by
+`tools/source_ref/index_source_reference.py`. The Premium ELF's DWARF source
+paths resolve to the tree at 96.9% (783/808), which is evidence of the same
+engine branch (`glitch`/`vox`, Android `GLLegacy*` port) but not proof of a
+byte-identical commit.
+
+Decision: use the source **to understand and verify behaviour and to recover the
+build recipe**, then write/compile our own source. It does not change the
+end-state rule: the final APK is built from this project's source plus permitted
+OSS dependencies, with no original executable, and the reference tree may not be
+linked, copied, packaged or required at runtime. Every function claim keeps the
+separate states `source present`, `host tests passed`, `ARM object built`,
+`original instruction window measured`, `behaviourally compared`.
+
+The decompilation order inverts from decompiler-first to
+correspondence-first: map Premium symbols to source definitions, recover the
+UnityBuild/Android.mk translation units and GCC 4.4.3 flags, then verify the
+already-implemented units before expanding by subsystem.
+
 Production C++17 is isolated in reconstruction/, built by root CMakeLists.txt without reading APKs, ELF references, archives, generated decompiler output, or Python research packages. No original executable is linked, loaded or shipped. Host command-line harnesses are the first targets; there is no Android application yet.
 
 Premium is primary because its symbols preserve game/engine names. DWARF is restricted to GCC/libgcc compilation units: do not plan game-class layout recovery from these types. Exact symbol names are observed evidence; signatures inferred by decompilers remain provisional.
@@ -21,3 +44,17 @@ Use independently compiled checked readers for seekable file regions and owned m
 ## Nested SB packages and program-source references
 
 Reuse owned XOR and ZIP payload/header primitives for the observed scrambled-header package, rather than introducing a binary execution layer. Basename-key decoding transforms header data only. Original GLSL recovered from asset packages stays offline research evidence; production renderer/shaders must be newly reconstructed and compiled from owned project source. Source SB scanner's extra exact-length/CRC checks and header caps intentionally exceed unsafe native behavior. SDIR, descriptor records and other PAK variants remain explicit gaps.
+
+## Source correspondence as the reconstruction index (2026-11-02)
+
+The pre-release tree is used as an *index into* the binary, not as a build input.
+`tools/source_ref/` turns the ELF into a function inventory with decoded
+references, indexes definition sites in the private tree, and scores body
+evidence; the committed artifact carries paths, lines, addresses and counts only.
+Recovered build switches (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` defined,
+`GLITCH_FAST_MATH` undefined) are established by the absence/presence of code and
+of the `1e-8` tolerance literal, so a candidate compile that reintroduces an
+identity branch or the fast-math path is wrong regardless of size. Our
+reconstruction source is written from behaviour and standard algorithms (glitch's
+`matrix4` lineage is Irrlicht's zlib-licensed CMatrix4), never copied verbatim
+from the reference tree, which stays reference-only and Git-ignored.

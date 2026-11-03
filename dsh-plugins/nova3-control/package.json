@@ -1,15 +1,24 @@
 {
   "name": "@nova3/dsh-control",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "NOVA3 owner control plane as a DSH slash command (/nova status|eta|review|fleet|toolchain)",
+  "description": "NOVA3 control plane: the Mission tab payload/API and the automation switch",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
-    ".": "./lib/index.js"
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js"
+  },
+  "dsh": {
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ],
+      "platform": "web"
+    }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-commands": "0.2.1-rc.5"
+    "@deepseek-ai/cordis": "~4.0.5"
   },
   "license": "MIT"
 }

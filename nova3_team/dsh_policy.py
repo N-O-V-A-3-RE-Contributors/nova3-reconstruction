@@ -20,9 +20,14 @@ recovery was impossible without a human. Here a credit pause is a STATE, not an
 exit: the supervisor stays alive, rechecks availability on a bounded interval,
 and returns to RUNNING by itself once the session succeeds again.
 
-Budgets are hard: a rolling hourly window, a daily session cap and a daily
-token cap. Exceeding any of them is ``WAITING_APPROVAL`` with an actionable
-request -- never a silent extra spend, and never a restart loop.
+Budgets are optional. By default the hourly session, daily session and daily
+token ceilings are UNLIMITED (0), because the owner's standing instruction is
+that automation must not stop on an arbitrary local quota while credit remains.
+The only automatic pause is real provider exhaustion (``WAITING_CREDITS``): the
+supervisor stays alive, rechecks on a bounded interval, and resumes by itself
+once a session can succeed again. A positive value in the environment restores
+a hard ceiling; exceeding it is ``WAITING_APPROVAL`` with an actionable request,
+never a silent extra spend and never a restart loop.
 """
 from __future__ import annotations
 
@@ -48,10 +53,16 @@ STATES = frozenset({RUNNING, WAITING_CREDITS, WAITING_APPROVAL, BACKOFF, BLOCKED
 BACKOFF_BASE_S = 120
 BACKOFF_CAP_S = 3600
 
-DEFAULT_MAX_SESSIONS_PER_DAY = 48
-DEFAULT_MAX_SESSIONS_PER_HOUR = 6
+# Usage ceilings. 0 means UNLIMITED, which is the default: the owner's standing
+# instruction is that automation may not stop merely because an arbitrary local
+# quota or wall-clock window elapsed while credit was still available. The only
+# automatic pause is a real provider/credit exhaustion (WAITING_CREDITS), which
+# the supervisor rechecks and leaves by itself. Operators who want a stricter
+# envelope can still set a positive value through the environment.
+DEFAULT_MAX_SESSIONS_PER_DAY = 0
+DEFAULT_MAX_SESSIONS_PER_HOUR = 0
 DEFAULT_MAX_SESSIONS_PER_TASK = 3
-DEFAULT_MAX_TOKENS_PER_DAY = 6_000_000
+DEFAULT_MAX_TOKENS_PER_DAY = 0
 CREDIT_RECHECK_S = 1800
 
 
@@ -69,11 +80,15 @@ class Budget:
     def from_env(cls, env: dict[str, str] | None = None) -> 'Budget':
         env = os.environ if env is None else env
         def _int(name, default):
+            raw = str(env.get(name, '')).strip()
+            if not raw:
+                return default
             try:
-                value = int(str(env.get(name, '')).strip())
+                value = int(raw)
             except ValueError:
                 return default
-            return value if value > 0 else default
+            # 0 is a deliberate "unlimited"; only a negative value is invalid.
+            return value if value >= 0 else default
         return cls(sessions_per_hour=_int('NOVA3_DSH_SESSIONS_PER_HOUR', DEFAULT_MAX_SESSIONS_PER_HOUR),
                    sessions_per_day=_int('NOVA3_DSH_SESSIONS_PER_DAY', DEFAULT_MAX_SESSIONS_PER_DAY),
                    sessions_per_task=_int('NOVA3_DSH_SESSIONS_PER_TASK', DEFAULT_MAX_SESSIONS_PER_TASK),
@@ -270,7 +285,7 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
             return Decision(BACKOFF, f'operator STOP file present: {stop}', delay_s=BACKOFF_CAP_S,
                             action='clear_stop', retry_same_task=False)
         ignore_hourly_cap = ignore_hourly_cap or resume_requested(context.control_dir)
-    if ledger.sessions_today(now=now) >= budget.sessions_per_day:
+    if budget.sessions_per_day and ledger.sessions_today(now=now) >= budget.sessions_per_day:
         return Decision(WAITING_APPROVAL,
                         f'daily session cap reached ({budget.sessions_per_day})',
                         action='raise_session_budget', retry_same_task=True,
@@ -280,10 +295,11 @@ def decide(outcome, ledger: SpendLedger, context: Context, *, now: float | None 
                             'Raise NOVA3_DSH_SESSIONS_PER_DAY, or wait until tomorrow; '
                             'the supervisor resumes automatically at the next count window.',
                             'Higher API spend on the configured model route.'))
-    if not ignore_hourly_cap and ledger.sessions_last_hour(now=now) >= budget.sessions_per_hour:
+    if budget.sessions_per_hour and not ignore_hourly_cap \
+            and ledger.sessions_last_hour(now=now) >= budget.sessions_per_hour:
         return Decision(BACKOFF, f'hourly session cap reached ({budget.sessions_per_hour})',
                         delay_s=300, retry_same_task=True)
-    if ledger.tokens_today(now=now) >= budget.tokens_per_day:
+    if budget.tokens_per_day and ledger.tokens_today(now=now) >= budget.tokens_per_day:
         return Decision(WAITING_APPROVAL,
                         f'daily token cap reached ({budget.tokens_per_day})',
                         action='raise_token_budget', retry_same_task=True,

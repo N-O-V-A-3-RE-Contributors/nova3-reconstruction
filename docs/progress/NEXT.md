@@ -1,5 +1,76 @@
 # Next tasks
 
+## 2026-11-03 (LATEST) — native runner port
+
+Done: `dsh_runner/` (profiles, guarded Host client, headless + host backends,
+CLI, 9 tests), `config/projects/nova3.yaml`, native squad registration, and the
+decision record `docs/decisions/NATIVE_RUNNER.md`.
+
+Next, in order:
+
+1. **Confirm the native path live** — after the Web reload, the bridge probe must
+   return `{"ok":true}`; the next task session should log `model selected` and
+   then complete in the Agents tab as a run. If it returns 404 the plugin did not
+   load and the supervisor has already fallen back to headless.
+2. **Second project** — a throwaway repo profile proves the runner is not
+   NOVA3-shaped before any more features land.
+
+## 2026-11-02 — source-assisted decompilation is running
+
+Steps 1–2 of the previous plan are **done** (see `HANDOFF.md` and
+`docs/progress/SOURCE_CORRESPONDENCE.md`): 39,452 functions extracted from the
+Premium `.symtab`, 21,705 matched to a definition site (3,341 with strong body
+evidence), and the build configuration recovered from machine code
+(`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` defined, `GLITCH_FAST_MATH` not,
+`ROUNDING_ERROR_64 = 1e-8`).
+
+Now, in order:
+
+1. **`getInverse` residual (DONE except byte match)** — IMPLEMENTED + TESTED at
+   776/776 B and 194/194 instructions; class multiset off by four
+   (candidate 38 `vmul` / 15 `vfp_other` vs reference 34 / 19), nothing unique
+   either side, first divergence at instruction 5. Reproduce with
+   `tools/compare/collada_matrix4_inverse_pilot.py`. Next attempt: dump the
+   reference and candidate operand streams side by side around the out[12..15]
+   block (the arithmetic there is the only place the four extra float multiplies
+   can come from) before changing the source; do not "fix" by adding flags.
+2. **`operator*` 0x006e7e60 (564 B)** — restate
+   `collada_matrix_multiply.cpp` as the real `matrix4_ops.h` template body
+   (`CMatrix4<T> mat2(EM4CONST_NOTHING)` + `rowMatrixProduct34`), then re-run
+   `tools/compare/collada_matrix_multiply_pilot.py`. The uncommitted edit in that
+   file is an unfinished experiment and is not evidence.
+3. **Build recipe** — the `android_neon/release/N.O.V.A.3` directory is generated
+   (absent from the tree); recover the TU list from
+   `trunk/prj/AndroidPrj/GameSpecific/_project_VisualStudio/Android.vcproj` and
+   `tools/{sln2gcc,sln2mk,sln2android}`.
+4. **Coverage ladder** — work down `coordination/source_correspondence.json` by
+   subsystem (`vox` startup → `glitch::core` → `glitch::video` → gameplay), one
+   unit per compile+compare cycle.
+
+## 2026-11-02 (LATEST) — source-assisted decompilation
+
+The pre-release source is materialised at `reference/nova3_source/` (private,
+ignored). Read `HANDOFF.md` first. Do these in order:
+
+1. **Correspondence table.** For each Premium `.symtab` function, locate its
+   defining source file/body; start with the 18 mapped units and 62 exports.
+   Write `coordination/source_correspondence.json` + a Markdown table with
+   `exact_body_found` / `same_file_different_revision` / `not_found`. Regenerate
+   the source index with
+   `.venv/bin/python -m tools.source_ref.index_source_reference --write`.
+2. **Recover the build recipe from the tree** (`NOVA3/extern/GLLegacyConfig/android_neon`,
+   `NOVA3/trunk/prj/AndroidPrj`, `Android.mk`/`Application.mk`, `UB_*.cpp`,
+   `.mk`/`.bat`): compiler, flags, defines, include order, TU grouping.
+3. **Source-verify the 18 implemented units** (`getInverse` 0xebb08,
+   `operator*` 0x6e7e60, `prepareCache` 0x73f0a4, constructors, `DetectNeon`,
+   `Init`, cpu-features), then re-run the existing pilots and
+   `tools/compare/gcc443_window_check.py`. Keep source presence, host tests,
+   ARM object and instruction-window match as separate claims.
+4. **Re-baseline** `coordination/progress_state.json` and
+   `python -m nova3_team.analysis`; the ETA is provisional until then.
+5. Continue expanding by subsystem from the source tree; no original executable
+   or source text may become a production input.
+
 ## Settled residuals — parser-checked facts (2026-11-02)
 
 The five settled residuals below are frozen in the JSON block, checked by

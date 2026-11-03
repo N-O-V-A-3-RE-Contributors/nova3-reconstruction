@@ -1,94 +1,201 @@
 /**
- * NOVA3 owner control plane as a DSH slash command.
+ * NOVA3 Mission control plane (host half).
  *
- * A DSH plugin is a cordis plugin module: it exports `name`, `inject` and
- * `apply(ctx)`. This one registers `/nova` with the composed command registry,
- * so the owner can read worker status, project ETA, review verdicts, model
- * routing and toolchain plans from any DSH profile (web or TUI) instead of a
- * single chat session.
+ * The old `/nova` slash command is replaced by the **Mission** tab in the Web
+ * UI. This module serves the tab's JSON and the only two actions the tab has:
+ * turning the persistent automation switch on/off and changing whether reviewed
+ * green pull requests may be merged. Everything else is a read-only projection
+ * produced by `python -m nova3_team.mission`.
  *
- * The command shells out to the repository's own read-only CLIs. It never
- * mutates GitHub, never merges and never reads credentials; every subcommand is
- * one of the audited `python -m nova3_team.*` entry points.
+ * The plugin never reads credentials, never talks to GitHub itself and never
+ * writes supervisor state; all mutations go through the audited
+ * `nova3_team.autopilot` CLI, which re-verifies the owner's live GitHub role
+ * before enabling.
  *
- * Configuration: `NOVA3_PROJECT_ROOT` (default: the checkout this plugin was
- * installed from is passed in the profile patch as `config.repo`).
+ * Configuration: `repo` (absolute checkout), `github` (owner/name), injected by
+ * the profile patch.
  */
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const name = 'nova3-control'
-export const inject = ['commands']
+export const inject = ['webServer']
 
-const MAX_OUTPUT = 12000
+const MISSION_TTL_MS = 15000
+const MAX_BODY = 64 * 1024
 
-const USAGE = [
-  'Usage: /nova <command>',
-  '  status                 worker state, queue, open owner requests',
-  '  eta                    project inventory, coverage and ETA scenarios',
-  '  review <pr>            owner/admin compliance review of a PR',
-  '  fleet [task]           model/host routing recommendation',
-  '  toolchain [tier]       per-OS toolchain plan (core/project/full)',
-].join('\n')
-
-function repoDir(ctx) {
-  return (ctx && ctx.config && ctx.config.repo) ||
+function repoDir(config) {
+  return (config && config.repo) ||
     process.env.NOVA3_PROJECT_ROOT ||
     '/home/jason/Projects/nova3_re'
 }
 
-function runPython(repo, args) {
-  return new Promise((resolve) => {
-    execFile('python3', args, { cwd: repo, timeout: 120000, maxBuffer: 4 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        const text = String(stdout || stderr || '').slice(-MAX_OUTPUT)
-        resolve({ kind: error ? 'error' : 'success', text: text || '(no output)' })
-      })
+function githubRepo(config) {
+  return (config && config.github) ||
+    'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
+}
+
+function pythonBin(repo) {
+  const venv = join(repo, '.venv', 'bin', 'python')
+  return existsSync(venv) ? venv : 'python3'
+}
+
+function runPython(repo, args, timeoutMs = 45000) {
+  return new Promise((resolve, reject) => {
+    execFile(pythonBin(repo), args, {
+      cwd: repo,
+      timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024,
+      env: { ...process.env, PYTHONPATH: repo, PYTHONUNBUFFERED: '1' },
+    }, (error, stdout, stderr) => {
+      if (error) {
+        reject(Object.assign(new Error((stderr || error.message || 'python failed').slice(-2000)),
+          { code: error.killed ? 'TIMEOUT' : 'PYTHON_ERROR' }))
+        return
+      }
+      resolve(String(stdout || ''))
+    })
   })
 }
 
-async function execute(ctx, invocation) {
-  const raw = String(invocation.rawInput || '').trim()
-  const [sub, ...rest] = raw.split(/\s+/).filter(Boolean)
-  const repo = repoDir(ctx)
-  switch (sub || 'status') {
-    case 'status':
-      return runPython(repo, ['-m', 'nova3_team.dsh_status'])
-    case 'eta':
-    case 'analysis':
-      return runPython(repo, ['-m', 'nova3_team.analysis', '--root', repo])
-    case 'review': {
-      const pr = rest[0]
-      if (!pr || !/^\d+$/.test(pr)) return { kind: 'error', text: USAGE }
-      const repoName = (ctx && ctx.config && ctx.config.github) || 'N-O-V-A-3-RE-Contributors/nova3-reconstruction'
-      return runPython(repo, ['-m', 'nova3_team.review', '--repo', repoName, '--pr', pr])
-    }
-    case 'fleet':
-      return runPython(repo, ['-m', 'nova3_team.fleet', '--task', rest[0] || 'recon'])
-    case 'toolchain':
-      return runPython(repo, ['-m', 'tools.dsh_loop.toolchain', '--tier', rest[0] || 'project', '--plan'])
-    case 'help':
-      return { kind: 'success', text: USAGE }
-    default:
-      return { kind: 'error', text: USAGE }
+function sendJson(res, status, payload) {
+  const body = JSON.stringify(payload)
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'content-length': Buffer.byteLength(body),
+  })
+  res.end(body)
+}
+
+async function readJson(req) {
+  const chunks = []
+  let size = 0
+  for await (const chunk of req) {
+    size += chunk.length
+    if (size > MAX_BODY) throw Object.assign(new Error('body too large'), { code: 'TOO_LARGE' })
+    chunks.push(chunk)
+  }
+  if (chunks.length === 0) return {}
+  try {
+    const value = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    return value && typeof value === 'object' ? value : {}
+  } catch {
+    throw Object.assign(new Error('invalid JSON body'), { code: 'BAD_JSON' })
   }
 }
 
-export function apply(ctx) {
-  const active = new Set()
-  const handler = (invocation) => {
-    const operation = execute(ctx, invocation)
-    active.add(operation)
-    const retire = () => active.delete(operation)
-    operation.then(retire, retire)
-    return operation
+/** Reject cross-site POSTs; the GUI is served by this same host. */
+function sameOrigin(req) {
+  const origin = req.headers.origin
+  if (!origin) return true
+  try {
+    return new URL(origin).host === String(req.headers.host || '')
+  } catch {
+    return false
   }
-  ctx.effect(function* () {
-    yield async () => { await Promise.allSettled(active) }
-    yield ctx.commands.register({
-      definitionId: '@nova3/dsh-control',
-      name: 'nova',
-      description: 'NOVA3 control: status, ETA, review, fleet, toolchain',
-      handler,
-    })
-  }, 'nova3-control lifecycle')
+}
+
+export function apply(ctx, config) {
+  const repo = repoDir(config)
+  const github = githubRepo(config)
+  let cache = { at: 0, body: null }
+  let inflight = null
+
+  const mission = async () => {
+    const now = Date.now()
+    if (cache.body && now - cache.at < MISSION_TTL_MS) return cache.body
+    if (!inflight) {
+      inflight = runPython(repo, ['-m', 'nova3_team.mission', '--root', repo,
+        '--repo', github, '--json'], 60000)
+        .then((stdout) => {
+          cache = { at: Date.now(), body: JSON.parse(stdout) }
+          return cache.body
+        })
+        .finally(() => { inflight = null })
+    }
+    return inflight
+  }
+
+  const missionRoute = async (req, res) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      sendJson(res, 405, { error: 'method not allowed' })
+      return
+    }
+    try {
+      sendJson(res, 200, await mission())
+    } catch (error) {
+      sendJson(res, 503, {
+        schema: 'nova3-mission/1', error: String(error.message || error),
+        code: error.code || 'MISSION_UNAVAILABLE',
+        hint: 'run python -m nova3_team.mission --json in the repository',
+      })
+    }
+  }
+
+  const automationRoute = async (req, res) => {
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed' })
+      return
+    }
+    if (!sameOrigin(req)) {
+      sendJson(res, 403, { error: 'cross-origin request refused' })
+      return
+    }
+    try {
+      const body = await readJson(req)
+      let result
+      if (body.enabled === false) {
+        await runPython(repo, ['-m', 'nova3_team.autopilot', 'off'], 15000)
+        result = { ok: true, action: 'off' }
+      } else if (body.enabled === true) {
+        const args = ['-m', 'nova3_team.autopilot', 'enable']
+        if (body.auto_merge === false) args.push('--merge-mode', 'off')
+        result = { ok: true, action: 'enable', output: await runPython(repo, args, 60000) }
+      } else if (body.auto_merge === true || body.auto_merge === false) {
+        const out = await runPython(repo, ['-m', 'nova3_team.autopilot', 'configure',
+          '--merge-mode', body.auto_merge ? 'on' : 'off'], 15000)
+        result = { ok: true, action: 'auto_merge', output: out }
+      } else {
+        sendJson(res, 400, { error: 'expected {enabled?: boolean, auto_merge?: boolean}' })
+        return
+      }
+      cache = { at: 0, body: null }
+      result.state = await mission()
+      sendJson(res, 200, result)
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: String(error.message || error),
+        code: error.code || 'AUTOMATION_ERROR' })
+    }
+  }
+
+  const runRoute = async (req, res) => {
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: 'method not allowed' })
+      return
+    }
+    if (!sameOrigin(req)) {
+      sendJson(res, 403, { error: 'cross-origin request refused' })
+      return
+    }
+    try {
+      const out = await runPython(repo, ['-m', 'nova3_team.autopilot', 'run',
+        '--repo', github, '--json'], 120000)
+      cache = { at: 0, body: null }
+      sendJson(res, 200, { ok: true, run: JSON.parse(out), state: await mission() })
+    } catch (error) {
+      sendJson(res, 500, { ok: false, error: String(error.message || error),
+        code: error.code || 'RUN_ERROR' })
+    }
+  }
+
+  ctx.effect(() => {
+    const disposers = [
+      ctx.webServer.register({ kind: 'exact', path: '/nova3/api/mission', handler: missionRoute }),
+      ctx.webServer.register({ kind: 'exact', path: '/nova3/api/automation', handler: automationRoute }),
+      ctx.webServer.register({ kind: 'exact', path: '/nova3/api/run', handler: runRoute }),
+    ]
+    return () => { for (const dispose of disposers) dispose() }
+  }, 'nova3-control: Mission routes')
 }

@@ -1,8 +1,9 @@
-# NOVA3 autopilot: act on the owner's time-boxed grant. One timer tick = at
-# most two approvals; the grant's own max_tasks/expiry stop it. Nothing here
-# can approve outside the safe source paths, merge, or extend the grant.
+# NOVA3 autopilot: act on the owner's persistent switch. One timer tick = at
+# most two approvals and two merges; the switch itself has no expiry and no
+# task budget. Only depleted credit pauses it (temporarily, automatically).
+# Nothing here can approve outside the safe source paths or extend the switch.
 [Unit]
-Description=NOVA3 autopilot (owner-granted, time-boxed)
+Description=NOVA3 autopilot (owner-enabled, no expiry)
 After=network-online.target
 
 [Service]

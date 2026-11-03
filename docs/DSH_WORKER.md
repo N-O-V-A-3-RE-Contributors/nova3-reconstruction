@@ -154,18 +154,65 @@ cat $S/spend.jsonl           # append-only session/token ledger
 cat $S/requests.jsonl        # outstanding actionable human requests
 ```
 
+## Persistent agent versus an individual chat turn
+
+The systemd supervisor is the persistent agent. A headless DSH invocation handles
+one bounded task and exits; the supervisor verifies/checkpoints it and selects
+the next task. Closing a Web tab or ending a chat turn does not stop that user
+service. An enabled switch alone is not proof of useful work: check both the
+child DSH process and recent tool events in its private round log. A live process
+can still be waiting for a provider. Task timeouts preserve work and quarantine
+that task; they must not be hidden by resetting attempt history.
+
+## Task-aware configured-model routing (2026-11-03)
+
+`NOVA3_DSH_AUTO_ROUTE=1` enables `nova3_team.dsh_model_router` (enabled in the
+shipped worker unit). At each session boundary it reads the composed Web
+profile's explicitly configured models and current default. Ranking is an
+offline capability heuristic over the owner's own settings, never a benchmark:
+semantic/planning/review work prefers a high reasoning level and a non-flash
+model; routine tests and documentation prefer an explicitly configured
+flash/mini model. The remembered route list makes a still-installed,
+still-authenticated model keep being offered after the Web default moves to
+another provider; `known` is revalidated against the live profile (plugin
+present, provider configured, credential stored) on every session. Changes to
+Web model settings are picked up on the next session, without restarting the
+Web GUI. A model id that is neither the current default nor already used
+successfully is never invented.
+
+Live proof (2026-11-03): with the Web default on OpenRouter DeepSeek, a
+semantic task selected `openai-codex/gpt-6.1-sol` (reasoning `high`) and logged
+`model selected: openai-codex/gpt-6.1-sol for semantic work`; both routes were
+`eligible` and the Codex session completed in 85 s (7 steps, 16 tool calls).
+
+The authenticated `dsh-openai-codex-auth` plugin is loaded from its installed Web
+package for a native Codex route. It is not replaced with an OpenRouter API-key
+alias. Model context limits come from configured metadata, not invented values.
+Each route has its own content-addressed private overlay, written before launch,
+so a route change cannot rewrite a running child's configuration. Keys and OAuth
+tokens remain in DSH's credential store; the router only checks their presence.
+
+Provider credit/auth/rate-limit/outage failures may fall back to another
+configured, authenticated route with the remaining session time. Task errors,
+step limits and timeouts do not trigger a paid retry on another model. Failed
+provider routes cool down for ten minutes, and failed attempts are accounted for.
+The active selection is saved in supervisor `active_model` and
+`state/model-router/status.json` for diagnosis. No model, dependency, account or
+credential is installed by this routing policy.
+
 ## Configuration (environment)
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `NOVA3_DSH_BIN` | discovered | driver override (must be executable) |
 | `DSH_HOME` | `~/.local/share/nova3-dsh/data` | credential store + sessions |
-| `NOVA3_DSH_MODEL` / `_ROUTE` / `_BASE_URL` / `_KEY_REF` | OpenRouter DeepSeek V4.1 Flash | model routing; failover = point these at another approved route |
+| `NOVA3_DSH_AUTO_ROUTE` | enabled by worker unit | choose among authenticated models configured in Web settings per task |
+| `NOVA3_DSH_MODEL` / `_ROUTE` / `_BASE_URL` / `_KEY_REF` | OpenRouter DeepSeek V4.1 Flash | legacy fixed route when automatic routing is disabled |
 | `NOVA3_DSH_MAX_STEPS` | 120 | model steps per session |
 | `NOVA3_AI_SESSION_TIMEOUT` | 1200 | wall clock per session (300–1800) |
-| `NOVA3_DSH_SESSIONS_PER_HOUR` / `_PER_DAY` | 6 / 48 | spend caps |
-| `NOVA3_DSH_TOKENS_PER_DAY` | 6,000,000 | token cap |
-| `NOVA3_DSH_SESSIONS_PER_TASK` | 3 | anti-loop cap |
+| `NOVA3_DSH_SESSIONS_PER_HOUR` / `_PER_DAY` | 0 / 0 (unlimited) | optional spend caps; 0 means no cap |
+| `NOVA3_DSH_TOKENS_PER_DAY` | 0 (unlimited) | optional token cap; 0 means no cap |
+| `NOVA3_DSH_SESSIONS_PER_TASK` | 3 | anti-loop cap (quality control, not a time limit) |
 | `NOVA3_DSH_PLAN_TIMEOUT` | 900 | planner session bound |
 | `NOVA3_REFERENCE_ROOT` | `<repo>/analysis` | local read-only oracles |
 

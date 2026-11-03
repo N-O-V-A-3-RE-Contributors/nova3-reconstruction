@@ -1,5 +1,43 @@
 # Session log
 
+## 2026-11-02 — setup: persistent automation, Mission tab, keyless search, source reference
+
+- Read the owner-supplied `NOVA3_DEV_SOURCECODE.zip`: six 7z volumes
+  (11,922,012,346 B) inside; listed the inner archive with 7z (`39,283,825,872 B`,
+  131,126 files, LZMA+BCJ+7zAES). Extracted the source subset to the ignored
+  `reference/nova3_source/` — **595 MiB, 40,820 files** (trunk/src, prj, docs,
+  tools, build, lib; extern engine/vox code; all source/header/shader/Java/C#
+  extensions).
+- `tools/source_ref/index_source_reference.py`: tree manifest hash, counts,
+  DWARF-path cross-check. Premium ELF: 813 source paths, 808 resolved, **783
+  present (96.9%)**; missing are generated UnityBuild files and a few
+  renamed/moved files. Symbol locations for all already-touched engine classes
+  were found.
+- `nova3_team/autopilot.py` rewritten to schema v2: persistent `enabled` switch,
+  **no expiry, no task budget**; only `WAITING_CREDITS` pauses (temporarily);
+  new reviewed-green merge gate (`merge_decision`, `merge_validated`, audit
+  `merge-audit.jsonl`); v1 grant migration. 16 tests pass.
+- `dsh_policy.Budget`: session/hour/day and token ceilings default to **0 =
+  unlimited**; explicit positive values still enforced; supervisor/status
+  updated; unit files updated (`daemon-reload` done).
+- `/nova` replaced by the **Mission** tab: `nova3_team/mission.py` payload,
+  host routes (`/nova3/api/mission|automation|run`) and a browser-side
+  `conversation.view` registration in `dsh-plugins/nova3-control/lib/client.js`.
+  Node tests pass (4 host + 4 parser).
+- Keyless DuckDuckGo provider (`dsh-plugins/nova3-websearch`), selected in the
+  web profile; live search returned 10 results; parser tests pass.
+- Merged validated PRs **#181** (task #172) and **#180** (task #174) with the new
+  autopilot path after `review` returned `pass` and checks were green.
+- Verified the Mission tab on an isolated second Web instance (same profile and
+  symlinked node_modules, temporary `DSH_HOME` with a copy of the sessions and
+  storage registries, port 35605): the **Mission** tab appears next to Chat /
+  Trajectory / Context / Fleet, renders worker/automation/ETA/completion/source
+  data, and `/nova3/api/mission` returns 200 JSON. The only boot warning was the
+  expected task-board ledger lock owned by the live process.
+- Full `nova3_team/tests`: 1195 passed, 13 order-dependent pre-existing failures
+  in `test_planning_memory.py` / `test_chatgpt_planner_auth.py` (`store-in-repo`);
+  both pass in isolation and are unrelated to the changed files.
+
 ## 2026-11-01 — sixth run: `CMatrix4<float>(CMatrix4<float> const&, eConstructor)` recovered
 
 - Decoded `0x00108c8c` (240 B, A32) with Capstone from the Premium ELF
@@ -725,3 +763,117 @@ flight when this note was written; the outcome is appended below.
   `reconstruction/tests/fixtures/`). Its approval record expires
   `2026-11-02T07:04:38Z`; a retry needs the checkout cleaned, the local cooldown reset,
   a requeue, and (after that expiry) a fresh owner waiver.
+
+## 2026-11-02 (evening) — correspondence pass
+
+- `tools/source_ref/extract_elf_symbols.py` (new): 39,452 STT_FUNC rows, ARM/Thumb
+  from `$a`/`$t`/`$d` mapping symbols (result: ARM only, 0 `$t`), direct BL/BLX
+  callees, PLT-to-imported-symbol map from `.rel.plt` (329 names), literal-pool
+  data refs (15,850 functions) and string literals (359). Runtime 6 min 22 s;
+  output `.cache/source_ref/elf_symbols.jsonl` (private).
+- Three real bugs found by measurement, not inspection: file hints were inherited
+  by globals after the last `STT_FILE`; the pc-relative literal test checked the
+  destination register instead of the memory base; body extraction dropped
+  string-literal text, so bodies containing paths never matched.
+- `tools/source_ref/build_source_correspondence.py` (new): definition index over
+  34k files (168,476 member + 92,412 free sites) and evidence-scored matching;
+  21,705 exact / 8,072 same-file / 9,675 not found, 3,341 strong.
+- Committed `coordination/source_correspondence.json`,
+  `docs/progress/SOURCE_CORRESPONDENCE.md`, `tools/source_ref/test_source_ref.py`
+  (14 passed, wired into `tools/check_all.sh`).
+- Recovered build switches from the binary (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+  defined; `GLITCH_FAST_MATH` undefined; `ROUNDING_ERROR_64 = 1e-8` at `0xebe08`)
+  and the real `operator*`/`getInverse` bodies from the tree. Not implemented yet.
+- Commit `1d3c38f` (tooling) ; no originals modified, nothing uploaded, no
+  packages installed.
+
+## 2026-11-03 (early) — getInverse unit
+
+- Read the recovered build switches out of the binary (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL`
+  defined, `GLITCH_FAST_MATH` not, tolerance literal 1e-8 at 0xebe08).
+- Wrote `collada_matrix4_inverse.cpp` (Cramer's rule, 16 cofactors, scaling loop)
+  and a 7-group behaviour test; ctest 40/40. Two host-compile fixes: CMatrix4 has
+  no default constructor (tests construct through the recovered ctor), and the
+  NDK r8e ARM toolchain has no <cmath>, so `__builtin_fabs` is used.
+- GCC 4.4.3 sweep: 336/420 configurations compiled, 144 produce exactly 776 B;
+  none byte-equal. Window check at -O3: 776/776 B, 194/194 instructions,
+  DIFFERENT with a 4-op class delta (vmul +4, vfp_other -4) and first divergence
+  at instruction 5. Recorded NOT MATCHED; pilot tool committed.
+- Commit `100744d`.
+
+## 2026-11-03 (00:15-00:35) — root cause of stalled sessions, fixed live
+
+- Read the worker journal: loop alive every 90 s, but every task denied
+  `invalid_or_unavailable_evidence`. GitHub check of #167's approval comment
+  (6575087651) showed `expires_at 11:40:11Z` against a 13:12Z clock: the one-hour
+  gate window is the cause, not a dead supervisor.
+- Implemented standing waivers, renewal of expired reservations (live ones never
+  re-issued), atomic reservations, and locator replacement in
+  `nova3_team/autoadmit.py`; 17 new tests; full suite 1223 passed.
+- Installed `nova3-autoadmit.timer` (10 min), enabled it, posted standing waiver
+  comments on #16 and ran `autoadmit admit`: #167/#170 approved, then the
+  supervisor logged `requested task #167` and `#167 working in …/167-b2c2db`.
+- Found and fixed a second live defect: renewal left the old approval locator
+  label in place, so the gate refused #167 as ambiguous
+  (`owner_approval_locator_required`). `_queue_labels` now replaces locators and
+  is idempotent; verified one label remains.
+- Also verified the previously order-dependent suite now passes: 1223 tests.
+
+## 2026-11-03 (00:45-01:10) — model routing, transport teardown, single-worker rule
+
+- Diagnosed the "nothing running" report against processes, not switches: the
+  DSH supervisor and a headless child were active, and #167's private log showed
+  148 tool calls before its 20-minute bound. It timed out and was quarantined
+  (`PROVIDER_TIMEOUT`); checkout and attempts preserved.
+- New `nova3_team/dsh_model_router.py` (+15 tests): reads the owner's Web model
+  settings each session, ranks by reasoning level/throughput class, remembers
+  still-installed authenticated routes, and falls back only on provider-level
+  failures with a shared deadline, cooldowns and accounting. Live selection:
+  `openai-codex/gpt-6.1-sol` for semantic work, session
+  `session-cc01cf8f-fd2f-4417-9feb-6d81eac58625` COMPLETED in 85 s.
+- Live-discovered defect fixed in `dsh_runtime.run_session`: the native Codex
+  plugin emitted terminal `turn_end.completed` + `final` but kept transport
+  handles open, so a completed 180 s review was classified SESSION_TIMEOUT.
+  Now a confirmed terminal pair gets 1 s of teardown, then the process group is
+  cleaned up without changing the verdict; incomplete streams still fail.
+  Three regression tests cover completed, terminal-error and final-only streams.
+- Found two workers racing: legacy `nova3-worker.service` (disabled but running)
+  claimed #197 before the DSH supervisor. Stopped and disabled it; released its
+  lease with `/nova release <token>` (coordinator runs are serialised, so the
+  label change lags). Documented the single-worker rule.
+- Full suite: 1239 passed / 1891 subtests; routing+provider+review modules 88.
+
+## 2026-11-03 (01:17-01:19) — post-reboot verification and provider-cap failover
+
+- Host restart (unrelated) killed the session mid-check; user services came back
+  by themselves (Linger), supervisor PID 2731 at 01:17:15.
+- Supervisor reclaimed #195 at 01:17:30, reused checkout 195-e3685c without
+  resetting files, selected openai-codex/gpt-6.1-sol for semantic work, hit the
+  ChatGPT usage cap, and failed over automatically to openrouter/deepseek with
+  a 10-minute Codex cooldown. Task stayed RUNNING; no task was quarantined.
+- Classification fix committed as c02fde1: usage/billing-cap messages are
+  provider-level (WAITING_CREDITS, failover-eligible); other PI_AI_ERROR
+  messages remain task failures and never spend a second model.
+
+## 2026-11-03 (01:27-01:35) — why no agent was visible in DSH, and the fix
+
+- The agent was running the whole time (task #195, 46-56 steps, 57-69 tool calls,
+  last event a few seconds old). It was invisible because supervisor sessions are
+  `dsh --profile headless` children of the systemd unit; the Web UI's agent list
+  only shows Web-profile sessions.
+- Added an `agent` block to `nova3_team/mission.py` (durable state + router route +
+  real activity from the private round log; `running` requires an actual
+  `dsh --json` child) and an agent pill plus model/steps line in the Mission tab.
+  Verified live through `/nova3/api/mission`: running true,
+  openrouter/deepseek-v4.1-flash-1017, 56 steps, 69 tools, last event 2.8 s.
+- 4 new tests (`test_mission_agent.py`); full suite 1247 passed; plugin tests 4 pass.
+
+## 2026-11-03 (01:50-01:55) — why the Agents tab is empty; Mission reload
+
+- Inspected the operator's saved page: no Mission DOM at all, and the Agents tab
+  reads dsh-agents/ledger.json (teams/runs), which is empty by design. The worker
+  was on task #201 the whole time.
+- Fixed the client's activity line (`ago()` takes unix seconds, not ms).
+- Scheduled a transient `nova3-web-reload` unit (01:53:12) to restart the Web
+  service so the boot-time plugin `rev` changes and the Mission tab renders the
+  `agent RUNNING` pill. The worker unit is separate and unaffected.
