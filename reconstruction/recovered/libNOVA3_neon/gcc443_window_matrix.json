@@ -1,0 +1,902 @@
+{
+  "schema": "nova3.gcc443-window-matrix/1",
+  "measured_on": "2026-11-02",
+  "scope": "FUNCTION_WINDOWS_ONLY",
+  "reference": "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+  "reference_sha256": [
+    "84075223",
+    "e7e7f833",
+    "ebba98a4",
+    "6756ce46",
+    "19fb9096",
+    "63cd0b96",
+    "1e440cc0",
+    "48abbaaf"
+  ],
+  "compiler_version": "arm-linux-androideabi-g++ (GCC) 4.4.3",
+  "compiler_sha256": [
+    "cb1a9307",
+    "27715eec",
+    "05658304",
+    "62d10f8c",
+    "f1a190d2",
+    "20505ae4",
+    "81df9148",
+    "bcd93288"
+  ],
+  "hash_encoding": "SHA256_EIGHT_ORDERED_HEX_CHUNKS",
+  "groups": [
+    "computePitch",
+    "getTransposed",
+    "accessor_cluster",
+    "getStream",
+    "addOffset",
+    "getPrimitiveCount",
+    "CFPSCounter"
+  ],
+  "cache_evidence": "REQUESTED_PRIOR_REPORTS_AND_BD_FULL_ABSENT",
+  "functions": [
+    {
+      "function": "computePitch",
+      "group": "computePitch",
+      "address": "0x0077d37c",
+      "size": 80,
+      "symbol": "_ZN6glitch5video12pixel_format12computePitchENS0_14E_PIXEL_FORMATEj",
+      "candidate_symbol": "nova3_recovered_compute_pitch",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077d37c.cpp",
+      "source_sha256": [
+        "a770a252",
+        "b08d14e4",
+        "9d81d638",
+        "8e89178a",
+        "545ca613",
+        "1c022924",
+        "e9e3d792",
+        "749901b2"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077d37c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/computePitch.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/computePitch.o",
+      "report": ".cache/gcc443-sweep/window-matrix/computePitch.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/pixel_format.h",
+          "sha256": [
+            "3fcfc7e4",
+            "e72295af",
+            "c682fc4a",
+            "cf98f86a",
+            "c9b229cd",
+            "1711afa0",
+            "05687342",
+            "847d16d6"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "getTransposed",
+      "group": "getTransposed",
+      "address": "0x000eba84",
+      "size": 132,
+      "symbol": "_ZNK6glitch4core8CMatrix4IfE13getTransposedERS2_",
+      "candidate_symbol": "_ZNK6glitch4core8CMatrix4IfE13getTransposedERS2_",
+      "source": "reconstruction/recovered/libNOVA3_neon/collada_matrix4_transpose.cpp",
+      "source_sha256": [
+        "d5056eb3",
+        "537d4f25",
+        "e4167571",
+        "9a1d10f9",
+        "89c41d33",
+        "8ee7f412",
+        "291ea3a3",
+        "a2791fce"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O3",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/collada_matrix4_transpose.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/getTransposed.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/getTransposed.o",
+      "report": ".cache/gcc443-sweep/window-matrix/getTransposed.json",
+      "status": "MATCHED_RAW",
+      "matched_raw": true,
+      "matched_normalized_calls": false,
+      "different": false,
+      "flags_evidence": "collada_matrix4_transpose_pilot.py",
+      "object_sha256": [
+        "6a9979f9",
+        "94c51428",
+        "c3e9abb9",
+        "4447dfee",
+        "c66e8528",
+        "530c10b3",
+        "3e329df8",
+        "fb1eaf87"
+      ],
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/collada_skin_cache_deps.h",
+          "sha256": [
+            "4e093704",
+            "d9b2dc57",
+            "8aa78b52",
+            "4c0cedd4",
+            "c32ac552",
+            "26046b86",
+            "f64b771b",
+            "acbd502c"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getVersion",
+      "group": "accessor_cluster",
+      "address": "0x0071017c",
+      "size": 20,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase10getVersionEv",
+      "candidate_symbol": "nova3_recovered_collada_database_version",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp",
+      "source_sha256": [
+        "38d63676",
+        "1c21f34f",
+        "cd516346",
+        "91c697f8",
+        "e67debfb",
+        "9f66ea5a",
+        "c36d97f7",
+        "40c7145c"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0071017c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getVersion.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getVersion.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getVersion.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_linkInstanceMaterial",
+      "group": "accessor_cluster",
+      "address": "0x00710160",
+      "size": 28,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase20linkInstanceMaterialEPNS0_17SInstanceMaterialE",
+      "candidate_symbol": "nova3_recovered_collada_link_instance_material",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710160_v2.cpp",
+      "source_sha256": [
+        "3d487b74",
+        "43fcfbff",
+        "8e2fdf99",
+        "cdce9129",
+        "a5349ca8",
+        "fa30a453",
+        "b81861d0",
+        "b40ab48a"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_00710160_v2.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_linkInstanceMaterial.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_linkInstanceMaterial.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_linkInstanceMaterial.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getImage_index",
+      "group": "accessor_cluster",
+      "address": "0x00710318",
+      "size": 24,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase8getImageEi",
+      "candidate_symbol": "nova3_recovered_collada_get_image",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710318.cpp",
+      "source_sha256": [
+        "2afb89b7",
+        "cd89e148",
+        "19fc45aa",
+        "9d530188",
+        "7c1765b8",
+        "d20345ac",
+        "ca750899",
+        "4975fa52"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_00710318.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getImage_index.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getImage_index.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getImage_index.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getMaterial_index",
+      "group": "accessor_cluster",
+      "address": "0x0071034c",
+      "size": 28,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getMaterialEi",
+      "candidate_symbol": "nova3_recovered_collada_get_material",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071034c.cpp",
+      "source_sha256": [
+        "22f85015",
+        "04612142",
+        "e1459091",
+        "cb854018",
+        "2dc48e26",
+        "1468818b",
+        "f551ec8e",
+        "fdd382c0"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0071034c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_index.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_index.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_index.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getGeometry",
+      "group": "accessor_cluster",
+      "address": "0x00710368",
+      "size": 24,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getGeometryEi",
+      "candidate_symbol": "nova3_recovered_collada_get_geometry",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_00710368_v2.cpp",
+      "source_sha256": [
+        "d36f5de4",
+        "303239ce",
+        "dc8ff96f",
+        "1f37c145",
+        "4378b2d4",
+        "61ff9875",
+        "6c5e45bb",
+        "adeb6d9f"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_00710368_v2.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getGeometry.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getGeometry.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getGeometry.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getMaterial_name",
+      "group": "accessor_cluster",
+      "address": "0x007146ac",
+      "size": 96,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase11getMaterialEPKc",
+      "candidate_symbol": "nova3_recovered_collada_get_material_by_name",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp",
+      "source_sha256": [
+        "64e0c851",
+        "08088dcd",
+        "db7dad63",
+        "4ad7d507",
+        "a66e9400",
+        "29101bba",
+        "fe5259d5",
+        "3cd8515f"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_007146ac.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_name.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_name.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getMaterial_name.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "accessor_getImage_name",
+      "group": "accessor_cluster",
+      "address": "0x0071476c",
+      "size": 96,
+      "symbol": "_ZNK6glitch7collada16CColladaDatabase8getImageEPKc",
+      "candidate_symbol": "nova3_recovered_collada_get_image_by_name",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp",
+      "source_sha256": [
+        "ef6115a7",
+        "f8b18b25",
+        "f75912d3",
+        "7932afe2",
+        "ec44d0bf",
+        "4e911ca6",
+        "fc509dac",
+        "a0da788b"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0071476c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/accessor_getImage_name.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/accessor_getImage_name.o",
+      "report": ".cache/gcc443-sweep/window-matrix/accessor_getImage_name.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/ccollada_database.h",
+          "sha256": [
+            "a4e9e4ba",
+            "c8dc0dcd",
+            "3aa36124",
+            "f4504207",
+            "5edf5aae",
+            "5a71e2cd",
+            "3e8d8df7",
+            "d99d2699"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "getStream_const",
+      "group": "getStream",
+      "address": "0x0077bd7c",
+      "size": 68,
+      "symbol": "_ZNK6glitch5video14CVertexStreams9getStreamENS0_18E_VERTEX_ATTRIBUTEEPKNS0_13SVertexStreamES5_",
+      "candidate_symbol": "nova3_recovered_get_stream_const",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bd7c.cpp",
+      "source_sha256": [
+        "00af4af7",
+        "6b2359d1",
+        "0d237c5d",
+        "b3581877",
+        "401cb697",
+        "ef4232dd",
+        "0e09b2d7",
+        "714aff11"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077bd7c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/getStream_const.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/getStream_const.o",
+      "report": ".cache/gcc443-sweep/window-matrix/getStream_const.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/vertex_stream_getstream.h",
+          "sha256": [
+            "c2d41857",
+            "6b7693e3",
+            "c4ba5e50",
+            "bf91c5d3",
+            "83fd9509",
+            "6370db95",
+            "efba1286",
+            "a37d7c2f"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "getStream",
+      "group": "getStream",
+      "address": "0x0077bdc0",
+      "size": 68,
+      "symbol": "_ZN6glitch5video14CVertexStreams9getStreamENS0_18E_VERTEX_ATTRIBUTEEPNS0_13SVertexStreamES4_",
+      "candidate_symbol": "nova3_recovered_get_stream",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bdc0.cpp",
+      "source_sha256": [
+        "e5981f6c",
+        "be4a0913",
+        "e57f97af",
+        "6ad6c344",
+        "0d20d8d0",
+        "fdc739e4",
+        "ab1e47cd",
+        "1ff4083b"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077bdc0.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/getStream.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/getStream.o",
+      "report": ".cache/gcc443-sweep/window-matrix/getStream.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/vertex_stream_getstream.h",
+          "sha256": [
+            "c2d41857",
+            "6b7693e3",
+            "c4ba5e50",
+            "bf91c5d3",
+            "83fd9509",
+            "6370db95",
+            "efba1286",
+            "a37d7c2f"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "addOffset",
+      "group": "addOffset",
+      "address": "0x0077be04",
+      "size": 64,
+      "symbol": "_ZN6glitch5video14CVertexStreams9addOffsetEi",
+      "candidate_symbol": "nova3_recovered_add_offset",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp",
+      "source_sha256": [
+        "ea80ab3d",
+        "728e9355",
+        "776bc90c",
+        "438a12ba",
+        "eb23c064",
+        "d616367b",
+        "3777709a",
+        "9aac1a76"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077be04.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/addOffset.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/addOffset.o",
+      "report": ".cache/gcc443-sweep/window-matrix/addOffset.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/vertex_streams.h",
+          "sha256": [
+            "bc158811",
+            "6821fd4f",
+            "2ace5056",
+            "25e02f92",
+            "aa91f72b",
+            "8deb6ae6",
+            "2abac376",
+            "80199d3b"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "getPrimitiveCount",
+      "group": "getPrimitiveCount",
+      "address": "0x0077bf84",
+      "size": 152,
+      "symbol": "_ZN6glitch5video17getPrimitiveCountENS0_16E_PRIMITIVE_TYPEEj",
+      "candidate_symbol": "nova3_recovered_get_primitive_count",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp",
+      "source_sha256": [
+        "a1bfcca9",
+        "025a56fa",
+        "47e138c9",
+        "0c891d78",
+        "541bfe0b",
+        "6323d30c",
+        "3495f4fd",
+        "973f74f1"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077bf84.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/getPrimitiveCount.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/getPrimitiveCount.o",
+      "report": ".cache/gcc443-sweep/window-matrix/getPrimitiveCount.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/primitive_types.h",
+          "sha256": [
+            "60b61d29",
+            "54889ce7",
+            "30c49208",
+            "a0f593cd",
+            "6f65929f",
+            "350ca000",
+            "4211e2f9",
+            "10a8bbd1"
+          ]
+        }
+      ]
+    },
+    {
+      "function": "CFPSCounter",
+      "group": "CFPSCounter",
+      "address": "0x0077bb7c",
+      "size": 56,
+      "symbol": "_ZN6glitch5video11CFPSCounterC2Ev",
+      "candidate_symbol": "nova3_recovered_fps_counter_ctor",
+      "source": "reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp",
+      "source_sha256": [
+        "49fd8c67",
+        "b3bba336",
+        "5509da04",
+        "5fe2a017",
+        "acce3c01",
+        "9e95b4de",
+        "57977c92",
+        "11f905e9"
+      ],
+      "gcc_argv": [
+        ".cache/toolchains/android-ndk-r8e/toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++",
+        "-std=gnu++98",
+        "-marm",
+        "-march=armv7-a",
+        "-mfpu=vfpv3-d16",
+        "-mfloat-abi=softfp",
+        "-O2",
+        "-fno-pic",
+        "-fno-rtti",
+        "-fno-exceptions",
+        "-fvisibility=hidden",
+        "-c",
+        "reconstruction/recovered/libNOVA3_neon/block_0077bb7c.cpp",
+        "-o",
+        ".cache/gcc443-sweep/window-matrix/CFPSCounter.o"
+      ],
+      "object": ".cache/gcc443-sweep/window-matrix/CFPSCounter.o",
+      "report": ".cache/gcc443-sweep/window-matrix/CFPSCounter.json",
+      "status": "NOT_MEASURED",
+      "matched_raw": null,
+      "matched_normalized_calls": null,
+      "different": null,
+      "flags_evidence": "PROBE_ONLY",
+      "blocker": "NO_CACHED_OBJECT_OR_REQUESTED_FLAG_REPORT_AND_CXX98_COMPILE_FAILED",
+      "compile_exit_code": 1,
+      "headers": [
+        {
+          "path": "reconstruction/recovered/libNOVA3_neon/fps_counter.h",
+          "sha256": [
+            "f3f9a6f4",
+            "62448c24",
+            "656003bb",
+            "22c885e0",
+            "f2adee01",
+            "522b4ad4",
+            "ca44781e",
+            "ae9cac2a"
+          ]
+        }
+      ]
+    }
+  ],
+  "measurement_complete": false,
+  "original_toolchain_identified": false,
+  "normalization": "CHECKER_A32_BRANCH_DISPLACEMENTS",
+  "checker": "tools/compare/gcc443_window_check.py",
+  "checker_sha256": [
+    "943145c4",
+    "95a65f88",
+    "cf96e797",
+    "c8f45d05",
+    "177b5583",
+    "366db742",
+    "f9d20751",
+    "19f6b846"
+  ]
+}
