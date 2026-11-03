@@ -63,6 +63,99 @@ def source_reference(root: pathlib.Path) -> dict:
     }
 
 
+def agent_state(repo: str, slot: str = 'dsh', *, now: float | None = None) -> dict:
+    """The LIVE headless agent, not the Web UI's own session list.
+
+    The supervisor's model sessions run as `dsh --profile headless` children of
+    the systemd unit, so they never appear as Web-profile agents in the DSH UI.
+    This projection is what makes them visible: durable supervisor state, the
+    router's selected route, and real activity from the private round log.
+    """
+    from . import worker
+    now = time.time() if now is None else now
+    blank = {'running': False, 'pid': None, 'state': None, 'task': None,
+             'title': '', 'provider': None, 'model': None, 'purpose': None,
+             'router_status': None, 'session_id': None, 'steps': 0,
+             'tool_calls': 0, 'last_event_age_s': None, 'log_bytes': 0,
+             'cooldowns': {}, 'catalog': [], 'checkout': None}
+    try:
+        paths = worker.slot_paths(worker.state_root(repo), slot)
+    except Exception:
+        return blank
+    state_dir = pathlib.Path(paths.state)
+    supervisor = _read_json(state_dir / 'supervisor.json')
+    router = _read_json(state_dir / 'model-router' / 'status.json')
+    task = supervisor.get('task') or {}
+    pid = supervisor.get('supervisor_pid')
+    live = False
+    if isinstance(pid, int) and pid > 0:
+        try:
+            children = pathlib.Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
+            for child in children:
+                argv = pathlib.Path(f'/proc/{child}/cmdline').read_bytes()
+                if b'dsh' in argv and b'--json' in argv:
+                    live = True
+                    break
+        except OSError:
+            live = False
+    steps = tools = 0
+    age = None
+    size = 0
+    logs = []
+    try:
+        logs = sorted(state_dir.rglob('round-*.log'),
+                      key=lambda item: item.stat().st_mtime, reverse=True)
+    except OSError:
+        logs = []
+    if logs:
+        newest = logs[0]
+        try:
+            stat = newest.stat()
+            size = stat.st_size
+            age = max(0.0, now - stat.st_mtime)
+            with newest.open('rb') as handle:
+                if size > 2 * 1024 * 1024:
+                    handle.seek(size - 2 * 1024 * 1024)
+                for raw in handle:
+                    if not raw.startswith(b'{'):
+                        continue
+                    try:
+                        event = json.loads(raw)
+                    except ValueError:
+                        continue
+                    if event.get('type') == 'tool_call':
+                        tools += 1
+                    elif event.get('phase') == 'step_end':
+                        steps += 1
+        except OSError:
+            pass
+    cooldowns = {}
+    for route, until in (router.get('cooldowns') or {}).items():
+        try:
+            left = int(until) - int(now)
+        except (TypeError, ValueError):
+            continue
+        if left > 0:
+            cooldowns[route] = left
+    active = router.get('active') or {}
+    return {
+        'running': live, 'pid': pid if live else None,
+        'state': supervisor.get('state'),
+        'task': task.get('number'), 'title': str(task.get('title') or ''),
+        'provider': active.get('provider'), 'model': active.get('model'),
+        'purpose': router.get('purpose'), 'router_status': router.get('status'),
+        'session_id': router.get('session_id'),
+        'steps': steps, 'tool_calls': tools,
+        'last_event_age_s': round(age, 1) if age is not None else None,
+        'log_bytes': size,
+        'cooldowns': cooldowns,
+        'catalog': [f"{c.get('provider')}/{c.get('model')}"
+                    for c in router.get('catalog') or [] if isinstance(c, dict)],
+        'checkout': (str(paths.state / str(supervisor.get('task_checkout') or ''))
+                     if supervisor.get('task_checkout') else None),
+    }
+
+
 def collect(repo: str, root: pathlib.Path = '.', *, slot: str = 'dsh',
             now: float | None = None) -> dict:
     import subprocess
@@ -105,6 +198,7 @@ def collect(repo: str, root: pathlib.Path = '.', *, slot: str = 'dsh',
             'assessment': status.get('assessment'),
             'open_requests': status.get('open_requests'),
         },
+        'agent': agent_state(repo, slot, now=now),
         'autopilot': autopilot_state,
         'project': {
             'work_started': work_started,
@@ -139,8 +233,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write('\n')
     else:
         worker = payload['worker']
+        agent = payload.get('agent') or {}
         print(f"worker {worker['state']} · task {worker['task']} · "
               f"autopilot {payload['autopilot']['mode']}")
+        print(f"agent {'RUNNING' if agent.get('running') else 'idle'}"
+              + (f" · {agent.get('provider')}/{agent.get('model')}"
+                 f" · {agent.get('steps')} steps · "
+                 f"last event {agent.get('last_event_age_s')}s ago"
+                 if agent.get('running') else ''))
     return 0
 
 
