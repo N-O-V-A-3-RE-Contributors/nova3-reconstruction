@@ -44,3 +44,17 @@ Use independently compiled checked readers for seekable file regions and owned m
 ## Nested SB packages and program-source references
 
 Reuse owned XOR and ZIP payload/header primitives for the observed scrambled-header package, rather than introducing a binary execution layer. Basename-key decoding transforms header data only. Original GLSL recovered from asset packages stays offline research evidence; production renderer/shaders must be newly reconstructed and compiled from owned project source. Source SB scanner's extra exact-length/CRC checks and header caps intentionally exceed unsafe native behavior. SDIR, descriptor records and other PAK variants remain explicit gaps.
+
+## Source correspondence as the reconstruction index (2026-11-02)
+
+The pre-release tree is used as an *index into* the binary, not as a build input.
+`tools/source_ref/` turns the ELF into a function inventory with decoded
+references, indexes definition sites in the private tree, and scores body
+evidence; the committed artifact carries paths, lines, addresses and counts only.
+Recovered build switches (`GLITCH_MATRIX4_REMOVE_IDENTITY_BOOL` defined,
+`GLITCH_FAST_MATH` undefined) are established by the absence/presence of code and
+of the `1e-8` tolerance literal, so a candidate compile that reintroduces an
+identity branch or the fast-math path is wrong regardless of size. Our
+reconstruction source is written from behaviour and standard algorithms (glitch's
+`matrix4` lineage is Irrlicht's zlib-licensed CMatrix4), never copied verbatim
+from the reference tree, which stays reference-only and Git-ignored.
