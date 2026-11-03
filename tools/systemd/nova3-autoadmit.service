@@ -1,0 +1,25 @@
+# NOVA3 auto-admission renewal: keep owner-approved queue work admissible.
+#
+# The owner gate refuses any approval record older than MAX_APPROVAL_AGE (one
+# hour), which is why a durable worker went idle after its first task. This unit
+# re-issues a fresh short-lived record for tasks the owner named in a STANDING
+# waiver, and does nothing at all unless BOTH hold:
+#   1. a standing waiver comment exists on the holder issue (owner-authored,
+#      verified live, pinned to the exact task texts), and
+#   2. the owner's persistent autopilot switch is ON.
+# It never approves a task the waiver does not name, never changes a task text,
+# never merges, and cannot act without the owner's GitHub credential. Turning
+# the switch off stops it from approving anything on the next tick.
+[Unit]
+Description=NOVA3 approval renewal for standing waivers (owner-gated)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/Projects/nova3_re
+Environment=PYTHONPATH=%h/Projects/nova3_re
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HOME=%h
+ExecStart=/usr/bin/python3 -m nova3_team.autoadmit admit --repo N-O-V-A-3-RE-Contributors/nova3-reconstruction --holder 16
+TimeoutStartSec=180
+Nice=10
