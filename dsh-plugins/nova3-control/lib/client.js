@@ -193,14 +193,15 @@ window.__ModuleLoader__.load({
         const estimate = project.estimate || {};
         const autopilot = data.autopilot || {};
         const worker = data.worker || {};
+        const agent = data.agent || {};
         const assessment = worker.assessment || {};
         const queue = assessment.queue || {};
         const scenarios = estimate.scenarios || {};
         const recorded = inventory.functions_recorded || 0;
         const elf = inventory.elf_functions || 0;
         const implemented = progress.mappings_implemented || 0;
-        return { project, inventory, progress, estimate, autopilot, worker, assessment,
-          queue, scenarios, recorded, elf, implemented };
+        return { project, inventory, progress, estimate, autopilot, worker, agent,
+          assessment, queue, scenarios, recorded, elf, implemented };
       }, [data]);
 
       if (loading && !data) {
@@ -218,7 +219,7 @@ window.__ModuleLoader__.load({
           ]));
       }
 
-      const { project, inventory, progress, estimate, autopilot, worker, queue,
+      const { project, inventory, progress, estimate, autopilot, worker, agent, queue,
         scenarios, recorded, elf, implemented } = model;
       const workerState = worker.state || "not started";
       const autoMode = autopilot.mode || "unset";
@@ -243,6 +244,12 @@ window.__ModuleLoader__.load({
                   text: "worker " + workerState, title: worker.reason || "" }),
                 h(Pill, { key: "a", color: paused ? "#f0c24c" : (autoOn ? "#3ddc84" : "#8b93a7"),
                   text: "automation " + autoMode, title: autopilot.path || "" }),
+                h(Pill, { key: "g", color: agent.running ? "#3ddc84" : "#8b93a7",
+                  text: "agent " + (agent.running ? "RUNNING" : "idle"),
+                  title: agent.running
+                    ? ((agent.provider || "") + "/" + (agent.model || "") +
+                       " · session " + (agent.session_id || "—"))
+                    : "no headless model session (the supervisor is waiting)" }),
               ]),
               h("div", { key: "c", className: "nv3m-clock", style: { marginTop: "7px" } },
                 "updated " + ago(data.generated_unix) + " · " +
@@ -260,6 +267,13 @@ window.__ModuleLoader__.load({
               h("div", { key: "m", className: "nv3m-small", style: { marginTop: "5px" } },
                 "last heartbeat " + ago(worker.updated_unix) + " · " +
                 num(worker.sessions_today) + " sessions today"),
+              h("div", { key: "g", className: "nv3m-small", style: { marginTop: "3px" } },
+                agent.running
+                  ? ("agent " + (agent.provider || "?") + "/" + (agent.model || "?") +
+                     " · " + num(agent.steps) + " steps · " + num(agent.tool_calls) +
+                     " tool calls" + (agent.last_event_age_s == null ? "" :
+                       " · last event " + ago(Math.round(Date.now() / 1000 - agent.last_event_age_s))))
+                  : "agent idle — the supervisor is between sessions"),
             ]),
             h(Card, { key: "e", label: "elapsed" }, [
               h("div", { key: "b", className: "nv3m-big" }, num(project.elapsed_days) + " days"),
