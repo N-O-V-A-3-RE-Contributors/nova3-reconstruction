@@ -213,6 +213,7 @@ export function apply(ctx, config) {
       ctx.webServer.register({ kind: 'exact', path: '/nova3/api/mission', handler: missionRoute }),
       ctx.webServer.register({ kind: 'exact', path: '/nova3/api/automation', handler: automationRoute }),
       ctx.webServer.register({ kind: 'exact', path: '/nova3/api/run', handler: runRoute }),
+      ctx.webServer.register({ kind: 'exact', path: '/nova3/api/runs', handler: runsRoute }),
     ]
     return () => { for (const dispose of disposers) dispose() }
   }, 'nova3-control: Mission routes')
