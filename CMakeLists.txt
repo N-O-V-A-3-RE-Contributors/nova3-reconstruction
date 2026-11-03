@@ -327,6 +327,27 @@ if(BUILD_TESTING)
     target_compile_options(collada_matrix4_transpose_link_path_test PRIVATE -UNDEBUG)
     add_test(NAME collada_matrix4_transpose_link_path
              COMMAND collada_matrix4_transpose_link_path_test)
+
+    # getInverse (0x000ebb08, 776 B) is the last dangling dependency of the
+    # skinning group (`collada_skin_cache_deps.h` declares it).  The recovered TU
+    # is included unchanged together with the recovered plain constructor, whose
+    # body every test object is built through; nothing is stubbed.  Asserted:
+    # identity and diagonal inverses, the analytic inverse of a rigid transform
+    # in the engine's last-row translation convention, agreement with an
+    # independently written Gauss-Jordan inverse, source * inverse = identity, a
+    # singular input reporting failure while writing nothing, the measured
+    # 1e-08 determinant tolerance, and untouched source storage.
+    # Instruction agreement for the 776-byte window is measured separately with
+    # tools/compare/gcc443_window_check.py (NDK r8e GCC 4.4.3).
+    add_executable(collada_matrix4_inverse_behaviour_test
+        reconstruction/tests/recovered/libNOVA3_neon/collada_matrix4_inverse_test.cpp)
+    set_property(TARGET collada_matrix4_inverse_behaviour_test
+                 PROPERTY CXX_STANDARD 17)
+    target_include_directories(collada_matrix4_inverse_behaviour_test PRIVATE
+        reconstruction/recovered/libNOVA3_neon)
+    target_compile_options(collada_matrix4_inverse_behaviour_test PRIVATE -UNDEBUG)
+    add_test(NAME collada_matrix4_inverse_behaviour
+             COMMAND collada_matrix4_inverse_behaviour_test)
 endif()
 
 # ---------------------------------------------------------------------------

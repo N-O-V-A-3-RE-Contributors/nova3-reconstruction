@@ -6,7 +6,9 @@ The owner/admin issues **one persistent switch**, not a timed grant.  While the
 switch is on, a background timer may:
 
 * take planner proposals (``NOVA3_DSH_PLANNER_PROPOSAL`` marker) that no human
-  has touched and whose ``Allowed paths`` stay inside the safe source trees,
+  has touched and whose ``Allowed paths`` stay inside the safe source trees
+  (``--approve-mode off`` limits the pass to merges while that ceiling is
+  reached, so delivery keeps draining without authorising new task creation),
 * write a normal approval record and the queue labels, exactly like a human
   approval (so the same claim-time gate still verifies it),
 * review and merge a pull request only after the read-only compliance review
@@ -152,7 +154,7 @@ def select_candidates(issues: list[dict], grant: dict, *,
     return accepted, refused
 
 
-def approve(*, repo: str, issue: dict, grant: dict, folder: pathlib.Path,
+def approve_proposal(*, repo: str, issue: dict, grant: dict, folder: pathlib.Path,
             post_comment, patch_labels, repository: dict,
             now: int | None = None, ttl_seconds: int = 3600) -> dict:
     """Write one approval record + queue labels for a selected proposal."""
@@ -230,7 +232,8 @@ def _checks_for(repo: str, sha: str) -> dict:
 
 
 def merge_validated(repo: str, folder: pathlib.Path, *, now: int | None = None,
-                    max_this_run: int = 2, merge_method: str = 'merge') -> dict:
+                    max_this_run: int = 2, merge_method: str = 'merge',
+                    deadline_s: float | None = None) -> dict:
     """Merge PRs that pass the read-only reviewer and have green checks.
 
     Every decision (merge or refusal) is appended to ``merge-audit.jsonl`` so the
@@ -238,11 +241,25 @@ def merge_validated(repo: str, folder: pathlib.Path, *, now: int | None = None,
     """
     from . import review as review_mod
     now = int(time.time()) if now is None else int(now)
+    started = time.monotonic()
     folder = pathlib.Path(folder)
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    pulls = autoadmit._api(f'repos/{repo}/pulls?state=open&per_page=50')
+    # Only ready PRs can merge, and GitHub lists newest first. Asking for ready
+    # PRs directly means each pass reaches fresh candidates instead of re-reviewing
+    # the same full-page of drafts that will be refused anyway.
+    pulls = autoadmit._api(f'repos/{repo}/pulls?state=open&per_page=100')
+    others = [pr for pr in pulls if pr.get('draft')]
+    # Oldest first: the backlog drains in the order it was created, and the
+    # per-run merge cap is spent on PRs that have waited longest.
+    pulls = sorted((pr for pr in pulls if not pr.get('draft')),
+                   key=lambda pr: int(pr.get('number') or 0))
     merged, refused = [], []
     for pr in pulls:
+        # A long queue must not get the unit killed mid-review: stop cleanly and
+        # leave the rest to the next tick, which resumes from the same list.
+        if deadline_s is not None and time.monotonic() - started > deadline_s:
+            refused.append({'pr': int(pr['number']), 'why': 'deferred_deadline'})
+            continue
         number = int(pr['number'])
         head = (pr.get('head') or {}).get('sha') or ''
         try:
@@ -274,6 +291,9 @@ def merge_validated(repo: str, folder: pathlib.Path, *, now: int | None = None,
             continue
         merged.append({'pr': number, 'sha': (result or {}).get('sha') or head,
                        'title': pr.get('title') or ''})
+    # Drafts were never candidates; report them as one line, not 30 entries.
+    if others:
+        refused.append({'pr': 'drafts', 'why': f'{len(others)}_draft_prs_not_mergeable'})
     return {'merged': merged, 'refused': refused}
 
 
@@ -282,7 +302,8 @@ def merge_validated(repo: str, folder: pathlib.Path, *, now: int | None = None,
 # ---------------------------------------------------------------------------
 
 def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
-         max_this_run: int = 2, merge: bool | None = None) -> dict:
+         max_this_run: int = 2, merge: bool | None = None,
+         deadline_s: float | None = None, approve_new: bool = True) -> dict:
     """One background pass. Does nothing without an enabled switch."""
     now = int(time.time()) if now is None else int(now)
     folder = pathlib.Path(folder)
@@ -298,8 +319,11 @@ def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
     issues = autoadmit._api(f'repos/{repo}/issues?state=open&per_page=100')
     accepted, refused = select_candidates(issues, grant, now=now)
     approved = []
+    if not approve_new:
+        # Merge-only pass: proposals stay unapproved for the owner.
+        accepted = []
     for issue in accepted[:max_this_run]:
-        record = approve(repo=repo, issue=issue, grant=grant, folder=folder,
+        record = approve_proposal(repo=repo, issue=issue, grant=grant, folder=folder,
                          post_comment=lambda n, b: autoadmit._api(
                              f'repos/{repo}/issues/{n}/comments', method='POST',
                              payload={'body': b}),
@@ -312,7 +336,9 @@ def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
               'refused': refused, 'merged': []}
     if grant.get('auto_merge', True) and merge is not False:
         try:
-            merge_result = merge_validated(repo, folder, now=now, max_this_run=max_this_run)
+            merge_result = merge_validated(repo, folder, now=now,
+                                           max_this_run=max_this_run,
+                                           deadline_s=deadline_s)
             result['merged'] = merge_result['merged']
             result['merge_refused'] = merge_result['refused']
         except Exception as error:
@@ -378,8 +404,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--no-auto-merge', action='store_true',
                         help='deprecated alias for --merge-mode off')
     parser.add_argument('--no-merge', action='store_true', help='skip merge in this run')
+    parser.add_argument('--approve-mode', choices=('on', 'off'), default='on',
+                        help='off: merge only, never approve new proposals')
     parser.add_argument('--state', default=None)
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--deadline-s', type=float, default=120.0,
+                        help='stop the merge scan before systemd\'s TimeoutStartSec '
+                             '(the next tick resumes); 0 disables')
     args = parser.parse_args(argv)
     folder = pathlib.Path(args.state) if args.state else default_dir(args.repo)
     auto_merge = None
@@ -417,7 +448,9 @@ def main(argv: list[str] | None = None) -> int:
               f"autopilot: {report['mode'].upper()} · auto-merge "
               f"{'on' if report['auto_merge'] else 'off'} · {report['path']}")
         return 0
-    report = tick(args.repo, folder, merge=not args.no_merge)
+    report = tick(args.repo, folder, merge=not args.no_merge,
+                  deadline_s=args.deadline_s or None,
+                  approve_new=args.approve_mode == 'on')
     print(json.dumps(report, indent=2) if args.json else
           f"autopilot {report['state']}: approved {len(report['approved'])} "
           f"merged {len(report.get('merged') or [])}")
