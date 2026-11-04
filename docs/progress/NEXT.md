@@ -1,5 +1,21 @@
 # Next tasks
 
+## 2026-11-05 OWNER PRIORITY — leave setup, reconstruct game source
+
+Issue #348 was explicitly approved as the final setup-only task. Its first model
+session failed before source edits; it is quarantined, not an excuse to plan more
+setup. The next approved task is **#349: getInverse cofactor operation ordering**
+at Premium 0x000ebb08. Reuse its exact issue contract and checked local tool paths.
+It must advance `collada_matrix4_inverse.cpp` with independent C++ behavioural
+tests and measured local comparison evidence, not add another report/helper test.
+
+From here, prioritize real source-owned C/C++ reconstruction of identified NOVA3
+functions/subsystems. No further DSH/dashboard/polling/routing/setup-only proposals
+unless a concrete execution blocker makes them indispensable. Preserve the owner's
+uncommitted matrix-multiply experiment. Do not duplicate #349 or bypass review,
+verification, private-input or approval controls. Live planner guidance is narrowed
+through the existing local operator-override mechanism; no service restart needed.
+
 ## 2026-11-05 — REvanguard3 donor layout integrated
 
 Read `docs/progress/REVANGUARD3_IMPORT.md`. The supplied layout contains 2,027

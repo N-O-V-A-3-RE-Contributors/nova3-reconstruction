@@ -18,6 +18,34 @@ marked DECIDED.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
 
+## Owner-approved transition to reconstruction — 2026-11-05 05:00 request
+
+- Approved pending setup request #348 through the normal hash-bound comment and
+  queue-label gate. Worker actually claimed it and selected the configured
+  DeepSeek Flash route for routine work. The provider session failed at step 1
+  with PI_AI_ERROR, zero tools/tokens, before edits; #348 was quarantined. Do not
+  describe setup as completed or keep retrying it as a condition for game work.
+- Narrowed the existing live planner operator override to source reconstruction
+  only after #348. The next real planner pass produced **#349**, an actual
+  getInverse cofactor-order source task at Premium 0x000ebb08, not another helper
+  or dashboard task. No worker restart was required for that guidance.
+- Checked the task's local compiler/interpreter dependencies and host C++ test;
+  the existing independent inverse test passes. Corrected #349's verification
+  paths to owner-installed tools/reference locations before approval, since
+  isolated task checkouts do not contain private toolchains.
+- Approved #349 with the normal owner/admin comment and queue labels. Its first
+  approval was rejected because the task body had a trailing newline but the
+  gate hashes lease-stripped/rstripped text. Canonicalized that whitespace only,
+  replaced the stale locator with a fresh approval, and verified the ACTUAL
+  worker-credential gate returns `allowed=True` (`6638668176`). No gate code or
+  security rule was bypassed. Closed never-started duplicate #350 (same target)
+  to prevent competing source edits. Autopilot's persistent switch and review/
+  merge gates were not changed.
+- `NEXT.md` now puts actual decompilation/source recovery ahead of old setup
+  instructions. Keep #349's acceptance criteria: meaningful source change,
+  independently passing behaviour tests, measured before/after comparisons,
+  private full outputs, and no invented byte-matching claim.
+
 ## Latest continuation — 2026-11-05 04:17
 
 - Owner restarted Web at 03:53:21 and worker at 03:53:26 (systemd timestamps
