@@ -18,6 +18,29 @@ marked DECIDED.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
 
+## Latest continuation — 2026-11-05 04:17
+
+- Owner restarted Web at 03:53:21 and worker at 03:53:26 (systemd timestamps
+  verified). Do not restart them again. The prior restart requests below are
+  historical, not outstanding owner actions.
+- REvanguard3 integration published on main as `1469692`, together with the
+  earlier verification/routing/status fixes. See `REVANGUARD3_IMPORT.md`.
+  No decompiled function bodies existed in the supplied layout; only audited
+  metadata tooling was integrated. Never count 2,027 stubs as implementation.
+- Took the next draft-verification task: PR #347 / issue #294, isolated worktree,
+  merged current main into its branch without changing the task implementation.
+  Full unittest discovery under the actual restarted worker `/usr/bin/python3.14`
+  and service environment (`NOVA3_DSH_TOKENS_PER_DAY=0`) passed **1,349 tests**,
+  exit 0. Required pytest passed **9 tests / 19 subtests**, exit 0.
+- Published branch update `d4f6187` and evidence comment on PR #347. Kept DRAFT;
+  no review approval or merge is implied. This establishes the fix in a real
+  task checkout, beyond the previous standalone regression reproduction.
+- Observed 21 open PRs, all drafts, before updating #347. The other drafts still
+  require individually checked base integration, task verification and review.
+  Do not bulk mark ready or auto-merge. Native Agents integration remains open.
+- Supervisor still WAITING_APPROVAL for #348; no automation enable, paid model
+  session, or service restart was performed in this continuation.
+
 ## Owner restart and routing rule — 2026-11-05 03:21 request
 
 - **Only the owner restarts DSH services.** Never schedule another reload or
