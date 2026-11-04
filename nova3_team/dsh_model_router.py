@@ -15,6 +15,7 @@ import pathlib
 import re
 import subprocess
 import time
+import urllib.request
 from dataclasses import dataclass, replace
 
 from . import dsh_runtime as runtime
@@ -127,6 +128,29 @@ def parse_config(text: str, home: pathlib.Path, profile: str = 'web',
     return routes
 
 
+def host_models() -> list[dict] | None:
+    """Read added models from the local Host; no paid request or credentials.
+
+    None means unavailable; an empty list is authoritative while online.
+    """
+    base = os.environ.get('NOVA3_DSH_HOST_URL', 'http://127.0.0.1:3080').rstrip('/')
+    request = urllib.request.Request(base + '/dsh-agents/api/state',
+                                     headers={'Origin': base})
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            data = json.loads(response.read(1024 * 1024))
+        models = data.get('models')
+        if not isinstance(models, list):
+            return None
+        return [item for item in models if isinstance(item, dict)
+                and isinstance(item.get('provider'), str)
+                and isinstance(item.get('model'), str)
+                and IDENTIFIER.fullmatch(item['provider'])
+                and IDENTIFIER.fullmatch(item['model'])]
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def discover(endpoint: runtime.DshEndpoint, profile: str = 'web',
              known_models=()) -> list[Route]:
     try:
@@ -141,13 +165,29 @@ def discover(endpoint: runtime.DshEndpoint, profile: str = 'web',
                                 text=True, timeout=10, check=False)
         if parsed.returncode:
             raise ConfigError('DSH bundled YAML parser unavailable')
-        return parse_config(parsed.stdout, endpoint.home, profile, known_models)
+        catalog = host_models()
+        if catalog is not None:
+            # Use the live added-model list instead of resurrecting removed
+            # routes from history. parse_config still requires the matching
+            # configured provider and installed Codex adapter.
+            known_models = [dict(item, effort=('high' if 'high' in
+                            (item.get('efforts') or []) else None)) for item in catalog]
+        routes = parse_config(parsed.stdout, endpoint.home, profile, known_models)
+        if catalog is not None:
+            allowed = {(item['provider'], item['model']) for item in catalog}
+            routes = [r for r in routes if (r.provider, r.model) in allowed]
+        return routes
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ConfigError('Local model discovery unavailable') from exc
 
 
 def purpose(title: str) -> str:
-    text = title.lower()
+    text = re.sub(r'^\[planner\]\s*', '', title.lower())
+    # A bounded test/docs operation stays cheap even when the subsystem name
+    # contains ARM/native/compiler. Security review and planning remain semantic.
+    if not any(token in text for token in ('security', 'review', 'planner')) and \
+            re.match(r'^(?:\[planner\]\s*)?(?:offline\s+)?(?:test\b|add tests\b|docs\b|documentation\b|lint\b|format\b)', text):
+        return 'routine'
     if any(token in text for token in ('planner', 'inverse', 'decompil', 'arm',
                                        'native', 'reconstruct', 'operand', 'compiler',
                                        'algorithm', 'review', 'security')):
@@ -179,6 +219,7 @@ def rank(routes: list[Route], task: str) -> list[Route]:
             return (3 if _is_fast(route.model) else 0) + (1 if route.preferred else 0)
         return ((3 if effort in HIGH_EFFORT else 0)
                 + (2 if not _is_fast(route.model) else 0)
+                + (2 if route.identity == 'openai-codex/gpt-6.1-sol' else 0)
                 + (1 if route.preferred else 0))
 
     return sorted(routes, key=lambda route: (capability(route), int(route.preferred),
@@ -258,7 +299,12 @@ class Router:
         deadline = time.monotonic() + timeout_s
         last = None
         previous_route = None
+        depleted_providers = set()
         for index, route in enumerate(eligible):
+            # Account credit exhaustion cannot be fixed by trying seven model
+            # names on the same account. Move directly to another provider.
+            if route.provider in depleted_providers:
+                continue
             if cancel():
                 break
             remaining = deadline - time.monotonic()
@@ -281,7 +327,14 @@ class Router:
             last = outcome
             if outcome.status not in runtime.FAILOVER_STATUSES:
                 return outcome
-            self.cooldowns[route.identity] = int(time.time()) + 600
+            until = int(time.time()) + 600
+            if outcome.status in (runtime.WAITING_CREDITS, runtime.AUTH):
+                depleted_providers.add(route.provider)
+                for sibling in routes:
+                    if sibling.provider == route.provider:
+                        self.cooldowns[sibling.identity] = until
+            else:
+                self.cooldowns[route.identity] = until
             self.save()
         if last is not None:
             return last

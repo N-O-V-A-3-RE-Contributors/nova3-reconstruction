@@ -18,6 +18,30 @@ marked DECIDED.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
 
+## Owner restart and routing rule — 2026-11-05 03:21 request
+
+- **Only the owner restarts DSH services.** Never schedule another reload or
+  self-prompt/restart script. No pending reload timers were present when checked.
+- Reuse the planner's existing `dsh_model_router` pipeline; do not spawn a new
+  setup agent. Router now reads the actual added-model catalog (8 entries at
+  verification), rather than only Web default and remembered Codex routes.
+- Cheap bounded test/docs work, including tests of ARM/compiler code, prefers
+  added DeepSeek V4.1 Flash 1017. Planning and difficult implementation/review
+  prefer added GPT-6.1 Sol. This is explicit policy, not a capability benchmark.
+- Other added models remain eligible. Live catalog removals take effect on the
+  next session; when Web is offline, existing configured/remembered routes are
+  retained rather than guessing a new model.
+- Account quota/auth failures cool down sibling models on that provider and
+  switch providers, rather than retrying many names against exhausted credit.
+  Task/code failures still never trigger paid model roulette.
+- Local-only validation: 21 routing tests and the full 1,339-test unittest suite
+  passed with `NOVA3_DSH_TOKENS_PER_DAY=0`; metadata-only discovery showed
+  planner -> gpt-6.1-sol, tests/docs -> DeepSeek Flash, native implementation ->
+  gpt-6.1-sol. No paid model sessions or service restarts were launched.
+- **Activation pending owner action:** `nova3-dsh-worker.service` needs a restart
+  at an idle checkpoint to load the new Python router. Do not restart the Web
+  host for this routing-only change. Existing UI changes were loaded at 00:07.
+
 ## Verified update — 2026-11-05 (supersedes historical claims below)
 
 - **Draft-verification root cause established**, not network loss or relay timing:
