@@ -4,10 +4,13 @@
 
 Issue #348 was explicitly approved as the final setup-only task. Its first model
 session failed before source edits; it is quarantined, not an excuse to plan more
-setup. The next approved task is **#349: getInverse cofactor operation ordering**
-at Premium 0x000ebb08. Reuse its exact issue contract and checked local tool paths.
-It must advance `collada_matrix4_inverse.cpp` with independent C++ behavioural
-tests and measured local comparison evidence, not add another report/helper test.
+setup. **#349: getInverse cofactor operation ordering** was attempted with GPT-6.1
+Sol and produced draft PR #351 at 05:44. Its diff adds 65 test lines but does not
+change `collada_matrix4_inverse.cpp`; therefore the SOURCE correction is still
+unresolved. Green CI is not proof of that correction. Keep it draft pending review.
+Choose another evidence-backed source target if the missing operation-order
+information prevents a safe implementation change. Do not replace source work
+with another report/helper-test task or claim test-only work as decompilation.
 
 From here, prioritize real source-owned C/C++ reconstruction of identified NOVA3
 functions/subsystems. No further DSH/dashboard/polling/routing/setup-only proposals
