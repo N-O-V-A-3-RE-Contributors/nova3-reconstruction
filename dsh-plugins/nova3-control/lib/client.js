@@ -307,15 +307,9 @@ window.__ModuleLoader__.load({
           // Throughput (never a years projection: see analysis._human)
           h("div", { key: "eta", style: { marginTop: "12px" } },
             h(Card, { label: "throughput · measured, not an ETA" }, [
-              etaReady
-                ? h("div", { key: "b", style: { display: "flex", gap: "10px", flexWrap: "wrap" } }, [
-                    h(Scenario, { key: "r", name: "recorded inventory",
-                      scenario: scenarios.recorded_inventory, accent: "#61d0ff" }),
-                    h(Scenario, { key: "f", name: "full ELF (naive floor)",
-                      scenario: scenarios.full_elf_at_recorded_rate, accent: "#f0c24c" }),
-                  ])
-                : h("div", { key: "u", className: "nv3m-note" }, "throughput unavailable: " +
-                    (estimate.reasons || []).join("; ")),
+              h("div", { key: "u", className: "nv3m-note" },
+                "Project completion ETA: unavailable. Mapping counts do not measure playable-game completion. " +
+                "Inventory, implemented source, behavioural tests and instruction matches remain separate evidence."),
               h("div", { key: "r", className: "nv3m-small", style: { marginTop: "10px" } },
                 "rate " + (rate.mappings_per_day !== undefined
                   ? rate.mappings_per_day.toFixed(2) + " mappings/day over " + rate.days +
@@ -385,21 +379,10 @@ window.__ModuleLoader__.load({
                   h("div", { key: "s", className: "nv3m-small", style: { marginTop: "4px" } },
                     paused
                       ? "The switch stays on. It resumes automatically on the next tick once the account can pay again."
-                      : "Approves safe planner proposals and merges PRs that pass the read-only reviewer with green checks. It pauses only when credit is depleted."),
+                      : "The supervisor plans tasks, executes source changes and independently verifies them. Autopilot approves proposals and integrates reviewed green PRs. Manage execution with /nova status, on or off in chat."),
                 ]),
-                h("div", { key: "b", style: { display: "flex", gap: "8px", flexWrap: "wrap" } }, [
-                  h("button", {
-                    key: "on", className: "nv3m-btn " + (autoOn ? "on" : ""),
-                    disabled: !!busy,
-                    onClick: () => act("/nova3/api/automation", { enabled: !autoOn }),
-                  }, busy === "/nova3/api/automation" ? "saving…" : (autoOn ? "Turn automation off" : "Turn automation on")),
-                  h("button", {
-                    key: "m", className: "nv3m-btn " + (autopilot.auto_merge ? "on" : "off"),
-                    disabled: !!busy || !autoOn,
-                    onClick: () => act("/nova3/api/automation",
-                      { auto_merge: !autopilot.auto_merge }),
-                  }, "auto-merge " + (autopilot.auto_merge ? "on" : "off")),
-                ]),
+                h("div", { key: "b", className: "nv3m-mono" },
+                  "/nova status · /nova on · /nova off"),
               ]),
               h("div", { key: "f", className: "nv3m-small", style: { marginTop: "10px" } },
                 "switch record: " + (autopilot.path || "not configured") +
@@ -415,7 +398,8 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         let alive = true;
         const load = () => fetch("/nova3/api/runs", { cache: "no-store" })
-          .then((r) => r.json()).then((v) => { if (alive) setData(v); })
+          .then((r) => { if (!r.ok) throw new Error("Worker status HTTP " + r.status); return r.json(); })
+          .then((v) => { if (alive) { setData(v); setError(""); } })
           .catch((e) => { if (alive) setError(String(e)); });
         load();
         const t = setInterval(load, 5000);
@@ -423,7 +407,7 @@ window.__ModuleLoader__.load({
       }, []);
       const agent = (data && data.agent) || {};
       const running = agent.running === true;
-      const badge = running ? "RUNNING" : "IDLE";
+      const badge = error ? "STATUS UNAVAILABLE" : (running ? "MODEL EXECUTING" : "NO ACTIVE MODEL SESSION");
       const since = agent.last_event_age_s;
       return h("div", { className: "nv3m", style: { padding: "20px" } }, [
         h("div", { key: "h", style: { display: "flex", alignItems: "center", gap: "10px" } }, [
@@ -437,8 +421,10 @@ window.__ModuleLoader__.load({
         h("div", { key: "c", className: "nv3m-card", style: { marginTop: "14px" } }, [
           row("task", agent.task == null ? "—" : ("#" + agent.task)),
           row("title", agent.title || "—"),
-          row("state", agent.state || "—"),
+          row("supervisor state", agent.state || "—"),
+          row("session", agent.session_id || "—"),
           row("model", (agent.provider || "—") + " / " + (agent.model || "—")),
+          row("activity scope", agent.activity_scope || "latest recorded session"),
           row("steps · tools", String(agent.steps || 0) + " · " + String(agent.tool_calls || 0)),
           row("last event", since == null ? "—" : (since + "s ago")),
           row("checkout", agent.checkout || "—"),

@@ -18,7 +18,44 @@ marked DECIDED.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
 
-## What is true today (verified, not assumed)
+## Verified update — 2026-11-05 (supersedes historical claims below)
+
+- **Draft-verification root cause established**, not network loss or relay timing:
+  `provider_runtime.redact_diagnostic` treated the NONSECRET budget variable
+  `NOVA3_DSH_TOKENS_PER_DAY=0` as a credential because its name contains TOKEN.
+  Replacing every `0` corrupted structured JSON (`exit_code: 0`), so event parsing
+  reported `tests_completed=0`. Reproduction before fix:
+  `NOVA3_DSH_TOKENS_PER_DAY=0 /usr/bin/python3 -m unittest nova3_team.tests.test_worker_timeout.ProviderExecutionTests.test_structured_stream_and_independently_observed_file_count -v`
+  failed with exactly the production assertion. Exempting this exact budget
+  setting fixes it without weakening redaction of real API keys. After fix:
+  1,331 unittest tests pass under that same budget setting. Added dedicated
+  regression and secret-preservation tests. Existing draft branches still need
+  the fix incorporated and independent re-verification; never bulk mark ready.
+- `/nova` had three concrete contract errors: handler used `input` rather than
+  DSH's `rawInput`, did not declare its free-form input hint, and `on` called the
+  nonexistent CLI action `autopilot on`. Patched to use the real invocation
+  contract and a new `agent_control` CLI: off writes supervisor STOP then
+  disables approvals; on authorizes autopilot enable FIRST, then removes STOP
+  and writes RESUME. Checkpoints are never removed. Pure/mocked tests do not
+  spend credits or alter live switches.
+- Worker view distinguishes MODEL EXECUTING, NO ACTIVE MODEL SESSION and STATUS
+  UNAVAILABLE. A real process check still determines live execution. Historical
+  counters are explicitly labelled; another task's logs cannot be attributed to
+  the current task. Session identity comes from the actual recorded event.
+- Removed BOTH mapping-calendar projections from the Mission card. Project-end
+  ETA remains unavailable, not fabricated. Existing inventory/implementation/
+  behavioural/matching counters and queue statistics remain separate.
+- Evaluated https://dsh-plugin.org/plugins/omokom/dsh-progress-eta : it estimates
+  individual turns, not whole-game completion, and has optional extra LLM calls.
+  Not installed: it does not satisfy this project's end-goal ETA requirement.
+- Current autopilot observed DISABLED before changes. Do not silently enable a
+  disabled switch or interpret a live supervisor PID as paid model execution.
+  No paid probe sessions are needed to verify these fixes.
+- Historical assertions that Host sessions *require* an attached browser were
+  not established by inspecting the Host transcript format. Keep native-session
+  integration unproven; do not repeat that claim as an architectural fact.
+
+## Historical observations (2026-11-03; not current status)
 
 - Worker: `nova3-dsh-worker.service`, headless DSH child per task. It **does**
   generate tasks (planner filed #331–#336) and **does** complete them
