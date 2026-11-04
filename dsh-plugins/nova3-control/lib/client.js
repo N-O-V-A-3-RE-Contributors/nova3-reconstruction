@@ -9,12 +9,12 @@ window.__ModuleLoader__.load({
     const { useCallback, useEffect, useMemo, useState } = React;
 
     const CSS = `
-.nv3m-root{height:100%;overflow:auto;background:var(--dsw-alias-bg-l1,#0f1115);color:var(--dsw-alias-label-primary,#e6e8ee);font-family:var(--dsw-font-sans,system-ui,sans-serif)}
+.nv3m-root{height:100%;overflow:auto;background:transparent;color:inherit;font-family:var(--dsw-font-sans,system-ui,sans-serif)}
 .nv3m-wrap{max-width:1120px;margin:0 auto;padding:22px 20px 240px;min-height:100%}
 .nv3m-top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
-.nv3m-title{font-size:22px;font-weight:650;letter-spacing:.06em;color:var(--dsw-alias-label-primary,#f2f4f8)}
+.nv3m-title{font-size:22px;font-weight:650;letter-spacing:.02em;color:inherit}
 .nv3m-sub{color:var(--dsw-alias-label-tertiary,#8b93a7);font-size:12px;margin-top:4px}
-.nv3m-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;border:1px solid var(--dsw-alias-border-l2,#2a2f3a);background:var(--dsw-alias-fill-l1,#171a21)}
+.nv3m-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;color:inherit;border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:color-mix(in srgb,currentColor 6%,transparent)}
 .nv3m-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
 .nv3m-card{border:1px solid var(--dsw-alias-border-l2,#262b35);background:var(--dsw-alias-bg-layer-1,#151820);border-radius:12px;padding:14px 16px}
 .nv3m-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
@@ -409,7 +409,7 @@ window.__ModuleLoader__.load({
       const running = agent.running === true;
       const badge = error ? "STATUS UNAVAILABLE" : (running ? "MODEL EXECUTING" : "NO ACTIVE MODEL SESSION");
       const since = agent.last_event_age_s;
-      return h("div", { className: "nv3m", style: { padding: "20px" } }, [
+      return h("div", { className: "nv3m-root", style: { padding: "20px", boxSizing: "border-box" } }, [
         h("div", { key: "h", style: { display: "flex", alignItems: "center", gap: "10px" } }, [
           h("span", { key: "t", style: { fontSize: "15px", fontWeight: 600 } },
             "Autonomous worker"),
@@ -436,7 +436,7 @@ window.__ModuleLoader__.load({
 
     function row(label, value) {
       return h("div", { key: label, style: { display: "flex", gap: "10px", padding: "4px 0" } }, [
-        h("span", { key: "l", className: "nv3m-note", style: { width: "120px" } }, label),
+        h("span", { key: "l", className: "nv3m-small", style: { width: "140px", flexShrink: 0 } }, label),
         h("span", { key: "v", className: "nv3m-mono" }, String(value)),
       ]);
     }

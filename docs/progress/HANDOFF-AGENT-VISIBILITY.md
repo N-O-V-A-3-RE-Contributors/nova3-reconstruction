@@ -42,6 +42,31 @@ marked DECIDED.
   at an idle checkpoint to load the new Python router. Do not restart the Web
   host for this routing-only change. Existing UI changes were loaded at 00:07.
 
+## Live verification — 2026-11-05 03:30–03:42
+
+- Authenticated Host `commands/list` returned `/nova` with the required input
+  hint. `commands/execute` with `line: /nova status` and no attachments returned
+  `kind: success`, not a model turn. The actual transport is a client-request
+  envelope with `payload.args`; plain JSON requests are not that protocol.
+- Browser on the existing GUI: selected an existing conversation, then Worker.
+  The live card rendered NO ACTIVE MODEL SESSION, supervisor WAITING_APPROVAL,
+  actual recorded session identity and `latest recorded session`. This correctly
+  distinguishes idle supervisor from a model executing. No paid probe required.
+- Mission was viewed: project ETA unavailable, throughput 2.25 mappings/day
+  explicitly measured over 2026-10-25..2026-11-02, inventory separate from source
+  mappings. No 46-year projection remains in the card.
+- `/nova status` still rendered an old recorded-inventory ETA. Removed that
+  forecast from `dsh_status.render` too and added a regression test. The command
+  launches a fresh Python process, so this text change needs no host restart.
+- Screenshot exposed a light-theme contrast issue (dark badge/background).
+  Theme-inheriting root/badge styles and plain row labels are prepared; this
+  last client-only polish awaits the OWNER's Web service restart. No restart
+  was performed in this verification round.
+- Current autopilot is unset, execution waits for approval #348. Do not describe
+  this as active autonomous reconstruction, and do not silently enable spending.
+- Native Agents integration remains unimplemented. The verified Worker view is
+  the handoff's honest fallback, not a forged Host run or ordinary user chat.
+
 ## Verified update — 2026-11-05 (supersedes historical claims below)
 
 - **Draft-verification root cause established**, not network loss or relay timing:
