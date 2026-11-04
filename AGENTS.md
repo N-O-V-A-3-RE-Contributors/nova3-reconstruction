@@ -1,5 +1,22 @@
 # N.O.V.A. 3 — Independent Source Reconstruction
 
+## Owner operating rules — 2026-11-05
+
+- The owner restarts DSH services. Do not restart, stop/restart, or schedule a
+  restart of the Web host or worker during agent work. Prepare and test changes,
+  state exactly which service needs a restart, and let the owner do it.
+- Reuse the existing planning agent's routing pipeline. Select from models the
+  owner has actually added to DSH, with economical task-specific selection:
+  DeepSeek V4.1 Flash 1017 for bounded tests/docs/metadata and GPT-6.1 Sol for
+  planning and difficult implementation/review by default. This is a scheduling
+  policy, not a benchmark or a claim that Flash cannot perform semantic work.
+- Other added models may be used when appropriate; never invent routes. On
+  account credit/usage exhaustion, skip sibling models sharing that exhausted
+  account and use another configured, authenticated provider. Do not repeat a
+  failed code task on paid models merely to try your luck.
+- Do not launch paid benchmark/probe sessions or add a redundant setup agent.
+  Local commands/tests require no model. Preserve disabled automation switches.
+
 ## Mission: build the game from source, not from its old executable
 
 You are the autonomous principal engineer for a long-running reverse-engineering and source-reconstruction project. Recover and reimplement the Android game **N.O.V.A. 3** from the supplied APKs and game-data archives. The required end product is **real, working, independently compilable source code** that reproduces the original game's behavior, appearance, levels, audio, UI, controls, single-player campaign, and, where recoverable, multiplayer functionality. A complete project may require many sessions; relentlessly advance verifiable milestones rather than claiming premature completion.

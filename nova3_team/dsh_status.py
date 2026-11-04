@@ -230,15 +230,11 @@ def render(data: dict) -> str:
         if prog.get('available'):
             lines.append(f"Mappings: {prog.get('mappings_implemented')} · matched ARM "
                          f"{prog.get('mappings_matched_arm')} · updated {prog.get('updated_at')}")
-        scenarios = estimate.get('scenarios') or {}
-        recorded = scenarios.get('recorded_inventory')
-        if estimate.get('state') == 'unavailable':
-            lines.append('ETA: unavailable — ' + '; '.join(estimate.get('reasons') or [])[:300])
-        elif recorded:
-            low, likely, high = recorded['days']
-            lines.append(f"ETA (provisional): recorded inventory ~{likely:.0f} days "
-                         f"({low:.0f}-{high:.0f}) at the measured mapping rate; re-baseline "
-                         'after the pre-release source is indexed.')
+        rate = estimate.get('rate') or {}
+        if isinstance(rate.get('mappings_per_day'), (int, float)):
+            lines.append(f"Recorded throughput: {rate['mappings_per_day']:.2f} mappings/day "
+                         f"({rate.get('window', 'unknown window')}); not a game-completion estimate.")
+        lines.append('Project completion ETA: unavailable — mapping counts do not measure playable-game completion.')
     lines += ['', f'_state file: `{data["state_file"]}`_']
     return '\n'.join(lines)
 

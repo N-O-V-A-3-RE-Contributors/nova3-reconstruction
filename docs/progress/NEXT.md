@@ -1,5 +1,18 @@
 # Next tasks
 
+## 2026-11-05 — REvanguard3 donor layout integrated
+
+Read `docs/progress/REVANGUARD3_IMPORT.md`. The supplied layout contains 2,027
+comment-only files, **not new reconstructed game source**. New importer validates
+37,477 donor symbol rows; 36,885 rows have unique-name Premium correspondences.
+Private indexed hints are in `.cache/source_ref/revanguard3-layout.json`; use
+`python3 -m tools.source_ref.import_donor_layout --primary analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --lookup-primary ADDRESS`
+to narrow source lookup before a scoped reconstruction task. Attribution remains
+INFERRED; donor addresses differ from Premium. Do not count hints as source
+implementation, admit them blindly to the queue, or upload the raw donor tree.
+Then continue `docs/progress/HANDOFF-AGENT-VISIBILITY.md` with current live state;
+only the owner may restart services.
+
 ## 2026-11-03 (LATEST) — native runner port
 
 Done: `dsh_runner/` (profiles, guarded Host client, headless + host backends,

@@ -18,7 +18,93 @@ marked DECIDED.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
 
-## What is true today (verified, not assumed)
+## Owner restart and routing rule — 2026-11-05 03:21 request
+
+- **Only the owner restarts DSH services.** Never schedule another reload or
+  self-prompt/restart script. No pending reload timers were present when checked.
+- Reuse the planner's existing `dsh_model_router` pipeline; do not spawn a new
+  setup agent. Router now reads the actual added-model catalog (8 entries at
+  verification), rather than only Web default and remembered Codex routes.
+- Cheap bounded test/docs work, including tests of ARM/compiler code, prefers
+  added DeepSeek V4.1 Flash 1017. Planning and difficult implementation/review
+  prefer added GPT-6.1 Sol. This is explicit policy, not a capability benchmark.
+- Other added models remain eligible. Live catalog removals take effect on the
+  next session; when Web is offline, existing configured/remembered routes are
+  retained rather than guessing a new model.
+- Account quota/auth failures cool down sibling models on that provider and
+  switch providers, rather than retrying many names against exhausted credit.
+  Task/code failures still never trigger paid model roulette.
+- Local-only validation: 21 routing tests and the full 1,339-test unittest suite
+  passed with `NOVA3_DSH_TOKENS_PER_DAY=0`; metadata-only discovery showed
+  planner -> gpt-6.1-sol, tests/docs -> DeepSeek Flash, native implementation ->
+  gpt-6.1-sol. No paid model sessions or service restarts were launched.
+- **Activation pending owner action:** `nova3-dsh-worker.service` needs a restart
+  at an idle checkpoint to load the new Python router. Do not restart the Web
+  host for this routing-only change. Existing UI changes were loaded at 00:07.
+
+## Live verification — 2026-11-05 03:30–03:42
+
+- Authenticated Host `commands/list` returned `/nova` with the required input
+  hint. `commands/execute` with `line: /nova status` and no attachments returned
+  `kind: success`, not a model turn. The actual transport is a client-request
+  envelope with `payload.args`; plain JSON requests are not that protocol.
+- Browser on the existing GUI: selected an existing conversation, then Worker.
+  The live card rendered NO ACTIVE MODEL SESSION, supervisor WAITING_APPROVAL,
+  actual recorded session identity and `latest recorded session`. This correctly
+  distinguishes idle supervisor from a model executing. No paid probe required.
+- Mission was viewed: project ETA unavailable, throughput 2.25 mappings/day
+  explicitly measured over 2026-10-25..2026-11-02, inventory separate from source
+  mappings. No 46-year projection remains in the card.
+- `/nova status` still rendered an old recorded-inventory ETA. Removed that
+  forecast from `dsh_status.render` too and added a regression test. The command
+  launches a fresh Python process, so this text change needs no host restart.
+- Screenshot exposed a light-theme contrast issue (dark badge/background).
+  Theme-inheriting root/badge styles and plain row labels are prepared; this
+  last client-only polish awaits the OWNER's Web service restart. No restart
+  was performed in this verification round.
+- Current autopilot is unset, execution waits for approval #348. Do not describe
+  this as active autonomous reconstruction, and do not silently enable spending.
+- Native Agents integration remains unimplemented. The verified Worker view is
+  the handoff's honest fallback, not a forged Host run or ordinary user chat.
+
+## Verified update — 2026-11-05 (supersedes historical claims below)
+
+- **Draft-verification root cause established**, not network loss or relay timing:
+  `provider_runtime.redact_diagnostic` treated the NONSECRET budget variable
+  `NOVA3_DSH_TOKENS_PER_DAY=0` as a credential because its name contains TOKEN.
+  Replacing every `0` corrupted structured JSON (`exit_code: 0`), so event parsing
+  reported `tests_completed=0`. Reproduction before fix:
+  `NOVA3_DSH_TOKENS_PER_DAY=0 /usr/bin/python3 -m unittest nova3_team.tests.test_worker_timeout.ProviderExecutionTests.test_structured_stream_and_independently_observed_file_count -v`
+  failed with exactly the production assertion. Exempting this exact budget
+  setting fixes it without weakening redaction of real API keys. After fix:
+  1,331 unittest tests pass under that same budget setting. Added dedicated
+  regression and secret-preservation tests. Existing draft branches still need
+  the fix incorporated and independent re-verification; never bulk mark ready.
+- `/nova` had three concrete contract errors: handler used `input` rather than
+  DSH's `rawInput`, did not declare its free-form input hint, and `on` called the
+  nonexistent CLI action `autopilot on`. Patched to use the real invocation
+  contract and a new `agent_control` CLI: off writes supervisor STOP then
+  disables approvals; on authorizes autopilot enable FIRST, then removes STOP
+  and writes RESUME. Checkpoints are never removed. Pure/mocked tests do not
+  spend credits or alter live switches.
+- Worker view distinguishes MODEL EXECUTING, NO ACTIVE MODEL SESSION and STATUS
+  UNAVAILABLE. A real process check still determines live execution. Historical
+  counters are explicitly labelled; another task's logs cannot be attributed to
+  the current task. Session identity comes from the actual recorded event.
+- Removed BOTH mapping-calendar projections from the Mission card. Project-end
+  ETA remains unavailable, not fabricated. Existing inventory/implementation/
+  behavioural/matching counters and queue statistics remain separate.
+- Evaluated https://dsh-plugin.org/plugins/omokom/dsh-progress-eta : it estimates
+  individual turns, not whole-game completion, and has optional extra LLM calls.
+  Not installed: it does not satisfy this project's end-goal ETA requirement.
+- Current autopilot observed DISABLED before changes. Do not silently enable a
+  disabled switch or interpret a live supervisor PID as paid model execution.
+  No paid probe sessions are needed to verify these fixes.
+- Historical assertions that Host sessions *require* an attached browser were
+  not established by inspecting the Host transcript format. Keep native-session
+  integration unproven; do not repeat that claim as an architectural fact.
+
+## Historical observations (2026-11-03; not current status)
 
 - Worker: `nova3-dsh-worker.service`, headless DSH child per task. It **does**
   generate tasks (planner filed #331–#336) and **does** complete them

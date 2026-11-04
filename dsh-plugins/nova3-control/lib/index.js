@@ -105,16 +105,16 @@ function sameOrigin(req) {
  * routes answer). A separate command-only row composed but never registered, and
  * a command that never registers is simply typed into the chat as text.
  */
-function novaCommand({ repo, github }) {
-  const run = (args, timeoutMs) => new Promise((resolve) => {
+export function novaCommand({ repo, github, executor }) {
+  const run = executor || ((args, timeoutMs) => new Promise((resolve) => {
     execFile(join(repo, '.venv/bin/python'), args,
       { cwd: repo, timeout: timeoutMs, maxBuffer: 1 << 20 },
       (error, stdout, stderr) => resolve({
         ok: !error, out: String(stdout || '').trim(), err: String(stderr || '').trim(),
       }))
-  })
+  }))
   return async (invocation) => {
-    const text = String((invocation && invocation.input) || '').trim()
+    const text = String(invocation?.rawInput || '').trim()
     const verb = text.split(/\s+/)[0]
     if (!verb || verb === 'status') {
       const r = await run(['-m', 'nova3_team.dsh_status'], 30000)
@@ -123,7 +123,7 @@ function novaCommand({ repo, github }) {
         : { kind: 'error', text: `status failed: ${(r.err || r.out).slice(0, 600)}` }
     }
     if (verb === 'on' || verb === 'off') {
-      const r = await run(['-m', 'nova3_team.autopilot', verb, '--repo', github], 60000)
+      const r = await run(['-m', 'nova3_team.agent_control', verb, '--repo', github], 60000)
       return { kind: r.ok ? 'success' : 'error',
                text: `autopilot ${verb}: ${(r.out || r.err).slice(0, 600)}` }
     }
@@ -272,6 +272,7 @@ export function apply(ctx, config) {
     const dispose = registry.register({
       definitionId: '@nova3/dsh-control/nova',
       name: 'nova',
+      input: { hint: 'status | on | off | run' },
       description: 'Manage the autonomous NOVA3 worker: status, on, off, run',
       handler: novaCommand({ repo, github }),
     })
