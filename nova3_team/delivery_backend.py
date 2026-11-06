@@ -169,13 +169,16 @@ class RuntimeBackend:
             raise BackendError('PR changed before repair publication')
         _git(cwd, 'add', '--', *names)
         _git(cwd, 'commit', '-m', f"Repair PR #{pr['number']} acceptance findings")
+        published_head = _git(cwd, 'rev-parse', 'HEAD')
+        if not re.fullmatch(r'[0-9a-f]{40}', published_head) or published_head == head:
+            raise BackendError('Repair commit identity invalid')
         # Enforce fast-forward ancestry AND exact remote compare-and-swap. The
         # explicit lease also refuses a concurrent branch rewind/delete; it is
         # never used to publish history not descending from the approved head.
-        _git(cwd, 'merge-base', '--is-ancestor', head, 'HEAD')
+        _git(cwd, 'merge-base', '--is-ancestor', head, published_head)
         if not self.authorized():
             raise BackendError('Owner authorization revoked before repair push; local commit preserved')
         self.authorize_write()
         _git(cwd, 'push', f'--force-with-lease=refs/heads/{ref}:{head}',
-             f'https://github.com/{repo}.git', f'HEAD:refs/heads/{ref}')
-        return {'repaired': True, 'execution': result['execution']}
+             f'https://github.com/{repo}.git', f'{published_head}:refs/heads/{ref}')
+        return {'repaired': True, 'published_head': published_head, 'execution': result['execution']}

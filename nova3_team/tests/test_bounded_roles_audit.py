@@ -105,24 +105,33 @@ class BoundedRolesAudit(unittest.TestCase):
         cwd = self.root / 'checkout'; cwd.mkdir()
         (cwd / 'source.cpp').write_text('source')
         head = 'a' * 40
+        published = 'b' * 40
         context = {'repo': 'owner/repo', 'pr': {'number': 1, 'head': {
             'sha': head, 'ref': 'repair', 'repo': {'full_name': 'owner/repo'}}},
             'task': {'title': 'source task', 'allowed_paths': ['source.cpp']}, 'diff': 'source'}
-        runner = mock.Mock(return_value={'text': '{"blocked":false}',
-                                        'execution': {'role': 'repairer', 'session_id': 'r'}})
+        runner = mock.Mock(return_value={'text': json.dumps({'blocked': False,
+            'published_head': 'c' * 40}),
+            'execution': {'role': 'repairer', 'session_id': 'r'}})
         engine = backend.RuntimeBackend(self.root, self.root / 'private',
             api=lambda path: {'head': {'sha': head}}, agent_runner=runner)
-        git = mock.Mock(side_effect=lambda root, *args, **kw:
-                        'source.cpp' if args[:2] == ('diff', '--name-only') else '')
+        def git_answer(root, *args, **kwargs):
+            if args[:2] == ('diff', '--name-only'):
+                return 'source.cpp'
+            if args == ('rev-parse', 'HEAD'):
+                return published
+            return ''
+        git = mock.Mock(side_effect=git_answer)
         with mock.patch.object(engine, '_checkout', return_value=cwd), \
              mock.patch.object(backend, '_git', git), \
              mock.patch('nova3_team.worker.guard_check', return_value=[]):
             result = engine.repairer(context, [])
         self.assertTrue(result['repaired'])
+        self.assertEqual(result['published_head'], published)
+        self.assertNotEqual(result['published_head'], json.loads(runner.return_value['text'])['published_head'])
         calls = [call.args[1:] for call in git.call_args_list]
-        ancestry = ('merge-base', '--is-ancestor', head, 'HEAD')
+        ancestry = ('merge-base', '--is-ancestor', head, published)
         push = ('push', f'--force-with-lease=refs/heads/repair:{head}',
-                'https://github.com/owner/repo.git', 'HEAD:refs/heads/repair')
+                'https://github.com/owner/repo.git', f'{published}:refs/heads/repair')
         self.assertIn(ancestry, calls)
         self.assertIn(push, calls)
         self.assertLess(calls.index(ancestry), calls.index(push))
@@ -132,7 +141,7 @@ class BoundedRolesAudit(unittest.TestCase):
         def fail_ancestry(root, *args, **kwargs):
             if args[0] == 'merge-base':
                 raise backend.BackendError('not descendant')
-            return 'source.cpp' if args[:2] == ('diff', '--name-only') else ''
+            return git_answer(root, *args, **kwargs)
         git.side_effect = fail_ancestry
         with mock.patch.object(engine, '_checkout', return_value=cwd), \
              mock.patch.object(backend, '_git', git), \
@@ -140,6 +149,33 @@ class BoundedRolesAudit(unittest.TestCase):
             with self.assertRaises(backend.BackendError):
                 engine.repairer(context, [])
         self.assertFalse(any(call.args[1] == 'push' for call in git.call_args_list))
+
+    def test_invalid_or_unchanged_repair_commit_cannot_publish_model_claimed_sha(self):
+        cwd = self.root / 'checkout'; cwd.mkdir()
+        (cwd / 'source.cpp').write_text('source')
+        head = 'a' * 40
+        context = {'repo': 'owner/repo', 'pr': {'number': 1, 'head': {
+            'sha': head, 'ref': 'repair', 'repo': {'full_name': 'owner/repo'}}},
+            'task': {'title': 'source task', 'allowed_paths': ['source.cpp']}, 'diff': 'source'}
+        runner = mock.Mock(return_value={'text': json.dumps({'blocked': False,
+            'published_head': 'c' * 40}),
+            'execution': {'role': 'repairer', 'session_id': 'r'}})
+        engine = backend.RuntimeBackend(self.root, self.root / 'private',
+            api=lambda path: {'head': {'sha': head}}, agent_runner=runner)
+        for commit in ('', 'not-a-sha', 'b' * 39, 'B' * 40, head):
+            with self.subTest(commit=commit):
+                def git_answer(root, *args, **kwargs):
+                    if args[:2] == ('diff', '--name-only'):
+                        return 'source.cpp'
+                    return commit if args == ('rev-parse', 'HEAD') else ''
+                git = mock.Mock(side_effect=git_answer)
+                with mock.patch.object(engine, '_checkout', return_value=cwd), \
+                     mock.patch.object(backend, '_git', git), \
+                     mock.patch('nova3_team.worker.guard_check', return_value=[]):
+                    with self.assertRaisesRegex(backend.BackendError, 'commit identity invalid'):
+                        engine.repairer(context, [])
+                self.assertFalse(any(call.args[1] in ('merge-base', 'push')
+                                     for call in git.call_args_list))
 
     def test_autopilot_delivery_lock_prevents_overlapping_model_sessions(self):
         import fcntl

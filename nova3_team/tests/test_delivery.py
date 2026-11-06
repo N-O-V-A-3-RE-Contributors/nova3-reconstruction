@@ -449,6 +449,101 @@ class DeliveryTests(unittest.TestCase):
             return result
         self.assertEqual(self.process(repairer=repair)['reason'], 'repair_changed_branch_or_base')
 
+    def test_delayed_published_head_waits_without_more_models_then_requires_fresh_ci_and_review(self):
+        old_head, published_head = 'c' * 40, 'a' * 40
+        self.api.pr['head']['sha'] = old_head
+        self.api.runs[0]['head_sha'] = old_head
+        self.verdict = 'needs_revision'
+        repairs = []
+        def repair(context, findings):
+            repairs.append(context['pr']['head']['sha'])
+            return {'repaired': True, 'published_head': published_head,
+                    'execution': {'role': 'repairer', 'session_id': 'published-repair'}}
+        result = self.process(repairer=repair)
+        self.assertEqual((result['state'], result['reason'], result['repairs']),
+                         ('repaired', 'awaiting_published_head', 1))
+        file_reads = sum('/files?' in path for path, _, _ in self.api.calls)
+        self.assertEqual(file_reads, 1, 'old GitHub files cannot establish repaired-head scope acceptance')
+        self.assertTrue(self.process(repairer=repair)['cached'])
+        self.api.pr['base']['sha'] = 'base-advanced-while-api-stale'
+        self.assertTrue(self.process(repairer=repair)['cached'])
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(len(self.reviews), 1)
+        self.assertEqual(self.api.writes(), [])
+        self.api.pr['head']['sha'] = published_head
+        self.verdict = 'pass'
+        self.assertEqual(self.process(repairer=repair)['reason'], 'ci_stale_head')
+        self.assertEqual(len(self.reviews), 1, 'new exposed head needs new CI before paid review')
+        self.api.runs[0]['head_sha'] = published_head
+        delivered = self.process(repairer=repair)
+        self.assertEqual(delivered['state'], 'delivered')
+        self.assertEqual(delivered['repairs'], 1)
+        self.assertEqual(len(repairs), 1)
+        self.assertEqual(len(self.reviews), 2)
+        self.assertEqual(self.reviews[-1]['pr']['head']['sha'], published_head)
+        comment = next(p for path, _, p in self.api.calls if path.endswith('/reviews'))
+        self.assertEqual(comment['commit_id'], published_head)
+
+    def test_invalid_or_old_published_head_does_not_replace_new_head_evidence(self):
+        old_head = 'c' * 40
+        self.api.pr['head']['sha'] = old_head
+        self.api.runs[0]['head_sha'] = old_head
+        self.verdict = 'needs_revision'
+        for candidate in (None, '', 'not-a-sha', 'a' * 39, 'a' * 41, old_head, True):
+            with self.subTest(candidate=candidate), tempfile.TemporaryDirectory() as folder:
+                def repair(context, findings):
+                    return {'repaired': True, 'published_head': candidate,
+                            'execution': {'role': 'repairer', 'session_id': 'repair'}}
+                result = delivery.process_pr('o/r', 351, folder, api=self.api,
+                                             reviewer=self.review, repairer=repair)
+                self.assertEqual(result['reason'], 'repair_failed_or_no_new_head')
+                self.assertEqual(result['repairs'], 1)
+        self.assertEqual(self.api.writes(), [])
+
+    def test_model_claim_without_trusted_top_level_published_head_stays_fail_closed(self):
+        self.verdict = 'needs_revision'
+        def repair(context, findings):
+            return {'repaired': True, 'model_result': {'published_head': 'a' * 40},
+                    'execution': {'role': 'repairer', 'session_id': 'repair'}}
+        self.assertEqual(self.process(repairer=repair)['reason'], 'repair_failed_or_no_new_head')
+        self.assertTrue(self.process(repairer=repair)['cached'])
+        self.assertEqual(len(self.reviews), 1)
+        self.assertEqual(self.api.writes(), [])
+
+    def test_published_head_cannot_bypass_repair_identity_guard(self):
+        self.verdict = 'needs_revision'
+        def repair(context, findings):
+            return {'repaired': True, 'published_head': 'a' * 40,
+                    'execution': {'role': 'repairer', 'session_id': 'independent-review'}}
+        self.assertEqual(self.process(repairer=repair)['reason'], 'repair_not_independent')
+        self.assertEqual(self.api.writes(), [])
+
+    def test_normal_base_sha_advance_during_repair_is_not_branch_contract_violation(self):
+        self.verdict = 'needs_revision'
+        def repair(context, findings):
+            result = self.repair(context, findings)
+            self.api.pr['base']['sha'] = 'base2'
+            return result
+        self.assertEqual(self.process(repairer=repair)['state'], 'repaired')
+        cache = json.loads(next((pathlib.Path(self.temp.name) / 'delivery').glob('*.json')).read_text())
+        self.assertFalse(cache.get('repair_violation'))
+        self.verdict = 'pass'
+        self.assertEqual(self.process()['state'], 'delivered')
+        self.assertEqual(self.reviews[-1]['pr']['base']['sha'], 'base2')
+
+    def test_base_ref_change_during_repair_still_latches_contract_violation(self):
+        self.verdict = 'needs_revision'
+        def repair(context, findings):
+            result = self.repair(context, findings)
+            self.api.pr['base'].update(ref='different-base', sha='base2')
+            return result
+        self.assertEqual(self.process(repairer=repair)['reason'], 'repair_changed_branch_or_base')
+        cache = json.loads(next((pathlib.Path(self.temp.name) / 'delivery').glob('*.json')).read_text())
+        self.assertTrue(cache['repair_violation'])
+        self.api.repository['default_branch'] = 'different-base'
+        self.assertEqual(self.process()['reason'], 'repair_contract_violated')
+        self.assertEqual(self.api.writes(), [])
+
     def test_repair_changes_scope_escalates(self):
         self.verdict = 'needs_revision'
         def repair(context, findings):

@@ -127,7 +127,7 @@ Do not weaken gates or treat a pending restart as completed live activation.
 
 ## Verification boundary
 
-Verified 2026-11-06: **1,494 Python tests and 8 adversarial role-guard tests pass**;
+Verified 2026-11-06: **1,501 Python tests and 8 adversarial role-guard tests pass**;
 the existing 4 slash-command tests also pass. Read-only production API checks
 verified historical task provenance for PRs #347/#351; actual repository policy
 already allows squash into `main`. No services were restarted.
@@ -137,6 +137,14 @@ flows, malformed/stale evidence, provider failures, authorization hashing,
 planning suppression and adversarial role-tool restrictions. CLI help/overlay
 composition was checked using the actual installed headless runtime **without
 invoking a model**. That is not an end-to-end production delivery claim.
+
+Live validation: PR #305 ran distinct real Sol reviewer and repair sessions; the
+review found an unmet golden-CLI test criterion, the scoped repair was committed
+and pushed, and `source-and-tests` subsequently passed. GitHub's first post-push
+REST read briefly returned the old head. The controller now pins the Git-verified
+published commit and waits for API convergence without another paid repair or
+premature acceptance. A moving base SHA is not a changed branch identity; fresh
+base/CI/review gates still apply. Historical audit outcomes are not erased.
 
 A production PR still needs its own real review and required CI. Unknown private
 comparison evidence remains unknown; a reviewer must block rather than assume

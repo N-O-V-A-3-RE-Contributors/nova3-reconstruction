@@ -6,7 +6,10 @@ Execution metadata MUST be attached by the adapter, not copied from model JSON:
 role='reviewer', session_id, read_only=True, independent=True. Independent means
 an isolated review context that did not implement this PR. repairer(context,
 findings) returns {'repaired': bool, 'execution': {'role': 'repairer',
-'session_id': ...}} and must preserve branch and task scope. Neither callback
+'session_id': ...}} and must preserve branch and task scope. After a confirmed
+push the trusted adapter may additionally attach published_head (git HEAD's
+40-hex SHA); this MUST NOT be copied from model output. It only permits waiting
+for GitHub propagation, never acceptance of unseen code. Neither callback
 may approve its own implementation. This module never posts GitHub approvals.
 
 One invocation reviews at most one head and runs at most one repair. Repair
@@ -534,7 +537,8 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
                 or not isinstance(state.get('heads'), dict)
                 or not isinstance(state.get('repairs'), list)
                 or not isinstance(state.get('repair_sessions'), list)
-                or not isinstance(state.get('base_updates', {}), dict)):
+                or not isinstance(state.get('base_updates', {}), dict)
+                or not isinstance(state.get('awaiting_publication', {}), dict)):
             raise GateError('invalid_cache_schema')
     except FileNotFoundError:
         state = {'schema': SCHEMA, 'heads': {}, 'repairs': [], 'repair_sessions': []}
@@ -618,6 +622,17 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
             return finish('preparing_delivery', 'automatic_issue_closure_disabled')
         if state.get('repair_violation'):
             return finish('escalated', 'repair_contract_violated')
+        pending_publication = state.get('awaiting_publication')
+        if pending_publication:
+            if list(_branch(pr)[:3]) != pending_publication.get('branch'):
+                state['repair_violation'] = True
+                return finish('escalated', 'repair_changed_branch_or_base', cache=True)
+            if head == pending_publication.get('previous_head'):
+                # This is PR/head-bound, not base-SHA-bound: an ordinary target
+                # advance must not trigger another paid repair while GitHub's
+                # read API still reports the already-repaired old commit.
+                return finish('repaired', 'awaiting_published_head', cache=True, cached=True)
+            state.pop('awaiting_publication', None)
         old = state['heads'].get(key, {})
         if (old.get('state') in ('blocked', 'escalated', 'repaired')
                 and not (old.get('reason') == 'source_unchanged' and repairer is not None)):
@@ -773,10 +788,25 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
                 return finish('escalated', 'repair_not_independent', cache=True)
             state['repair_sessions'].append(repair_session)
             latest = api(root)
-            if _branch(latest) != _branch(pr):
+            # Branch identity is head ref/repository + base ref. A target
+            # branch's SHA naturally advances while repair runs; normal fresh
+            # base/CI/review gates handle that on the next invocation.
+            if _branch(latest)[:3] != _branch(pr)[:3]:
                 state['repair_violation'] = True
                 return finish('escalated', 'repair_changed_branch_or_base', cache=True)
-            if repaired.get('repaired') is not True or latest.get('head', {}).get('sha') == head:
+            if repaired.get('repaired') is not True:
+                return finish('escalated', 'repair_failed_or_no_new_head', cache=True)
+            if latest.get('head', {}).get('sha') == head:
+                published = repaired.get('published_head')
+                if (isinstance(published, str) and re.fullmatch(r'[0-9a-fA-F]{40}', published)
+                        and published.casefold() != str(head).casefold()):
+                    state['awaiting_publication'] = {
+                        'previous_head': head, 'published_head': published.lower(),
+                        'branch': list(_branch(pr)[:3])}
+                    # A trusted successful push is progress, not review/scope
+                    # acceptance. Never inspect old files as the new commit,
+                    # mark ready, or merge until a fresh GET exposes a new head.
+                    return finish('repaired', 'awaiting_published_head', cache=True)
                 return finish('escalated', 'repair_failed_or_no_new_head', cache=True)
             repaired_files = _files(api, root, latest)
             scope_findings = (compliance or compliance_review.findings_for)(
