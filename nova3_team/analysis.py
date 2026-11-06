@@ -232,11 +232,13 @@ def render(snap: dict, est: dict) -> str:
         return '\n'.join(lines)
     rate = est['rate']
     lines.append(
-        f"ETA ({est['state']}, confidence {est['confidence']}): rate "
-        f"{rate['mappings_per_day']:.2f} mappings/day over {rate['days']} days "
-        f"({rate['window']})")
-    for key, label in (('recorded_inventory', 'recorded inventory'),
-                       ('full_elf_at_recorded_rate', 'full ELF (naive floor)')):
+        f"Throughput ({est['state']}, confidence {est['confidence']}): "
+        f"{rate['mappings_per_day']:.2f} mappings/day measured over {rate['days']} days "
+        f"({rate['window']}). This is a rate, not an ETA: the deliverable is a game,")
+    lines.append("not a count of mappings, and the inventory itself is incomplete.")
+    for key, label in (('recorded_inventory', 'finish the recorded inventory only'),
+                       ('full_elf_at_recorded_rate',
+                        'NOT AN ESTIMATE: unrecorded functions at recorded rate')):
         scenario = est['scenarios'].get(key)
         if not scenario:
             continue
