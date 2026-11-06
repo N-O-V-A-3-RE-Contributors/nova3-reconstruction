@@ -99,6 +99,18 @@ class ProviderExecutionTests(unittest.TestCase):
             self.assertEqual(summary['status'], 'FAILED')
             self.assertNotIn('BEFORE_TIMEOUT', json.dumps(summary))
 
+    def test_worker_budget_does_not_corrupt_structured_stream(self):
+        # Exact production environment that used to redact every zero in JSON.
+        with mock.patch.dict(os.environ, {'NOVA3_DSH_TOKENS_PER_DAY': '0'}):
+            self.test_structured_stream_and_independently_observed_file_count()
+
+    def test_budget_exemption_preserves_real_secret_redaction(self):
+        from nova3_team.provider_runtime import redact_diagnostic
+        with mock.patch.dict(os.environ, {
+                'NOVA3_DSH_TOKENS_PER_DAY': '0', 'EXAMPLE_API_KEY': 'private-key-123'}):
+            self.assertEqual(redact_diagnostic('exit=0 private-key-123'),
+                             'exit=0 [REDACTED]')
+
     def test_structured_stream_and_independently_observed_file_count(self):
         with tempfile.TemporaryDirectory() as temp:
             work = Path(temp) / 'repo' / '106-checkout'

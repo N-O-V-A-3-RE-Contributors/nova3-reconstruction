@@ -18,7 +18,7 @@ def issue(number=1, body=BODY, labels=(), state='open'):
 
 
 def grant(**overrides):
-    value = {'schema': autopilot.SCHEMA, 'enabled': True, 'auto_merge': True,
+    value = {'schema': autopilot.SCHEMA, 'repo': 'O/R', 'enabled': True, 'auto_merge': True,
              'actor': 'owner', 'actor_id': 7}
     value.update(overrides)
     return value
