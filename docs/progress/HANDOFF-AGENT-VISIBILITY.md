@@ -1,5 +1,20 @@
 # Handoff — agent visibility, /toggle, real progress metrics
 
+## 2026-11-06 — owner-requested orchestration upgrade
+
+Implemented bounded controller-managed DSH collaborators, task-aware routing,
+unchanged-plan suppression, independent acceptance review, capped repair and
+reviewed/green exact-head PR delivery. See `docs/AUTONOMOUS_DELIVERY.md` for the
+actual lifecycle, authority checks, private audit artifacts and activation.
+Passing tests/model completion is not delivery; test-only source objectives and
+unknown matching claims cannot be promoted. No native nested-Agents UI claim.
+
+The existing worker process still needs an **owner-controlled** restart into the
+new code; Web does not. New task auto-approval is held until its version/PID/start
+ticks prove the updated supervisor ran setup. Do not restart either service from
+an agent or schedule a restart. Preserve the owner's dirty matrix-multiply file.
+Source-first priority below/`NEXT.md` remains: do not generate more setup jobs.
+
 Written 2026-11-03 after the user's explicit requirements. Read this before
 changing the Web UI plugin or the autonomy loop. Do not re-litigate what is
 marked DECIDED.
@@ -17,6 +32,25 @@ marked DECIDED.
    owner intervention per task. Approving/merging PRs alone is NOT the job.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
+
+## Follow-up verification — 2026-11-05 05:46
+
+- Confirmed GitHub main at `98103e1`, containing donor integration `1469692`,
+  audit, importer/tests and source-first priority changes. Re-ran the donor and
+  source-reference pytest suites: **21 passed**. The supplied 2,027 layout stubs
+  still represent zero imported game implementations; detailed hints stay local.
+- The worker did take #349: selected GPT-6.1 Sol at 05:29:43 and submitted draft
+  PR #351 at 05:44:08. However, the actual PR diff changes **only the recovered
+  C++ test** (+65 lines), not the getInverse implementation. Source-and-tests CI
+  succeeded; contributor-review was skipped. The source correction is not proven
+  complete despite the supervisor's COMPLETED execution status.
+- Posted that finding on PR #351 and left it draft/unmerged. Updated live
+  guidance and NEXT.md to distinguish partial test evidence from implemented
+  source, and to choose another concrete source target when this one is blocked.
+- Do not inflate implementation/matching counts or approve PR #351 as the
+  completed arithmetic-order correction solely because its CI is green.
+- No service restart, paid probe, merge approval or original-code upload was
+  performed in this follow-up verification.
 
 ## Owner-approved transition to reconstruction — 2026-11-05 05:00 request
 
