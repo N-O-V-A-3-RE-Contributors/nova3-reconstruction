@@ -14,6 +14,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -355,6 +357,57 @@ def test_undeclared_tracked_confidence_exits_2_without_table(tmp_path: Path) -> 
     assert "confidence" in result.stderr
     assert "'weak'" in result.stderr
     assert "not declared" in result.stderr
+
+
+def test_invalid_utf8_exits_2_without_table(tmp_path: Path) -> None:
+    path = tmp_path / "invalid-utf8.json"
+    path.write_bytes(b'{"schema": "\xff"}')
+
+    result = run_cli(path)
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert result.stdout == ""
+    assert result.stderr.startswith("error: "), result.stderr
+    assert "utf-8" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("count", [-1, True, False, 1.5, "1", None, [], {}])
+def test_invalid_confidence_counts_exit_2_without_table(tmp_path: Path, count) -> None:
+    document = make_document(FIXTURE_UNITS)
+    document["confidence"]["weak"] = count
+    path = write_document(tmp_path, document)
+
+    result = run_cli(path)
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert result.stdout == ""
+    assert result.stderr.startswith("error: "), result.stderr
+    assert "confidence count 'weak' must be a non-negative integer" in result.stderr
+
+
+@pytest.mark.parametrize("name", ["", " ", "\t\n"])
+def test_invalid_confidence_names_exit_2_without_table(tmp_path: Path, name: str) -> None:
+    document = make_document(FIXTURE_UNITS)
+    document["confidence"][name] = 0
+    path = write_document(tmp_path, document)
+
+    result = run_cli(path)
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert result.stdout == ""
+    assert result.stderr.startswith("error: "), result.stderr
+    assert "'confidence' names must be non-empty strings" in result.stderr
+
+
+@pytest.mark.parametrize("name", [None, 1, False])
+def test_non_string_confidence_names_rejected_by_summary(name) -> None:
+    # JSON object keys are always strings; exercise the parsed-document API.
+    document = make_document(FIXTURE_UNITS)
+    document["confidence"][name] = 0
+
+    with pytest.raises(coverage.CorrespondenceError, match="names must be non-empty strings"):
+        coverage.build_summary(document)
 
 
 def test_help_exits_zero() -> None:

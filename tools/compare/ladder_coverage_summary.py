@@ -76,9 +76,16 @@ NOTE = (
 def _declared(document: dict[str, Any], key: str) -> list[str]:
     value = document.get(key)
     if not isinstance(value, dict):
-        # load_document already requires an object here; keep the guard so a
-        # caller passing a hand-built document still fails cleanly.
         raise CorrespondenceError(f"'{key}' must be an object of counts")
+    # The ladder validates status counts, but not the confidence aggregate.
+    # Validate before sorting so hand-built documents also fail cleanly.
+    for name, count in value.items():
+        if not isinstance(name, str) or not name.strip():
+            raise CorrespondenceError(f"'{key}' names must be non-empty strings")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise CorrespondenceError(
+                f"{key} count {name!r} must be a non-negative integer, got {count!r}"
+            )
     return sorted(value)
 
 
@@ -210,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         document = load_document(args.input)
         summary = build_summary(document)
-    except (CorrespondenceError, OSError) as exc:
+    except (CorrespondenceError, OSError, UnicodeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
