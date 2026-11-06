@@ -11,6 +11,7 @@ Checks (each produces a stable finding id):
 ``missing_task_scope``      the linked issue has no ``Allowed paths:`` line
 ``outside_allowed_paths``   a changed path is not inside the issue's scope
 ``protected_path``          a protected tree was touched even if the scope says so
+``assembly_payload``        assembly source or production inline/include payload
 ``binary_artifact``         an APK/OBB/SO/DEX/RAR/archive/image was added
 ``possible_secret``         an added line looks like a credential
 ``oversized_change``        an unusually large diff needs a human look
@@ -31,6 +32,21 @@ SCHEMA = 'nova3-pr-review/1'
 PROTECTED = ('.github/', 'originals/', 'analysis/', 'research/', 'generated/',
              'Archive/', 'materials/', '.venv/', '.local/', 'coordination/',
              'tools/systemd/')
+# The autonomous delivery lane may not rewrite its own authority or guards.
+# Direct owner changes remain possible outside this gate.
+PROTECTED_EXACT = frozenset('nova3_team/' + name for name in (
+    'autopilot.py', 'autoadmit.py', 'access_policy.py', 'coordinator.py', 'common.py',
+    'worker.py', 'delivery.py', 'delivery_backend.py', 'model_agents.py', 'task_agents.py',
+    'agent_guard.mjs', 'dsh_runtime.py', 'dsh_model_router.py', 'dsh_supervisor.py',
+    'dsh_planner.py', 'scope_guard.py', 'reliability.py', 'review.py'))
+ASSEMBLY_RE = re.compile(
+    # Keyword-level matching intentionally tolerates comments/newlines/macros
+    # between the asm keyword and its payload. Production false positives need
+    # owner provenance review; test/tool fixtures are excluded below.
+    r'\b(?:asm|__asm(?:__)?)\b|\.(?:incbin|include)\b', re.IGNORECASE)
+SOURCE_SUFFIXES = frozenset(('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx'))
+
+
 BINARY_SUFFIXES = ('.apk', '.obb', '.so', '.dex', '.rar', '.elf', '.bin', '.zip',
                    '.tar', '.gz', '.7z', '.exe', '.dll', '.dylib', '.a', '.o',
                    '.png', '.jpg', '.jpeg', '.webp', '.ktx', '.pvr', '.etc')
@@ -66,6 +82,40 @@ def _inside(path: str, allowed: list[str]) -> bool:
     return False
 
 
+def _protected(path: str) -> bool:
+    parts = pathlib.PurePosixPath(path).parts
+    return (path.startswith(PROTECTED) or path in PROTECTED_EXACT
+            or any(part.lower() in ('agents.md', 'claude.md', '.agents', '.dsh')
+                   or part.lower().startswith('.env') for part in parts))
+
+
+def _production_source(path: str) -> bool:
+    parsed = pathlib.PurePosixPath(path)
+    return (parsed.suffix.lower() in SOURCE_SUFFIXES
+            and not any(part.lower() in ('tests', 'test', 'fixtures', 'testdata',
+                                         'docs', 'tools') for part in parsed.parts)
+            and not re.match(r'(?:test_|.*_test\.)', parsed.name))
+
+
+def _added_text(patch: str) -> str:
+    return '\n'.join(line[1:] for line in patch.splitlines()
+                     if line.startswith('+') and not line.startswith('+++'))
+
+
+def _file_added_text(entry: dict, diff: str, file_count: int) -> str:
+    if isinstance(entry.get('patch'), str):
+        return _added_text(entry['patch'])
+    # REST supplies per-file patches; CLI unified diffs need separation so a
+    # synthetic asm fixture does not taint a different production file.
+    path = str(entry.get('path') or '')
+    chunks = re.split(r'(?m)^(?=diff --git )', diff)
+    for chunk in chunks:
+        first = chunk.splitlines()[0] if chunk.splitlines() else ''
+        if first == f'diff --git a/{path} b/{path}' or f'\n+++ b/{path}\n' in chunk:
+            return _added_text(chunk)
+    return _added_text(diff) if file_count == 1 else ''
+
+
 def findings_for(*, files: list[dict], diff: str, issue_body: str,
                  issue_number: int | None = None) -> list[dict]:
     """Pure check: no network, no filesystem, no GitHub writes."""
@@ -86,11 +136,19 @@ def findings_for(*, files: list[dict], diff: str, issue_body: str,
             findings.append({'id': 'outside_allowed_paths', 'severity': 'blocker',
                              'problem': f'{path} is outside the allowed paths of the task',
                              'fix': f'remove the change or have an owner extend the scope: {scope}'})
-        if path.startswith(PROTECTED):
+        if _protected(path):
             findings.append({'id': 'protected_path', 'severity': 'blocker',
-                             'problem': f'{path} touches a protected tree',
-                             'fix': 'protected trees (CI, credentials, private references, '
-                                    'services, queue state) are owner/admin-only'})
+                             'problem': f'{path} touches protected authority or private/control state',
+                             'fix': 'manual_required: owner/admin review outside autonomous delivery; '
+                                    'the auto-delivery lane cannot modify its own authority'})
+        if entry.get('status') != 'removed' and (
+                path.lower().endswith(('.s', '.asm'))
+                or (_production_source(path)
+                    and ASSEMBLY_RE.search(_file_added_text(entry, str(diff or ''), len(files))))):
+            findings.append({'id': 'assembly_payload', 'severity': 'blocker',
+                             'problem': f'{path} introduces assembly or an assembly include payload',
+                             'fix': 'manual_required: owner provenance review; independently compiled '
+                                    'source recovery must not be replaced with original instruction blobs'})
         if path.lower().endswith(BINARY_SUFFIXES):
             findings.append({'id': 'binary_artifact', 'severity': 'blocker',
                              'problem': f'{path} looks like a binary or game asset',
@@ -119,7 +177,7 @@ def _gh(args: list[str], *, stdin: str | None = None) -> str:
 
 def _linked_issue(body: str) -> int | None:
     for pattern in (r'(?i)\bcloses\s+#(\d+)', r'(?i)\bfixes\s+#(\d+)',
-                    r'(?i)\bresolves\s+#(\d+)'):
+                    r'(?i)\bresolves\s+#(\d+)', r'(?i)\brelated\s+to\s+#(\d+)'):
         match = re.search(pattern, str(body or ''))
         if match:
             return int(match.group(1))
