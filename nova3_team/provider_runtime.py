@@ -321,6 +321,11 @@ def redact_diagnostic(message: object) -> str:
     """
     text = str(message)
     for name, value in os.environ.items():
+        # Budget counters contain TOKEN but are not credentials. Treating the
+        # value "0" as a secret corrupted every JSON exit_code=0 in the worker
+        # environment and made independent verification fail permanently.
+        if name == 'NOVA3_DSH_TOKENS_PER_DAY':
+            continue
         if value and re.search(r'(?:TOKEN|SECRET|PASSWORD|API_?KEY|ACCESS_KEY)', name, re.I):
             text = text.replace(value, '[REDACTED]')
     text = re.sub(r'(?i)\b(bearer\s+)[^\s,;]+', r'\1[REDACTED]', text)

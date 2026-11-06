@@ -1,5 +1,46 @@
 # Next tasks
 
+## 2026-11-06 — orchestration prepared; source priority unchanged
+
+The owner-requested scoped collaborators, non-repeating planner and independent
+acceptance/repair/final-delivery lane are implemented and regression-tested.
+Operational details: `docs/AUTONOMOUS_DELIVERY.md`. Only the owner restarts
+`nova3-dsh-worker.service`; the running old daemon cannot claim these changes are
+loaded. New automatic approvals wait for its real startup attestation. No Web
+restart or new setup issue is needed. A test-only PR remains incomplete source.
+
+## 2026-11-05 OWNER PRIORITY — leave setup, reconstruct game source
+
+Issue #348 was explicitly approved as the final setup-only task. Its first model
+session failed before source edits; it is quarantined, not an excuse to plan more
+setup. **#349: getInverse cofactor operation ordering** was attempted with GPT-6.1
+Sol and produced draft PR #351 at 05:44. Its diff adds 65 test lines but does not
+change `collada_matrix4_inverse.cpp`; therefore the SOURCE correction is still
+unresolved. Green CI is not proof of that correction. Keep it draft pending review.
+Choose another evidence-backed source target if the missing operation-order
+information prevents a safe implementation change. Do not replace source work
+with another report/helper-test task or claim test-only work as decompilation.
+
+From here, prioritize real source-owned C/C++ reconstruction of identified NOVA3
+functions/subsystems. No further DSH/dashboard/polling/routing/setup-only proposals
+unless a concrete execution blocker makes them indispensable. Preserve the owner's
+uncommitted matrix-multiply experiment. Do not duplicate #349 or bypass review,
+verification, private-input or approval controls. Live planner guidance is narrowed
+through the existing local operator-override mechanism; no service restart needed.
+
+## 2026-11-05 — REvanguard3 donor layout integrated
+
+Read `docs/progress/REVANGUARD3_IMPORT.md`. The supplied layout contains 2,027
+comment-only files, **not new reconstructed game source**. New importer validates
+37,477 donor symbol rows; 36,885 rows have unique-name Premium correspondences.
+Private indexed hints are in `.cache/source_ref/revanguard3-layout.json`; use
+`python3 -m tools.source_ref.import_donor_layout --primary analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so --lookup-primary ADDRESS`
+to narrow source lookup before a scoped reconstruction task. Attribution remains
+INFERRED; donor addresses differ from Premium. Do not count hints as source
+implementation, admit them blindly to the queue, or upload the raw donor tree.
+Then continue `docs/progress/HANDOFF-AGENT-VISIBILITY.md` with current live state;
+only the owner may restart services.
+
 ## 2026-11-03 (LATEST) — native runner port
 
 Done: `dsh_runner/` (profiles, guarded Host client, headless + host backends,
