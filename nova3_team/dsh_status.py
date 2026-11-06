@@ -215,6 +215,11 @@ def render(data: dict) -> str:
                  'off': 'off', 'unset': 'not configured'}.get(mode, mode)
         lines.append(f'**Autopilot:** {label} · auto-merge '
                      f"{'on' if auto.get('auto_merge') else 'off'}")
+        if auto.get('enabled') and auto.get('worker_runtime_ready') is False:
+            lines.append('**New task approvals:** waiting for the owner to restart the worker into the updated orchestration; PR delivery can still run.')
+        counts = (auto.get('delivery') or {}).get('counts') or {}
+        if counts:
+            lines.append('**Acceptance delivery:** ' + ' · '.join(f'{key} {value}' for key, value in sorted(counts.items())))
     project = data.get('project') or {}
     snapshot, estimate = project.get('snapshot'), project.get('estimate')
     if snapshot and estimate:
@@ -230,15 +235,11 @@ def render(data: dict) -> str:
         if prog.get('available'):
             lines.append(f"Mappings: {prog.get('mappings_implemented')} · matched ARM "
                          f"{prog.get('mappings_matched_arm')} · updated {prog.get('updated_at')}")
-        scenarios = estimate.get('scenarios') or {}
-        recorded = scenarios.get('recorded_inventory')
-        if estimate.get('state') == 'unavailable':
-            lines.append('ETA: unavailable — ' + '; '.join(estimate.get('reasons') or [])[:300])
-        elif recorded:
-            low, likely, high = recorded['days']
-            lines.append(f"ETA (provisional): recorded inventory ~{likely:.0f} days "
-                         f"({low:.0f}-{high:.0f}) at the measured mapping rate; re-baseline "
-                         'after the pre-release source is indexed.')
+        rate = estimate.get('rate') or {}
+        if isinstance(rate.get('mappings_per_day'), (int, float)):
+            lines.append(f"Recorded throughput: {rate['mappings_per_day']:.2f} mappings/day "
+                         f"({rate.get('window', 'unknown window')}); not a game-completion estimate.")
+        lines.append('Project completion ETA: unavailable — mapping counts do not measure playable-game completion.')
     lines += ['', f'_state file: `{data["state_file"]}`_']
     return '\n'.join(lines)
 
