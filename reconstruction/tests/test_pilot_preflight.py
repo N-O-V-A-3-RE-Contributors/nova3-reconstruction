@@ -30,23 +30,30 @@ SCHEMA = "nova3-pilot-preflight/1"
 # --------------------------------------------------------------------------
 
 
-def test_pilot_a_object_older_than_source_is_stale():
+def _forbid_filesystem(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("pure build_manifest accessed the filesystem")
+
+    monkeypatch.setattr(pilot_preflight.os.path, "isfile", forbidden)
+    monkeypatch.setattr(pilot_preflight.os, "stat", forbidden)
+    monkeypatch.setattr("builtins.open", forbidden)
+
+
+def test_pilot_a_object_older_than_source_is_stale(monkeypatch):
+    _forbid_filesystem(monkeypatch)
     manifest = build_manifest(
-        ["a.cpp"],
+        {"a.cpp": "source", "a.o": "object"},
         {"a.cpp": 2000.0, "a.o": 1000.0},
-        object_path="a.o",
-        check_exists=False,
     )
     assert manifest["status"] == "stale"
     assert manifest["newer_sources"] == ["a.cpp"]
 
 
-def test_pilot_a_object_newer_than_source_is_fresh():
+def test_pilot_a_object_newer_than_source_is_fresh(monkeypatch):
+    _forbid_filesystem(monkeypatch)
     manifest = build_manifest(
-        ["a.cpp"],
+        {"a.cpp": "source", "a.o": "object"},
         {"a.cpp": 1000.0, "a.o": 2000.0},
-        object_path="a.o",
-        check_exists=False,
     )
     assert manifest["status"] == "fresh"
     assert manifest["newer_sources"] == []
@@ -87,6 +94,26 @@ def test_pilot_a_refusal_statuses():
     assert unknown["status"] == "error"
     # Both the object and the source lack a timestamp.
     assert unknown["unknown_mtime"] == ["a.o", "a.cpp"]
+
+
+def test_missing_source_with_supplied_mtime_refuses_freshness(tmp_path):
+    obj = tmp_path / "a.o"
+    obj.write_bytes(b"synthetic object")
+    os.utime(obj, (2000, 2000))
+    missing = tmp_path / "missing.cpp"
+    before = _snapshot(obj)
+
+    manifest = build_manifest(
+        [missing], {missing: 1000, obj: 2000},
+        object_path=obj, check_exists=True,
+    )
+
+    assert manifest["status"] == "error"
+    assert manifest["missing_sources"] == [str(missing)]
+    assert manifest["sources"] == {str(missing): None}
+    assert manifest["object"]["sha256"] == before[str(obj)][0]
+    assert _snapshot(obj) == before
+    assert not missing.exists()
 
 
 def test_schema_and_sorted_source_map():
@@ -153,6 +180,30 @@ def test_pilot_b_documented_spelling_stale_exit_2(tmp_path):
     assert "a.cpp" in result.stdout
     # Pilot C: no writes, deletes or renames.
     assert _snapshot(src, obj) == before
+    assert sorted(os.listdir(tmp_path)) == before_entries
+
+
+def test_pilot_b_documented_multi_source_spelling(tmp_path):
+    src, obj = _make_pair(tmp_path, object_offset=500.0)
+    second = tmp_path / "b.cpp"
+    second.write_bytes(b"// second synthetic source\n")
+    os.utime(second, (1_600_000_100, 1_600_000_100))
+    before = _snapshot(src, second, obj)
+    before_entries = sorted(os.listdir(tmp_path))
+
+    result = _run_cli(
+        tmp_path, "--sources", "b.cpp", "a.cpp", "--object", "a.o", "--json",
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    block = json.loads(result.stdout)
+    assert block["status"] == "stale"
+    assert block["newer_sources"] == ["a.cpp"]
+    assert list(block["sources"]) == ["a.cpp", "b.cpp"]
+    assert block["sources"] == {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (src, second)
+    }
+    assert _snapshot(src, second, obj) == before
     assert sorted(os.listdir(tmp_path)) == before_entries
 
 

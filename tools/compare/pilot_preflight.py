@@ -95,19 +95,25 @@ def _relpath(path: os.PathLike | str) -> str:
 
 
 def build_manifest(
-    paths: Iterable[os.PathLike | str],
+    paths: Iterable[os.PathLike | str] | Mapping[os.PathLike | str, str],
     mtimes: Mapping[os.PathLike | str, object],
     object_path: Optional[os.PathLike | str] = None,
     object_mtime: object = None,
     hashes: Optional[Mapping[os.PathLike | str, str]] = None,
-    check_exists: bool = True,
+    check_exists: Optional[bool] = None,
 ) -> dict:
     """Compare source mtimes against one cached object mtime.
 
-    ``paths`` are the source files about to be compiled; ``mtimes`` maps each
-    source path to its mtime (missing key or ``None`` = unknown).  The object
-    may be named either as ``object_path`` with ``object_mtime``, or by giving
-    its mtime under ``path`` in ``mtimes``.
+    The pure two-argument contract uses a path-to-role mapping, for example
+    ``build_manifest({'a.cpp': 'source', 'a.o': 'object'},
+    {'a.cpp': 2, 'a.o': 1})``. Roles must be ``source`` or ``object``, with
+    exactly one object. This form defaults to no filesystem access; digests
+    remain ``None`` unless supplied via ``hashes``.
+
+    Alternatively, ``paths`` may be an iterable of source paths, with the
+    object named explicitly via ``object_path``. This legacy form defaults to
+    filesystem checking. ``mtimes`` maps paths to timestamps (missing key or
+    ``None`` = unknown); ``object_mtime`` can override the object's timestamp.
 
     ``hashes`` optionally supplies pre-computed SHA-256 digests for the same
     paths; otherwise files are hashed from disk when they exist and the
@@ -116,11 +122,24 @@ def build_manifest(
     With ``check_exists=False`` the function touches no path at all (no stat,
     no read): ``object.exists`` is taken as true and callers must pass
     ``mtimes``/``hashes`` for everything they care about.  This is the pure
-    mode used with synthetic dicts.  The default inspects existing files to
-    report ``exists``, ``sha256`` and ``missing_sources``.  Nothing is ever
-    opened for writing.
+    mode used with synthetic dicts. With ``check_exists=True`` existing files
+    are inspected to report ``exists``, ``sha256`` and ``missing_sources``.
+    Nothing is ever opened for writing.
     """
-    source_paths = [_relpath(p) for p in paths]
+    if isinstance(paths, Mapping):
+        if any(role not in ("source", "object") for role in paths.values()):
+            raise ValueError("path roles must be 'source' or 'object'")
+        objects = [p for p, role in paths.items() if role == "object"]
+        if len(objects) != 1 or object_path is not None:
+            raise ValueError("role mapping must identify exactly one object")
+        object_path = objects[0]
+        source_paths = [_relpath(p) for p, role in paths.items() if role == "source"]
+        if check_exists is None:
+            check_exists = False
+    else:
+        source_paths = [_relpath(p) for p in paths]
+        if check_exists is None:
+            check_exists = True
     manifest: dict = {
         "schema": SCHEMA,
         "status": STATUS_FRESH,
@@ -186,7 +205,7 @@ def build_manifest(
     for name, mtime in source_mtimes.items():
         if mtime is None:
             manifest["unknown_mtime"].append(name)
-        elif check_exists and not os.path.isfile(name):
+        if check_exists and not os.path.isfile(name):
             manifest["missing_sources"].append(name)
 
     object_exists = object_block is not None and object_block["exists"]
@@ -209,7 +228,7 @@ def build_manifest(
         manifest["newer_sources"] = newer
         if newer:
             manifest["status"] = STATUS_STALE
-        elif manifest["unknown_mtime"]:
+        elif manifest["unknown_mtime"] or manifest["missing_sources"]:
             manifest["status"] = STATUS_ERROR
         else:
             manifest["status"] = STATUS_FRESH
@@ -251,13 +270,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     ap.add_argument(
         "--sources",
-        nargs="?",
+        nargs="+",
         default=None,
         metavar="PATH",
         help=(
-            "source .cpp file the pilot is about to compile (documented "
-            "spelling: `--sources a.cpp`). Use --source PATH once per file "
-            "for several sources."
+            "source .cpp files the pilot is about to compile "
+            "(e.g. --sources a.cpp b.cpp); --source PATH is also repeatable"
         ),
     )
     ap.add_argument(
@@ -282,7 +300,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     source_paths = [str(p) for p in args.source]
     if args.sources:
-        source_paths.insert(0, str(args.sources))
+        source_paths = args.sources + source_paths
     if not source_paths:
         ap.error("at least one source is required (--sources PATH or --source PATH)")
     obj = str(args.object)
