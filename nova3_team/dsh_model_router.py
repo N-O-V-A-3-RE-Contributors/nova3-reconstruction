@@ -128,7 +128,7 @@ def parse_config(text: str, home: pathlib.Path, profile: str = 'web',
     return routes
 
 
-def host_models() -> list[dict] | None:
+def host_models(timeout_s: float = 3) -> list[dict] | None:
     """Read added models from the local Host; no paid request or credentials.
 
     None means unavailable; an empty list is authoritative while online.
@@ -137,7 +137,7 @@ def host_models() -> list[dict] | None:
     request = urllib.request.Request(base + '/dsh-agents/api/state',
                                      headers={'Origin': base})
     try:
-        with urllib.request.urlopen(request, timeout=3) as response:
+        with urllib.request.urlopen(request, timeout=max(0.05, min(3, timeout_s))) as response:
             data = json.loads(response.read(1024 * 1024))
         models = data.get('models')
         if not isinstance(models, list):
@@ -152,20 +152,26 @@ def host_models() -> list[dict] | None:
 
 
 def discover(endpoint: runtime.DshEndpoint, profile: str = 'web',
-             known_models=()) -> list[Route]:
+             known_models=(), timeout_s: float = 45) -> list[Route]:
+    deadline = time.monotonic() + timeout_s
+    def remaining(cap):
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise ConfigError('Local model discovery deadline reached')
+        return min(cap, value)
     try:
         result = subprocess.run([endpoint.binary, '--profile', profile, '--dump-config'],
                                 env=endpoint.environment(), capture_output=True,
-                                text=True, timeout=30, check=False)
+                                text=True, timeout=remaining(30), check=False)
         if result.returncode:
             raise ConfigError('DSH Web profile composition failed')
         parsed = subprocess.run(['node', '-e', YAML_TO_JSON,
                                  str(pathlib.Path(endpoint.binary).resolve())],
                                 input=result.stdout, capture_output=True,
-                                text=True, timeout=10, check=False)
+                                text=True, timeout=remaining(10), check=False)
         if parsed.returncode:
             raise ConfigError('DSH bundled YAML parser unavailable')
-        catalog = host_models()
+        catalog = host_models(remaining(3))
         if catalog is not None:
             # Use the live added-model list instead of resurrecting removed
             # routes from history. parse_config still requires the matching
@@ -239,6 +245,11 @@ def write_route(base: runtime.DshEndpoint, route: Route, folder: pathlib.Path):
     if route.effort:
         config['reasoningEffort'] = route.effort
     patches.append({'id': 'agent-default-model', 'config': config})
+    if base.role_patch is not None:
+        role = json.loads(pathlib.Path(base.role_patch).read_text())
+        if not isinstance(role, list):
+            raise ConfigError('Role enforcement overlay must be a patch list')
+        patches.extend(role)
     raw = json.dumps(patches, indent=2, sort_keys=True) + '\n'
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = folder / (hashlib.sha256(raw.encode()).hexdigest()[:20] + '.json')
@@ -272,8 +283,9 @@ class Router:
 
     def run(self, prompt, *, task, cwd, log_path, timeout_s, cancel, on_failure,
             on_selected=lambda route: None):
+        deadline = time.monotonic() + timeout_s
         remembered = self.state.get('known') or []
-        routes = rank(discover(self.base, known_models=remembered), task)
+        routes = rank(discover(self.base, known_models=remembered, timeout_s=timeout_s), task)
         # Remember routes that still compose and are still authenticated, so a
         # model keeps being offered after the Web default moves elsewhere. The
         # list is revalidated against the live profile on every session.
@@ -296,7 +308,6 @@ class Router:
                   eligible=[r.identity for r in eligible])
         if not eligible:
             raise ConfigError('No configured authenticated model outside its cooldown')
-        deadline = time.monotonic() + timeout_s
         last = None
         previous_route = None
         depleted_providers = set()

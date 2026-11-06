@@ -1,5 +1,20 @@
 # Handoff — agent visibility, /toggle, real progress metrics
 
+## 2026-11-06 — owner-requested orchestration upgrade
+
+Implemented bounded controller-managed DSH collaborators, task-aware routing,
+unchanged-plan suppression, independent acceptance review, capped repair and
+reviewed/green exact-head PR delivery. See `docs/AUTONOMOUS_DELIVERY.md` for the
+actual lifecycle, authority checks, private audit artifacts and activation.
+Passing tests/model completion is not delivery; test-only source objectives and
+unknown matching claims cannot be promoted. No native nested-Agents UI claim.
+
+The existing worker process still needs an **owner-controlled** restart into the
+new code; Web does not. New task auto-approval is held until its version/PID/start
+ticks prove the updated supervisor ran setup. Do not restart either service from
+an agent or schedule a restart. Preserve the owner's dirty matrix-multiply file.
+Source-first priority below/`NEXT.md` remains: do not generate more setup jobs.
+
 Written 2026-11-03 after the user's explicit requirements. Read this before
 changing the Web UI plugin or the autonomy loop. Do not re-litigate what is
 marked DECIDED.
@@ -17,6 +32,76 @@ marked DECIDED.
    owner intervention per task. Approving/merging PRs alone is NOT the job.
 5. The user has **$1 of OpenRouter credit until payday**. Prefer local work; do
    not propose experiments that burn model credit.
+
+## Follow-up verification — 2026-11-05 05:46
+
+- Confirmed GitHub main at `98103e1`, containing donor integration `1469692`,
+  audit, importer/tests and source-first priority changes. Re-ran the donor and
+  source-reference pytest suites: **21 passed**. The supplied 2,027 layout stubs
+  still represent zero imported game implementations; detailed hints stay local.
+- The worker did take #349: selected GPT-6.1 Sol at 05:29:43 and submitted draft
+  PR #351 at 05:44:08. However, the actual PR diff changes **only the recovered
+  C++ test** (+65 lines), not the getInverse implementation. Source-and-tests CI
+  succeeded; contributor-review was skipped. The source correction is not proven
+  complete despite the supervisor's COMPLETED execution status.
+- Posted that finding on PR #351 and left it draft/unmerged. Updated live
+  guidance and NEXT.md to distinguish partial test evidence from implemented
+  source, and to choose another concrete source target when this one is blocked.
+- Do not inflate implementation/matching counts or approve PR #351 as the
+  completed arithmetic-order correction solely because its CI is green.
+- No service restart, paid probe, merge approval or original-code upload was
+  performed in this follow-up verification.
+
+## Owner-approved transition to reconstruction — 2026-11-05 05:00 request
+
+- Approved pending setup request #348 through the normal hash-bound comment and
+  queue-label gate. Worker actually claimed it and selected the configured
+  DeepSeek Flash route for routine work. The provider session failed at step 1
+  with PI_AI_ERROR, zero tools/tokens, before edits; #348 was quarantined. Do not
+  describe setup as completed or keep retrying it as a condition for game work.
+- Narrowed the existing live planner operator override to source reconstruction
+  only after #348. The next real planner pass produced **#349**, an actual
+  getInverse cofactor-order source task at Premium 0x000ebb08, not another helper
+  or dashboard task. No worker restart was required for that guidance.
+- Checked the task's local compiler/interpreter dependencies and host C++ test;
+  the existing independent inverse test passes. Corrected #349's verification
+  paths to owner-installed tools/reference locations before approval, since
+  isolated task checkouts do not contain private toolchains.
+- Approved #349 with the normal owner/admin comment and queue labels. Its first
+  approval was rejected because the task body had a trailing newline but the
+  gate hashes lease-stripped/rstripped text. Canonicalized that whitespace only,
+  replaced the stale locator with a fresh approval, and verified the ACTUAL
+  worker-credential gate returns `allowed=True` (`6638668176`). No gate code or
+  security rule was bypassed. Closed never-started duplicate #350 (same target)
+  to prevent competing source edits. Autopilot's persistent switch and review/
+  merge gates were not changed.
+- `NEXT.md` now puts actual decompilation/source recovery ahead of old setup
+  instructions. Keep #349's acceptance criteria: meaningful source change,
+  independently passing behaviour tests, measured before/after comparisons,
+  private full outputs, and no invented byte-matching claim.
+
+## Latest continuation — 2026-11-05 04:17
+
+- Owner restarted Web at 03:53:21 and worker at 03:53:26 (systemd timestamps
+  verified). Do not restart them again. The prior restart requests below are
+  historical, not outstanding owner actions.
+- REvanguard3 integration published on main as `1469692`, together with the
+  earlier verification/routing/status fixes. See `REVANGUARD3_IMPORT.md`.
+  No decompiled function bodies existed in the supplied layout; only audited
+  metadata tooling was integrated. Never count 2,027 stubs as implementation.
+- Took the next draft-verification task: PR #347 / issue #294, isolated worktree,
+  merged current main into its branch without changing the task implementation.
+  Full unittest discovery under the actual restarted worker `/usr/bin/python3.14`
+  and service environment (`NOVA3_DSH_TOKENS_PER_DAY=0`) passed **1,349 tests**,
+  exit 0. Required pytest passed **9 tests / 19 subtests**, exit 0.
+- Published branch update `d4f6187` and evidence comment on PR #347. Kept DRAFT;
+  no review approval or merge is implied. This establishes the fix in a real
+  task checkout, beyond the previous standalone regression reproduction.
+- Observed 21 open PRs, all drafts, before updating #347. The other drafts still
+  require individually checked base integration, task verification and review.
+  Do not bulk mark ready or auto-merge. Native Agents integration remains open.
+- Supervisor still WAITING_APPROVAL for #348; no automation enable, paid model
+  session, or service restart was performed in this continuation.
 
 ## Owner restart and routing rule — 2026-11-05 03:21 request
 

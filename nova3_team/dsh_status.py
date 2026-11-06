@@ -215,6 +215,11 @@ def render(data: dict) -> str:
                  'off': 'off', 'unset': 'not configured'}.get(mode, mode)
         lines.append(f'**Autopilot:** {label} · auto-merge '
                      f"{'on' if auto.get('auto_merge') else 'off'}")
+        if auto.get('enabled') and auto.get('worker_runtime_ready') is False:
+            lines.append('**New task approvals:** waiting for the owner to restart the worker into the updated orchestration; PR delivery can still run.')
+        counts = (auto.get('delivery') or {}).get('counts') or {}
+        if counts:
+            lines.append('**Acceptance delivery:** ' + ' · '.join(f'{key} {value}' for key, value in sorted(counts.items())))
     project = data.get('project') or {}
     snapshot, estimate = project.get('snapshot'), project.get('estimate')
     if snapshot and estimate:

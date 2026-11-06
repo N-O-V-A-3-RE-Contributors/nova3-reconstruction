@@ -222,7 +222,7 @@ Do not merely repeat these instructions or write a plan. **Start executing**:
 - Unknown function -> NOT RECONSTRUCTED. Decompiled pseudocode -> HYPOTHESIS. Compile and tests -> COMPILES/TESTED. Only independent evidence can establish behavioural equivalence or byte match. Original ABI/compiler/optimisation/link transformations matter.
 - Use tests and build evidence. Prefer small well-scoped C++ with named structures and explicit uncertainty. Maintain checks for bounds, ownership, endian and alignment. Preserve APIs unless the issue requires change.
 - All processes must support session expiry: write concise handoff to local private state, and resume in a new session. Stop repetitive failures.
-- Do not launch child AI agents, install packages, run sudo, touch network accounts or merge PRs from an AI session.
+- Models must not launch child AI sessions, install packages, run sudo, touch network accounts or merge PRs themselves. The owner-authorized Python controller may create at most two bounded read-only collaborators, plus separate acceptance-review/repair sessions; their tool guards prohibit recursive delegation and out-of-scope access. Only the trusted final-delivery controller may mark ready/merge after independent current-head acceptance review, compliance and required CI pass. A completed model session or test-only PR is not completed source delivery.
 - Provider execution permissions must remain scoped; never configure unrestricted root access for community workers.
 - Further workflow details: docs/NOVA_TEAM.md.
 
