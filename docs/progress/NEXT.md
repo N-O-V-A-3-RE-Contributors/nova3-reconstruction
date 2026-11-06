@@ -1,5 +1,14 @@
 # Next tasks
 
+## 2026-11-06 — orchestration prepared; source priority unchanged
+
+The owner-requested scoped collaborators, non-repeating planner and independent
+acceptance/repair/final-delivery lane are implemented and regression-tested.
+Operational details: `docs/AUTONOMOUS_DELIVERY.md`. Only the owner restarts
+`nova3-dsh-worker.service`; the running old daemon cannot claim these changes are
+loaded. New automatic approvals wait for its real startup attestation. No Web
+restart or new setup issue is needed. A test-only PR remains incomplete source.
+
 ## 2026-11-05 OWNER PRIORITY — leave setup, reconstruct game source
 
 Issue #348 was explicitly approved as the final setup-only task. Its first model

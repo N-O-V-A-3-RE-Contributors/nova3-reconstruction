@@ -1,5 +1,20 @@
 # Handoff — agent visibility, /toggle, real progress metrics
 
+## 2026-11-06 — owner-requested orchestration upgrade
+
+Implemented bounded controller-managed DSH collaborators, task-aware routing,
+unchanged-plan suppression, independent acceptance review, capped repair and
+reviewed/green exact-head PR delivery. See `docs/AUTONOMOUS_DELIVERY.md` for the
+actual lifecycle, authority checks, private audit artifacts and activation.
+Passing tests/model completion is not delivery; test-only source objectives and
+unknown matching claims cannot be promoted. No native nested-Agents UI claim.
+
+The existing worker process still needs an **owner-controlled** restart into the
+new code; Web does not. New task auto-approval is held until its version/PID/start
+ticks prove the updated supervisor ran setup. Do not restart either service from
+an agent or schedule a restart. Preserve the owner's dirty matrix-multiply file.
+Source-first priority below/`NEXT.md` remains: do not generate more setup jobs.
+
 Written 2026-11-03 after the user's explicit requirements. Read this before
 changing the Web UI plugin or the autonomy loop. Do not re-litigate what is
 marked DECIDED.
