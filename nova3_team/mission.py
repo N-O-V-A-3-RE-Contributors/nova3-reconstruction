@@ -107,6 +107,11 @@ def agent_state(repo: str, slot: str = 'dsh', *, now: float | None = None) -> di
                       key=lambda item: item.stat().st_mtime, reverse=True)
     except OSError:
         logs = []
+    if task.get('number') is not None:
+        # Do not attribute another task's newest log to the current task.
+        prefix = str(task['number']) + '-'
+        logs = [p for p in logs if any(part.startswith(prefix) for part in p.parts)]
+    observed_session = None
     if logs:
         newest = logs[0]
         try:
@@ -123,6 +128,8 @@ def agent_state(repo: str, slot: str = 'dsh', *, now: float | None = None) -> di
                         event = json.loads(raw)
                     except ValueError:
                         continue
+                    if event.get('type') == 'session':
+                        observed_session = event.get('sessionId')
                     if event.get('type') == 'tool_call':
                         tools += 1
                     elif event.get('phase') == 'step_end':
@@ -144,7 +151,8 @@ def agent_state(repo: str, slot: str = 'dsh', *, now: float | None = None) -> di
         'task': task.get('number'), 'title': str(task.get('title') or ''),
         'provider': active.get('provider'), 'model': active.get('model'),
         'purpose': router.get('purpose'), 'router_status': router.get('status'),
-        'session_id': router.get('session_id'),
+        'session_id': observed_session or router.get('session_id'),
+        'activity_scope': 'active task' if live and task else 'latest recorded session',
         'steps': steps, 'tool_calls': tools,
         'last_event_age_s': round(age, 1) if age is not None else None,
         'log_bytes': size,
