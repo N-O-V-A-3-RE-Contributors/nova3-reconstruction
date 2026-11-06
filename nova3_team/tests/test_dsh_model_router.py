@@ -219,7 +219,7 @@ class DiscoveryTests(unittest.TestCase):
             r.state['known'] = remembered
             seen = {}
 
-            def fake_discover(endpoint, profile='web', known_models=()):
+            def fake_discover(endpoint, profile='web', known_models=(), timeout_s=45):
                 seen['known'] = list(known_models)
                 return router.parse_config(json.dumps(config()), self.home,
                                            known_models=known_models)

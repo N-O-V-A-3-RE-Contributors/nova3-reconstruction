@@ -86,6 +86,24 @@ def test_only_future_cooldowns_are_shown(tmp_path, monkeypatch):
     assert agent['cooldowns'] == {'openai-codex/gpt-6.1-sol': 500}
 
 
+def test_session_identity_comes_from_recorded_events(tmp_path, monkeypatch):
+    _fixture(tmp_path, monkeypatch, supervisor={'state': 'RUNNING'},
+             router={'session_id': 'stale-router-session'},
+             events=[{'type': 'session', 'sessionId': 'actual-session'}])
+    agent = mission.agent_state('owner/repo')
+    assert agent['session_id'] == 'actual-session'
+    assert agent['activity_scope'] == 'latest recorded session'
+    assert agent['running'] is False
+
+
+def test_current_task_never_inherits_other_task_activity(tmp_path, monkeypatch):
+    _fixture(tmp_path, monkeypatch, supervisor={'task': {'number': 7}},
+             events=[{'type': 'tool_call'}])  # fixture log belongs to task 195
+    agent = mission.agent_state('owner/repo')
+    assert agent['tool_calls'] == 0
+    assert agent['last_event_age_s'] is None
+
+
 def test_missing_state_is_idle_not_an_error(tmp_path, monkeypatch):
     _fixture(tmp_path, monkeypatch)
     agent = mission.agent_state('owner/repo')
