@@ -95,6 +95,10 @@ def build_summary(document: dict[str, Any]) -> dict[str, Any]:
     summary_rows: list[dict[str, Any]] = []
     by_subsystem = {label: [] for label, _ in SUBSYSTEM_ROWS}
     for row in rows:
+        if row["confidence"] not in confidences:
+            raise CorrespondenceError(
+                f"tracked confidence {row['confidence']!r} is not declared in 'confidence'"
+            )
         by_subsystem[row["subsystem"]].append(row)
 
     for label, _ in SUBSYSTEM_ROWS:
@@ -102,9 +106,8 @@ def build_summary(document: dict[str, Any]) -> dict[str, Any]:
         status_counts = {name: 0 for name in statuses}
         confidence_counts = {name: 0 for name in confidences}
         for member in members:
-            # build_ladder validated membership for status; confidence names
-            # are document-defined, so count anything unexpected defensively
-            # by extending the key set before use.
+            # build_ladder validates status membership; confidence membership
+            # is checked above before counting any rows.
             status_counts[member["status"]] += 1
             confidence_counts[member["confidence"]] += 1
         summary_rows.append(

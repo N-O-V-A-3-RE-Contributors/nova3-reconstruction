@@ -342,6 +342,21 @@ def test_malformed_documents_exit_2_without_table(tmp_path: Path) -> None:
         assert "|" not in result.stdout
 
 
+def test_undeclared_tracked_confidence_exits_2_without_table(tmp_path: Path) -> None:
+    document = make_document(FIXTURE_UNITS)
+    del document["confidence"]["weak"]
+    path = write_document(tmp_path, document, name="undeclared-confidence.json")
+
+    result = run_cli(path)
+
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert result.stdout == ""
+    assert result.stderr.startswith("error: "), result.stderr
+    assert "confidence" in result.stderr
+    assert "'weak'" in result.stderr
+    assert "not declared" in result.stderr
+
+
 def test_help_exits_zero() -> None:
     result = subprocess.run(
         [sys.executable, "-m", MODULE, "--help"],
