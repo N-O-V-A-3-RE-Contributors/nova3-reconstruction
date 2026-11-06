@@ -135,6 +135,8 @@ class DshEndpoint:
     base_url: str = DEFAULT_BASE_URL
     key_ref: str = DEFAULT_KEY_REF
     max_steps: int = 120
+    # Trusted per-role enforcement overlay, carried through configured routing.
+    role_patch: pathlib.Path | None = None
 
     def with_route(self, provider: str, model: str) -> 'DshEndpoint':
         return replace(self, route=provider, model=model or self.model)
@@ -558,11 +560,6 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     shell=False, start_new_session=(os.name == 'posix'),
                                     env=endpoint.environment())
-            try:
-                proc.stdin.write(prompt.encode('utf-8'))
-                proc.stdin.close()
-            except (BrokenPipeError, OSError):
-                pass
             deadline = started + timeout_s
             written = 0
             killed = {}          # filled by the stop paths; surface, not a guess
@@ -589,6 +586,14 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
 
             guard = threading.Thread(target=watchdog, name='nova3-dsh-deadline', daemon=True)
             guard.start()
+            # A cold/hung driver may never read stdin. Start the deadline BEFORE
+            # writing a prompt larger than the pipe buffer, so that write is
+            # bounded too (the watchdog closes the child tree's pipe on kill).
+            try:
+                proc.stdin.write(prompt.encode('utf-8'))
+                proc.stdin.close()
+            except (BrokenPipeError, OSError):
+                pass
             for raw in proc.stdout:
                 now = time.monotonic()
                 written += len(raw)
@@ -656,6 +661,13 @@ def run_session(endpoint: DshEndpoint, prompt: str, *, cwd: pathlib.Path, log_pa
     finally:
         if proc is not None and proc.poll() is None:
             _stop(proc)
+        if proc is not None:
+            for pipe in (getattr(proc, 'stdin', None), getattr(proc, 'stdout', None), getattr(proc, 'stderr', None)):
+                if pipe is not None:
+                    try:
+                        pipe.close()
+                    except OSError:
+                        pass
         if os.name == 'posix':
             try:
                 log_path.chmod(0o600)
