@@ -33,6 +33,14 @@ The report carries `source_matching_verified=False`: a relocation-masked window
 agreement is not a byte match, not compiler identification and not a whole-.so
 SHA-256 match.  No reference instruction bytes or disassembly text are emitted.
 
+Provenance (task #314): when ``--out`` names an existing report, the pilot
+runs ``preflight`` from ``tools/compare/pilot_preflight.py`` (before touching
+the reference) and adds its result under ``provenance`` -- a non-fatal extra
+field.  It says whether the previous report's ``source`` path and ``flags``
+match this invocation, records the current source sha256 and Git state, and
+makes **no** match claim.  ``--preflight`` points at another report;
+``--no-preflight`` skips the check.
+
 Example:
     .venv/bin/python tools/compare/collada_matrix_multiply_pilot.py \
         --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so
@@ -58,6 +66,10 @@ from window_diff import diff_window  # noqa: E402
 from capstone import CS_ARCH_ARM, CS_MODE_ARM, Cs  # noqa: E402
 from capstone.arm import ARM_OP_IMM, ARM_OP_MEM, ARM_OP_REG  # noqa: E402
 from elftools.elf.elffile import ELFFile  # noqa: E402
+try:  # noqa: E402
+    from tools.compare.pilot_preflight import load_report, preflight
+except ImportError:  # run as a bare script: tools/ is not a package root then
+    from pilot_preflight import load_report, preflight
 
 REFERENCE_SHA256 = "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf"
 
@@ -291,7 +303,27 @@ def main(argv=None) -> int:
     ap.add_argument("--reference", required=True)
     ap.add_argument("--ndk", default=str(DEFAULT_NDK_R8E))
     ap.add_argument("--out", default=None)
+    ap.add_argument("--preflight", default=None,
+                    help="previous report to cross-check (default: --out)")
+    ap.add_argument("--no-preflight", action="store_true",
+                    help="skip the provenance preflight entirely")
     args = ap.parse_args(argv)
+
+    provenance = None
+    report_path = Path(args.preflight) if args.preflight else (
+        Path(args.out) if args.out else None)
+    if not args.no_preflight and report_path is not None and report_path.exists():
+        try:
+            provenance = preflight(SOURCE, load_report(report_path),
+                                   expected_flags=BASE_FLAGS)
+        except Exception as exc:  # non-fatal: never aborts the measurement
+            provenance = {"status": "error", "source_sha256": None,
+                          "git_state": "unknown", "notes": [],
+                          "reasons": [f"preflight raised {type(exc).__name__}"]}
+        provenance["compared_report"] = str(report_path)
+        provenance["configs_note"] = (
+            "report 'flags' is compared with BASE_FLAGS; per-config "
+            "optimisation/visibility flags are listed in 'configs'")
 
     ref = Path(args.reference)
     blob, window, bounds = load_reference(ref)
@@ -346,6 +378,8 @@ def main(argv=None) -> int:
                   "whole-.so SHA-256 match"),
         "source_matching_verified": False,
     }
+    if provenance is not None:
+        report["provenance"] = provenance
 
     text = json.dumps(report, indent=2, sort_keys=True, default=str)
     if args.out:
