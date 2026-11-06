@@ -267,6 +267,28 @@ def test_cli_matches_embedded_golden(tmp_path: Path) -> None:
     assert result.stdout == CLI_GOLDEN
 
 
+def test_cli_with_synthetic_ledger_matches_embedded_golden(tmp_path: Path) -> None:
+    correspondence = write_json(tmp_path, "fixture.json", make_document(THREE_UNITS))
+    sizes = write_json(
+        tmp_path,
+        "fixture_ledger.json",
+        ledger(
+            {"address": "0x1000", "size": 56},
+            {"address": "0x9000", "size": 12},
+        ),
+    )
+    # Substitute only the fixture's citation; all block content, including the
+    # matching byte count, comes from the embedded golden, not the renderer.
+    citation = sizes.relative_to(ROOT) if sizes.is_relative_to(ROOT) else sizes
+    expected = GOLDEN.replace("coordination/function_ledger.json", citation.as_posix())
+
+    result = run_cli("--input", str(correspondence), "--ledger", str(sizes))
+
+    assert result.returncode == 0, result.stderr
+    assert result.stderr == ""
+    assert result.stdout == expected
+
+
 def test_direct_render_matches_embedded_golden() -> None:
     assert block_for_units(THREE_UNITS, size=56) == GOLDEN
 
