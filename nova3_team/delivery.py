@@ -34,6 +34,7 @@ import pathlib
 import re
 import time
 from types import MappingProxyType
+from urllib.parse import quote
 
 from . import review as compliance_review
 from . import access_policy as policy
@@ -397,6 +398,16 @@ def _task_provenance(api, repo, issue, base_ref, *, allow_closed=False):
         raise GateError('delivery_target_not_default_branch')
     if repository.get('allow_squash_merge') is not True:
         raise GateError('delivery_safe_squash_not_allowed')
+    # Pull-request base.sha is a snapshot and can lag the actual target branch
+    # after another PR merges. Only the authoritative Git ref pins current base.
+    reference = api(f'repos/{repo}/git/ref/heads/{quote(base_ref, safe="")}')
+    target = reference.get('object') if isinstance(reference, dict) else None
+    if (not isinstance(reference, dict) or reference.get('ref') != f'refs/heads/{base_ref}'
+            or not isinstance(target, dict) or target.get('type') != 'commit'
+            or not isinstance(target.get('sha'), str)
+            or not re.fullmatch(r'[0-9a-fA-F]{40}', target['sha'])):
+        raise GateError('default_branch_ref_invalid')
+    current_base_sha = target['sha'].lower()
     body = comment.get('body')
     if not isinstance(body, str) or len(body.encode('utf-8')) > 8192:
         raise GateError('task_approval_record_invalid')
@@ -462,7 +473,8 @@ def _task_provenance(api, repo, issue, base_ref, *, allow_closed=False):
             or type(person.get('id')) is not int or person['id'] != author['id']
             or person.get('login') != author['login']):
         raise GateError('task_approval_current_admin_required')
-    return {'task_spec_sha256': spec, 'approval_id': locator, 'default_branch': default_branch}
+    return {'task_spec_sha256': spec, 'approval_id': locator, 'default_branch': default_branch,
+            'current_base_sha': current_base_sha}
 
 
 def _close_payload(issue):
@@ -485,9 +497,9 @@ def _closure_complete(issue):
             and set(labels) == set(payload['labels']))
 
 
-def _base_behind(api, repo, pr):
-    """Positive ancestry evidence for this exact base/head, never CI inference."""
-    base = pr.get('base', {}).get('sha')
+def _base_behind(api, repo, pr, current_base_sha):
+    """Positive ancestry evidence for authoritative target/head, never PR snapshot."""
+    base = current_base_sha
     head = pr.get('head', {}).get('sha')
     if not all(isinstance(sha, str) and re.fullmatch(r'[A-Za-z0-9_-]+', sha)
                for sha in (base, head)):
@@ -586,7 +598,7 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
             previous = state['heads'][key]
             return finish('blocked', previous['reason'], cached=True)
         task = extract_task(issue)
-        key = _digest([head, task, pr.get('body'), _branch(pr),
+        key = _digest([head, task, pr.get('body'), _branch(pr), provenance['current_base_sha'],
                        required_source_checks or DEFAULT_SOURCE_CHECKS])
         # A confirmed delivery can finish issue closure after an API interruption.
         if pr.get('merged') is True:
@@ -642,12 +654,12 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
         # A green old head is not evidence against a newer target branch. Do
         # this before reading the diff or invoking even a cached-pass callback.
         try:
-            behind = _base_behind(api, repo, pr)
+            behind = _base_behind(api, repo, pr, provenance['current_base_sha'])
         except GateError as exc:
             state['retry_after'] = time.time() + RETRY_SECONDS
             return finish('retryable', str(exc))
         if behind:
-            update_key = _digest([head, _branch(pr)])
+            update_key = _digest([head, _branch(pr), provenance['current_base_sha']])
             updates = state.setdefault('base_updates', {})
             pending = updates.get(update_key)
             if pending:
@@ -706,7 +718,8 @@ def process_pr(repo, number, folder, *, api, reviewer, repairer=None,
             # review verdict. Never spend a model or freeze this head on it.
             return finish('waiting_ci', str(exc))
         context_data = {'repo': repo, 'pr': pr, 'task': task, 'files': files,
-                        'diff': diff, 'ci': ci, 'ci_error': ci_error}
+                        'diff': diff, 'ci': ci, 'ci_error': ci_error,
+                        'current_base_sha': provenance['current_base_sha']}
         if _json_bytes(context_data) > MAX_CONTEXT_BYTES:
             return finish('blocked', 'review_context_too_large', cache=True)
         context = _freeze(context_data)

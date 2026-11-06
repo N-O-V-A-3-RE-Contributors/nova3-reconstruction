@@ -21,7 +21,7 @@ class FakeAPI:
                    'draft': False, 'node_id': 'PR_351', 'changed_files': 1,
                    'user': {'login': 'owner'},
                    'head': {'sha': 'head1', 'ref': 'work', 'repo': {'full_name': 'o/r'}},
-                   'base': {'sha': 'base1', 'ref': 'main'}}
+                   'base': {'sha': 'b' * 40, 'ref': 'main'}}
         self.issue = {'id': 3500, 'number': 350, 'title': 'Implement parser', 'body': BODY,
                       'state': 'open', 'created_at': '2026-01-01T00:00:00Z',
                       'url': 'https://api.github.com/repos/o/r/issues/350',
@@ -46,6 +46,8 @@ class FakeAPI:
         self.pr_reads = 0
         self.behind = 0
         self.compare_response = None
+        self.live_base_sha = None  # When absent, keep legacy fixtures dynamically aligned.
+        self.ref_response = None
         self.update_response = {'message': 'Updating pull request branch.'}
 
     def approve_task(self):
@@ -78,6 +80,11 @@ class FakeAPI:
             if self.on_pr:
                 self.on_pr(self, self.pr_reads)
             return copy.deepcopy(self.pr)
+        if '/git/ref/heads/' in path:
+            if self.ref_response is not None:
+                return copy.deepcopy(self.ref_response)
+            return {'ref': 'refs/heads/' + self.pr['base']['ref'],
+                    'object': {'type': 'commit', 'sha': self.live_base_sha or self.pr['base']['sha']}}
         if '/compare/' in path:
             if self.compare_response is not None:
                 return copy.deepcopy(self.compare_response)
@@ -465,7 +472,7 @@ class DeliveryTests(unittest.TestCase):
         file_reads = sum('/files?' in path for path, _, _ in self.api.calls)
         self.assertEqual(file_reads, 1, 'old GitHub files cannot establish repaired-head scope acceptance')
         self.assertTrue(self.process(repairer=repair)['cached'])
-        self.api.pr['base']['sha'] = 'base-advanced-while-api-stale'
+        self.api.pr['base']['sha'] = 'e' * 40
         self.assertTrue(self.process(repairer=repair)['cached'])
         self.assertEqual(len(repairs), 1)
         self.assertEqual(len(self.reviews), 1)
@@ -522,20 +529,20 @@ class DeliveryTests(unittest.TestCase):
         self.verdict = 'needs_revision'
         def repair(context, findings):
             result = self.repair(context, findings)
-            self.api.pr['base']['sha'] = 'base2'
+            self.api.pr['base']['sha'] = 'd' * 40
             return result
         self.assertEqual(self.process(repairer=repair)['state'], 'repaired')
         cache = json.loads(next((pathlib.Path(self.temp.name) / 'delivery').glob('*.json')).read_text())
         self.assertFalse(cache.get('repair_violation'))
         self.verdict = 'pass'
         self.assertEqual(self.process()['state'], 'delivered')
-        self.assertEqual(self.reviews[-1]['pr']['base']['sha'], 'base2')
+        self.assertEqual(self.reviews[-1]['pr']['base']['sha'], 'd' * 40)
 
     def test_base_ref_change_during_repair_still_latches_contract_violation(self):
         self.verdict = 'needs_revision'
         def repair(context, findings):
             result = self.repair(context, findings)
-            self.api.pr['base'].update(ref='different-base', sha='base2')
+            self.api.pr['base'].update(ref='different-base', sha='d' * 40)
             return result
         self.assertEqual(self.process(repairer=repair)['reason'], 'repair_changed_branch_or_base')
         cache = json.loads(next((pathlib.Path(self.temp.name) / 'delivery').glob('*.json')).read_text())
@@ -764,7 +771,7 @@ class DeliveryTests(unittest.TestCase):
         self.api.merged = False
         self.process()
         self.assertEqual(len(self.reviews), 1)
-        self.api.pr['base']['sha'] = 'base2'
+        self.api.pr['base']['sha'] = 'd' * 40
         self.api.behind = 2
         self.assertEqual(self.process()['state'], 'updating_base')
         self.assertEqual(len(self.reviews), 1)
@@ -847,7 +854,7 @@ class DeliveryTests(unittest.TestCase):
     def test_new_base_requires_new_review_even_with_unchanged_head(self):
         self.api.merged = False
         self.process()
-        self.api.pr['base']['sha'] = 'base2'
+        self.api.pr['base']['sha'] = 'd' * 40
         self.process()
         self.assertEqual(len(self.reviews), 2)
 
@@ -1272,6 +1279,110 @@ class DeliveryTests(unittest.TestCase):
         self.assertEqual(self.process(reviewer=reviewer)['reason'], 'delivery_safe_squash_not_allowed')
         self.assertEqual(self.api.writes(), [])
         self.assertEqual(self.api.issue['state'], 'open')
+
+    def test_authoritative_live_base_overrides_stale_pr_snapshot_before_models(self):
+        snapshot, actual = self.api.pr['base']['sha'], 'd' * 40
+        self.api.live_base_sha = actual
+        self.api.behind = 1
+        self.assertEqual(self.process()['state'], 'updating_base')
+        comparisons = [path for path, _, _ in self.api.calls if '/compare/' in path]
+        self.assertEqual(comparisons, [f'repos/o/r/compare/{actual}...head1'])
+        self.assertNotEqual(actual, snapshot)
+        self.assertEqual(self.api.pr['base']['sha'], snapshot)
+        self.assertFalse(self.reviews)
+        self.assertEqual(self.api.writes(), [('repos/o/r/pulls/351/update-branch', 'PUT')])
+
+    def test_authoritative_base_advance_during_review_blocks_publication_and_merge(self):
+        snapshot = self.api.pr['base']['sha']
+        def reviewer(context):
+            self.assertEqual(context['current_base_sha'], snapshot)
+            result = self.review(context)
+            self.api.live_base_sha = 'd' * 40
+            return result
+        self.assertEqual(self.process(reviewer=reviewer)['state'], 'stale_head')
+        self.assertEqual(self.api.pr['base']['sha'], snapshot)
+        self.assertEqual(self.api.writes(), [])
+        self.assertEqual(self.api.issue['state'], 'open')
+
+    def test_authoritative_base_advance_during_publication_blocks_merge(self):
+        snapshot = self.api.pr['base']['sha']
+        original = self.api
+        def api(path, **kwargs):
+            result = original(path, **kwargs)
+            if path.endswith('/reviews'):
+                original.live_base_sha = 'd' * 40
+            return result
+        self.api = api
+        self.assertEqual(self.process()['state'], 'stale_head')
+        self.assertEqual(original.pr['base']['sha'], snapshot)
+        self.assertEqual(original.writes(), [('repos/o/r/pulls/351/reviews', 'POST')])
+        self.assertEqual(original.issue['state'], 'open')
+
+    def test_cached_pass_binds_live_base_even_when_pr_snapshot_never_changes(self):
+        self.api.merged = False
+        snapshot = self.api.pr['base']['sha']
+        self.assertEqual(self.process()['state'], 'merge_refused')
+        self.api.live_base_sha = 'd' * 40
+        self.assertEqual(self.process()['state'], 'merge_refused')
+        self.assertEqual(len(self.reviews), 2)
+        self.assertEqual([context['current_base_sha'] for context in self.reviews],
+                         [snapshot, 'd' * 40])
+        self.assertEqual(self.api.pr['base']['sha'], snapshot)
+        self.assertEqual(sum(path.endswith('/reviews') for path, _, _ in self.api.calls), 2)
+
+    def test_base_update_attempt_key_binds_actual_target_not_stale_snapshot(self):
+        self.api.behind = 1
+        self.assertEqual(self.process()['state'], 'updating_base')
+        self.assertTrue(self.process()['cached'])
+        self.assertEqual(len(self.api.writes()), 1)
+        self.api.live_base_sha = 'd' * 40
+        self.assertEqual(self.process()['state'], 'updating_base')
+        self.assertEqual(self.api.writes(), [('repos/o/r/pulls/351/update-branch', 'PUT'),
+                                           ('repos/o/r/pulls/351/update-branch', 'PUT')])
+        self.assertFalse(self.reviews)
+
+    def test_authoritative_ref_shape_and_exact_commit_sha_fail_closed(self):
+        valid = {'ref': 'refs/heads/main', 'object': {'type': 'commit', 'sha': 'd' * 40}}
+        invalid = [{}, [], {**valid, 'ref': 'refs/heads/wrong'},
+                   {**valid, 'object': None},
+                   {**valid, 'object': {'type': 'blob', 'sha': 'd' * 40}},
+                   {**valid, 'object': {'type': 'commit', 'sha': 'd' * 39}},
+                   {**valid, 'object': {'type': 'commit', 'sha': 'g' * 40}},
+                   {**valid, 'object': {'type': 'commit', 'sha': True}}]
+        for reference in invalid:
+            with self.subTest(reference=reference), tempfile.TemporaryDirectory() as folder:
+                self.api.ref_response = reference
+                result = delivery.process_pr('o/r', 351, folder, api=self.api, reviewer=self.review)
+                self.assertEqual(result['reason'], 'default_branch_ref_invalid')
+                self.assertEqual(result['state'], 'blocked')
+        self.assertFalse(self.reviews)
+        self.assertEqual(self.api.writes(), [])
+
+    def test_default_branch_ref_endpoint_is_safely_percent_quoted(self):
+        self.api.repository['default_branch'] = 'release/stable'
+        self.api.pr['base']['ref'] = 'release/stable'
+        self.assertEqual(self.process()['state'], 'delivered')
+        refs = [path for path, _, _ in self.api.calls if '/git/ref/heads/' in path]
+        self.assertTrue(refs)
+        self.assertTrue(all(path == 'repos/o/r/git/ref/heads/release%2Fstable' for path in refs))
+
+    def test_own_merge_base_advance_and_later_recovery_do_not_invalidate_resolved_task(self):
+        self.api.close_works = False
+        original = self.api
+        def api(path, **kwargs):
+            result = original(path, **kwargs)
+            if path.endswith('/merge'):
+                original.live_base_sha = 'd' * 40  # The verified squash itself advances main.
+            return result
+        self.api = api
+        self.assertEqual(self.process()['state'], 'merged_issue_open')
+        self.assertEqual(original.issue['state'], 'open')
+        original.live_base_sha = 'e' * 40  # Another verified PR may land before recovery.
+        original.close_works = True
+        self.assertEqual(self.process()['state'], 'delivered')
+        self.assertEqual(original.issue['state'], 'closed')
+        self.assertEqual(len(self.reviews), 1)
+        self.assertEqual(sum(path.endswith('/merge') for path, _, _ in original.calls), 1)
 
     def test_corrupt_budget_cache_does_not_grant_new_repairs(self):
         self.api.merged = False

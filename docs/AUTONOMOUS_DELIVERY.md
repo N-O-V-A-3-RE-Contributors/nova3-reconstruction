@@ -127,7 +127,7 @@ Do not weaken gates or treat a pending restart as completed live activation.
 
 ## Verification boundary
 
-Verified 2026-11-06: **1,501 Python tests and 8 adversarial role-guard tests pass**;
+Verified 2026-11-06: **1,509 Python tests and 8 adversarial role-guard tests pass**;
 the existing 4 slash-command tests also pass. Read-only production API checks
 verified historical task provenance for PRs #347/#351; actual repository policy
 already allows squash into `main`. No services were restarted.
@@ -145,6 +145,19 @@ REST read briefly returned the old head. The controller now pins the Git-verifie
 published commit and waits for API convergence without another paid repair or
 premature acceptance. A moving base SHA is not a changed branch identity; fresh
 base/CI/review gates still apply. Historical audit outcomes are not erased.
+
+The complete production lane also delivered PR #306: a commit-bound independent
+`COMMENT` review, successful required CI, confirmed squash merge and verified
+closure/integrated labeling of issue #303. PR #305 remained blocked rather than
+claiming skipped live-input verification as success.
+
+A second live API check found that PR `base.sha` was a stale snapshot while the
+default branch had advanced. The controller now validates and pins the actual
+`git/ref/heads/<default>` commit in provenance, review/cache keys and ancestry
+checks; moving that live ref invalidates pre-merge decisions. Expected advancement
+from the controller's own confirmed merge does not invalidate resolved-task
+closure. Client-side REST checks are not an atomic expected-base lease; GitHub's
+server branch protections remain authoritative for later concurrent changes.
 
 A production PR still needs its own real review and required CI. Unknown private
 comparison evidence remains unknown; a reviewer must block rather than assume
