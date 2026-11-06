@@ -1,0 +1,29 @@
+{
+  "accepted_rows": 37477,
+  "donor_sha256": "d6175cb6d1f1122ce4c5ba03088888f9750b5c9b484c7d73274d0badfa3e8167",
+  "implemented_functions_imported": 0,
+  "input_table_sha256": "5c5f06342bf15f4c9d85d1910637401fb4874824ee9c175dc49c870e223a36bf",
+  "notes": [
+    "Source/object attribution remains INFERRED, not a recovered original object.",
+    "Unique mangled-name transfer is a research hint, not behavioural or byte equivalence.",
+    "Code candidates, if any, require separate provenance, licensing and build review.",
+    "No donor scripts, source comments, assembly, assets or executable binaries are imported."
+  ],
+  "original_bytes_imported": 0,
+  "primary_sha256": "84075223e7e7f833ebba98a46756ce4619fb909663cd0b961e440cc048abbaaf",
+  "reference_only": true,
+  "schema": "nova3-donor-layout/1",
+  "source_audit": {
+    "code_candidates": 0,
+    "comment_only_files": 2027
+  },
+  "source_hints": 2012,
+  "validation": {
+    "donor_symbol_mismatch": 20,
+    "input_rows": 38422,
+    "invalid_rows": 925,
+    "primary_ambiguous": 48,
+    "primary_not_found": 544,
+    "primary_unique_mangled_name": 36885
+  }
+}

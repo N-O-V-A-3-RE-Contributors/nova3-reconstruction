@@ -77,7 +77,10 @@ def load_grant(folder: pathlib.Path) -> dict | None:
         'actor': data.get('actor'),
         'actor_id': data.get('actor_id'),
         'enabled': data.get('enabled') is True,
-        'auto_merge': data.get('auto_merge', True) is not False,
+        'auto_merge': data.get('auto_merge', True) is True,
+        'source_first': data.get('source_first', True) is not False,
+        'delivery_version': 'acceptance-gated/1',
+        'require_worker_version': data.get('require_worker_version', 'acceptance-gated/1'),
         'enabled_at': data.get('enabled_at') or data.get('created_at'),
         'policy': data.get('policy') or
                   'planner proposals only; safe source paths only; normal approval record; '
@@ -146,6 +149,15 @@ def select_candidates(issues: list[dict], grant: dict, *,
             continue
         if any(label.startswith('nova:approved:') for label in labels):
             continue
+        if grant.get('source_first'):
+            from .review import allowed_paths
+            paths = allowed_paths(body)
+            production = [path for path in paths if path.startswith('reconstruction/')
+                          and not any(part in ('tests', 'test', 'docs', 'fixtures') for part in pathlib.PurePosixPath(path).parts)
+                          and pathlib.PurePosixPath(path).suffix.lower() in ('.cpp', '.c', '.cc', '.h', '.hpp', '.java', '.kt', '.py', '.rs')]
+            if not production:
+                refused.append((number, 'source_first_requires_game_implementation'))
+                continue
         blockers = autoadmit.safety_blockers(issue)
         if blockers:
             refused.append((number, ','.join(blockers)))
@@ -232,74 +244,137 @@ def _checks_for(repo: str, sha: str) -> dict:
 
 
 def merge_validated(repo: str, folder: pathlib.Path, *, now: int | None = None,
-                    max_this_run: int = 2, merge_method: str = 'merge',
+                    max_this_run: int = 2, merge_method: str = 'squash',
                     deadline_s: float | None = None) -> dict:
-    """Merge PRs that pass the read-only reviewer and have green checks.
+    """Advance drafts through bounded acceptance/repair and controlled delivery.
 
-    Every decision (merge or refusal) is appended to ``merge-audit.jsonl`` so the
-    owner can reconstruct why a PR did or did not land.
+    Squash uses a non-closing commit message so only explicit verified issue
+    finalization can close the task. No branch deletion or history rewrite is requested.
+    Every decision is appended to the private merge audit.
     """
-    from . import review as review_mod
+    if merge_method != 'squash':
+        return {'merged': [], 'refused': [{'pr': None, 'why': 'controlled_squash_required'}]}
+    from . import delivery
+    from .delivery_backend import RuntimeBackend
+    import fcntl
     now = int(time.time()) if now is None else int(now)
     started = time.monotonic()
     folder = pathlib.Path(folder)
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Only ready PRs can merge, and GitHub lists newest first. Asking for ready
-    # PRs directly means each pass reaches fresh candidates instead of re-reviewing
-    # the same full-page of drafts that will be refused anyway.
-    pulls = autoadmit._api(f'repos/{repo}/pulls?state=open&per_page=100')
-    others = [pr for pr in pulls if pr.get('draft')]
-    # Oldest first: the backlog drains in the order it was created, and the
-    # per-run merge cap is spent on PRs that have waited longest.
-    pulls = sorted((pr for pr in pulls if not pr.get('draft')),
-                   key=lambda pr: int(pr.get('number') or 0))
-    merged, refused = [], []
-    for pr in pulls:
-        # A long queue must not get the unit killed mid-review: stop cleanly and
-        # leave the rest to the next tick, which resumes from the same list.
-        if deadline_s is not None and time.monotonic() - started > deadline_s:
-            refused.append({'pr': int(pr['number']), 'why': 'deferred_deadline'})
-            continue
-        number = int(pr['number'])
-        head = (pr.get('head') or {}).get('sha') or ''
+    merged, refused, outcomes = [], [], []
+    # CLI, slash commands and the timer share the same serialized delivery lane.
+    # No second reviewer/repair session may race a live attempt for the same PR.
+    with (folder / 'delivery.lock').open('a') as lock:
         try:
-            verdict = review_mod.review(repo, number)
-            checks = _checks_for(repo, head) if head else {'runs': [], 'combined': None}
-        except Exception as error:      # network/CLI failure: never merge blind
-            refused.append({'pr': number, 'why': f'review_error:{str(error)[:120]}'})
-            continue
-        ok, why = merge_decision(pr, checks, verdict, auto_merge=True)
-        record = {'at': now, 'pr': number, 'head': head, 'merge': ok, 'why': why,
-                  'review': verdict.get('verdict'), 'checks': checks.get('combined'),
-                  'mode': 'autopilot'}
-        audit = folder / MERGE_AUDIT
-        with audit.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(record, sort_keys=True) + '\n')
-        audit.chmod(0o600)
-        if not ok:
-            refused.append({'pr': number, 'why': why})
-            continue
-        if len(merged) >= max_this_run:
-            refused.append({'pr': number, 'why': 'merge_cap_this_run'})
-            continue
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return {'merged': [], 'refused': [{'pr': None, 'why': 'delivery_busy'}]}
+        def authorized():
+            current = load_grant(folder)
+            return bool(grant_live(current) and current.get('repo') == repo and current.get('auto_merge'))
+        def authorize_write():
+            current = load_grant(folder)
+            if not authorized():
+                raise RuntimeError('Owner delivery authority is off or belongs to another repository')
+            actor = autoadmit._api('user')
+            if actor.get('id') != current.get('actor_id') or str(actor.get('login', '')).casefold() != str(current.get('actor', '')).casefold():
+                raise RuntimeError('Authenticated actor differs from owner delivery grant')
+            role = autoadmit._api(f'repos/{repo}/collaborators/{actor["login"]}/permission')
+            if role.get('permission') != 'admin' and role.get('role_name') != 'admin':
+                raise RuntimeError('Delivery actor no longer has repository admin authority')
+            latest = load_grant(folder)
+            if (not grant_live(latest) or latest.get('repo') != repo or not latest.get('auto_merge')
+                    or latest.get('actor_id') != actor.get('id')
+                    or str(latest.get('actor', '')).casefold() != str(actor.get('login', '')).casefold()):
+                raise RuntimeError('Owner delivery authority was revoked or replaced')
+        def authorized_api(path, *, method='GET', payload=None):
+            if method.upper() != 'GET':
+                authorize_write()
+            return autoadmit._api(path, method=method, payload=payload)
+        backend = RuntimeBackend(pathlib.Path(__file__).resolve().parents[1], folder,
+                                 api=authorized_api, authorized=authorized, authorize_write=authorize_write)
+        pulls = autoadmit._api(f'repos/{repo}/pulls?state=open&per_page=100')
+        pulls = sorted(pulls, key=lambda pr: int(pr.get('number') or 0))
+        cursor_file = folder / 'delivery-cursor.json'
         try:
-            result = autoadmit._api(
-                f'repos/{repo}/pulls/{number}/merge', method='PUT',
-                payload={'merge_method': merge_method, 'sha': head})
-        except Exception as error:
-            refused.append({'pr': number, 'why': f'merge_error:{str(error)[:120]}'})
-            continue
-        merged.append({'pr': number, 'sha': (result or {}).get('sha') or head,
-                       'title': pr.get('title') or ''})
-    # Drafts were never candidates; report them as one line, not 30 entries.
-    if others:
-        refused.append({'pr': 'drafts', 'why': f'{len(others)}_draft_prs_not_mergeable'})
-    return {'merged': merged, 'refused': refused}
+            cursor = int(json.loads(cursor_file.read_text()).get('last_pr', 0))
+        except (OSError, ValueError, AttributeError):
+            cursor = 0
+        pulls = [pr for pr in pulls if int(pr['number']) > cursor] + [pr for pr in pulls if int(pr['number']) <= cursor]
+        def progress_priority(pr):
+            try:
+                file = folder / 'delivery' / (delivery._digest([repo, int(pr['number'])]) + '.json')
+                last = json.loads(file.read_text()).get('last') or {}
+                if (last.get('state') in ('repaired', 'updating_base', 'waiting_ci', 'merged_issue_open')
+                        and (last.get('state') in ('waiting_ci', 'merged_issue_open')
+                             or last.get('head') != (pr.get('head') or {}).get('sha'))):
+                    return 0
+            except (OSError, ValueError, AttributeError):
+                pass
+            return 1
+        pulls.sort(key=progress_priority)  # stable: cursor fairness within each lane
+        for pr in pulls:
+            if len(merged) >= max_this_run:
+                break
+            if deadline_s is not None and time.monotonic() - started >= deadline_s:
+                refused.append({'pr': int(pr['number']), 'why': 'deferred_deadline'})
+                break
+            number = int(pr['number'])
+            result = delivery.process_pr(repo, number, folder, api=authorized_api,
+                                         reviewer=backend.reviewer, repairer=backend.repairer,
+                                         max_repairs=2)
+            outcomes.append(result)
+            from .model_agents import private_json
+            private_json(cursor_file, {'last_pr': number})
+            with (folder / MERGE_AUDIT).open('a') as handle:
+                handle.write(json.dumps(dict(result, at=now, mode='acceptance_delivery'), sort_keys=True) + '\n')
+            (folder / MERGE_AUDIT).chmod(0o600)
+            if result['state'] == 'delivered':
+                merged.append({'pr': number, 'sha': result.get('head'),
+                               'title': pr.get('title') or ''})
+            else:
+                refused.append({'pr': number, 'why': result['reason'], 'state': result['state']})
+            # One PR involving model work per timer pass (at most one fresh
+            # reviewer + one repair). Cached/static refusals need no model.
+            if backend.sessions_started or result['state'] == 'updating_base':
+                break
+    return {'merged': merged, 'refused': refused, 'delivery': outcomes}
 
 
 # ---------------------------------------------------------------------------
 # One background pass
 # ---------------------------------------------------------------------------
+
+def worker_orchestration_ready(repo: str, version: str = 'acceptance-gated/1') -> bool:
+    """An old running daemon cannot attest that newly written code is loaded."""
+    try:
+        from . import worker
+        paths = worker.slot_paths(worker.state_root(repo), 'dsh')
+        state = json.loads((pathlib.Path(paths.state) / 'supervisor.json').read_text())
+        cap = state.get('orchestration') or {}
+        pid = state.get('supervisor_pid')
+        if type(pid) is not int or pid <= 0 or cap.get('pid') != pid or cap.get('version') != version:
+            return False
+        ticks = pathlib.Path(f'/proc/{pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+        return str(cap.get('process_start_ticks')) == ticks
+    except (OSError, ValueError, TypeError, IndexError, AttributeError):
+        return False
+
+
+def delivery_summary(folder: pathlib.Path) -> dict:
+    counts, recent = {}, []
+    for file in sorted((pathlib.Path(folder) / 'delivery').glob('*.json'),
+                       key=lambda p: p.stat().st_mtime, reverse=True)[:100]:
+        try:
+            last = json.loads(file.read_text()).get('last') or {}
+            state = str(last.get('state') or 'unknown')
+            counts[state] = counts.get(state, 0) + 1
+            if len(recent) < 5:
+                recent.append({key: last.get(key) for key in ('pr', 'state', 'reason')})
+        except (OSError, ValueError, AttributeError):
+            counts['unreadable'] = counts.get('unreadable', 0) + 1
+    return {'counts': counts, 'recent': recent}
+
 
 def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
          max_this_run: int = 2, merge: bool | None = None,
@@ -311,6 +386,8 @@ def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
     if not grant_live(grant, now=now):
         return {'schema': SCHEMA, 'state': 'disabled' if not grant else 'off',
                 'approved': [], 'merged': []}
+    if grant.get('repo') != repo:
+        return {'schema': SCHEMA, 'state': 'wrong_repository', 'approved': [], 'merged': []}
     paused = credit_paused(repo)
     if paused is not None:
         # Temporary: the switch stays on and the next tick checks credit again.
@@ -319,11 +396,26 @@ def tick(repo: str, folder: pathlib.Path, *, now: int | None = None,
     issues = autoadmit._api(f'repos/{repo}/issues?state=open&per_page=100')
     accepted, refused = select_candidates(issues, grant, now=now)
     approved = []
-    if not approve_new:
-        # Merge-only pass: proposals stay unapproved for the owner.
+    runtime_ready = worker_orchestration_ready(repo, grant.get('require_worker_version', 'acceptance-gated/1'))
+    if not approve_new or not runtime_ready:
+        # Delivery can run in this fresh timer process. Don't feed new tasks to
+        # an old daemon that has not loaded bounded children/planning controls.
+        if accepted and not runtime_ready:
+            refused += [(item['number'], 'worker_restart_required') for item in accepted]
         accepted = []
     for issue in accepted[:max_this_run]:
-        record = approve_proposal(repo=repo, issue=issue, grant=grant, folder=folder,
+        current_grant = load_grant(folder)
+        if not grant_live(current_grant) or current_grant.get('repo') != repo:
+            refused.append((issue['number'], 'approval_authority_revoked'))
+            break
+        actor = autoadmit._api('user')
+        permission = autoadmit._api(f'repos/{repo}/collaborators/{actor["login"]}/permission')
+        if (actor.get('id') != current_grant.get('actor_id')
+                or str(actor.get('login', '')).casefold() != str(current_grant.get('actor', '')).casefold()
+                or (permission.get('permission') != 'admin' and permission.get('role_name') != 'admin')):
+            refused.append((issue['number'], 'approval_actor_not_authorized'))
+            continue
+        record = approve_proposal(repo=repo, issue=issue, grant=current_grant, folder=folder,
                          post_comment=lambda n, b: autoadmit._api(
                              f'repos/{repo}/issues/{n}/comments', method='POST',
                              payload={'body': b}),
@@ -351,6 +443,8 @@ def enable(repo: str, folder: pathlib.Path, *, actor: str, actor_id: int,
     now = int(time.time()) if now is None else int(now)
     grant = {'schema': SCHEMA, 'repo': repo, 'actor': actor, 'actor_id': int(actor_id),
              'enabled': True, 'enabled_at': now, 'auto_merge': bool(auto_merge),
+             'source_first': True, 'delivery_version': 'acceptance-gated/1',
+             'require_worker_version': 'acceptance-gated/1',
              'policy': 'planner proposals only; safe source paths only; normal approval '
                        'record; merge only reviewed PRs with green checks'}
     save_grant(folder, grant)
@@ -392,7 +486,9 @@ def state(repo: str, folder: pathlib.Path | None = None, *, now: int | None = No
         mode = 'on'
     return {'schema': SCHEMA, 'mode': mode, 'enabled': grant_live(grant, now=now),
             'auto_merge': bool(grant.get('auto_merge', True)) if grant else False,
-            'grant': grant, 'paused': paused, 'path': str(folder / GRANT)}
+            'grant': grant, 'paused': paused, 'path': str(folder / GRANT),
+            'worker_runtime_ready': worker_orchestration_ready(repo),
+            'delivery': delivery_summary(folder)}
 
 
 def main(argv: list[str] | None = None) -> int:
