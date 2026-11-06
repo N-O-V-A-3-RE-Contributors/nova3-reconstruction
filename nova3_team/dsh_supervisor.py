@@ -61,6 +61,27 @@ STATUSES = frozenset({
 })
 
 
+def runtime_capability() -> dict | None:
+    """Identify this newly loaded controller, not an older daemon sharing its PID.
+
+    Linux stat's command field can contain spaces and parentheses. Split at its
+    final closing parenthesis; starttime is field 22 (offset 19 after field 2).
+    Unsupported or malformed procfs fails closed and clears stale capability.
+    """
+    try:
+        raw = pathlib.Path('/proc/self/stat').read_text(encoding='utf-8')
+        identity, fields = raw.rsplit(')', 1)
+        pid = os.getpid()
+        if int(identity.split('(', 1)[0].strip()) != pid:
+            return None
+        start = fields.split()[19]
+        if not start.isascii() or not start.isdecimal() or int(start) <= 0:
+            return None
+    except (OSError, ValueError, IndexError):
+        return None
+    return {'version': 'acceptance-gated/1', 'pid': pid, 'process_start_ticks': start}
+
+
 class SupervisorExit(RuntimeError):
     """A deliberate, recorded stop (never a silent restart loop)."""
 
@@ -231,6 +252,7 @@ class DshSupervisor:
                                    'key_ref')},
                         overlay=str(overlay), project=str(self.project),
                         supervisor_pid=os.getpid(),
+                        orchestration=runtime_capability(),
                         supervisor_started_unix=int(time.time()),
                         budget=dsh_policy.Budget.from_env().as_dict())
         _log('DSH supervisor: repo=%s account=%s slot=%s profile=%s route=%s model=%s dsh=%s'
@@ -345,8 +367,13 @@ class DshSupervisor:
         Routing every session through _run_with_failover keeps one policy for
         the planner and for engineering work alike.
         """
-        return self._run_with_failover(prompt, cwd=pathlib.Path(cwd),
-                                       log_path=pathlib.Path(log_path), timeout_s=timeout_s)
+        from .task_agents import run_with_collaborators
+        return run_with_collaborators(
+            prompt, cwd=pathlib.Path(cwd), log_path=pathlib.Path(log_path), timeout_s=timeout_s,
+            run_primary=lambda text, budget: self._run_with_failover(
+                text, cwd=pathlib.Path(cwd), log_path=pathlib.Path(log_path), timeout_s=budget),
+            base_endpoint=self.endpoint, task=self.state.load().get('task') or {},
+            ledger_append=self._ledger_append, cancel=lambda: bool(self.stop_signal))
 
     def _consume_resume_consent(self) -> bool:
         """One-shot: true if the next session may exceed the hourly cap.
@@ -432,7 +459,7 @@ class DshSupervisor:
                         self.state.save(state=dsh_policy.RUNNING, reason='queue replenished')
                         continue
                     if next_check > time.time():
-                        self._wait(next_check - time.time(),
+                        self._wait(min(self.poll, next_check - time.time()),
                                    f'{current}: {state.get("reason", "")}')
                         continue
                 if current == dsh_policy.COMPLETE:
@@ -571,7 +598,8 @@ class DshSupervisor:
         queued one) and BACKOFF (a human may have queued work while the
         provider was failing). One cheap list call per wait cycle.
         """
-        if not state.get('proposed') and state.get('state') != dsh_policy.BACKOFF:
+        if (not state.get('proposed') and not state.get('planner')
+                and state.get('state') != dsh_policy.BACKOFF):
             return None
         try:
             runnable = [i for i in self._issues()
@@ -954,11 +982,13 @@ class DshSupervisor:
 
     # -- planning ------------------------------------------------------------
     def plan(self) -> None:
-        if not self._session_allowed('planner'):
-            return
-        _log('queue is at the low-water mark; running a bounded planning pass')
         issues = self._issues()
         assessment = self._assessment()
+        if assessment.proposal_suppressed:
+            self.state.save(state=dsh_policy.WAITING_APPROVAL,
+                            reason='planner proposals awaiting owner decision',
+                            next_check_unix=int(time.time()) + self.poll)
+            return
         existing = dsh_planner.issue_texts(
             [i for i in issues if (i.get('state') or 'open') == 'open']) + \
             dsh_planner.issue_texts([i for i in issues if (i.get('state') or '') == 'closed'][-40:])
@@ -981,24 +1011,60 @@ class DshSupervisor:
             overrides = overrides_file.read_text(encoding='utf-8') if overrides_file.is_file() else ''
         except OSError:
             overrides = ''
+        try:
+            priorities = (self.project / 'docs/progress/NEXT.md').read_text(encoding='utf-8')
+        except OSError:
+            priorities = ''
+        task_states = []
+        for path in (self.paths.state / '.nova-state').glob('*.json'):
+            try:
+                checkpoint = json.loads(path.read_text(encoding='utf-8'))
+                task_states.append({'checkpoint': path.name, **{k: checkpoint.get(k) for k in
+                                    ('issue', 'phase', 'verified', 'failure_code', 'dsh_status',
+                                     'head_sha', 'commit')}})
+            except (OSError, ValueError, AttributeError):
+                continue
+        key = dsh_planner.planning_fingerprint(
+            project=self.project, issues=issues, priorities=priorities, guidance=overrides,
+            task_states=task_states, rejected=rejected)
+        previous = self.state.load().get('planner') or {}
+        if previous.get('outcome') == 'failure' and previous.get('retry_after', 0) > time.time():
+            self.state.save(state=dsh_policy.RUNNING, reason='planner failure cooldown')
+            return
+        if previous.get('fingerprint') == key and previous.get('outcome') == 'no_proposals':
+            self.state.save(state=dsh_policy.RUNNING,
+                            reason='planner unchanged inputs; no acceptable proposals')
+            return
+        if not self._session_allowed('planner'):
+            return
         prompt = dsh_planner.planner_prompt(
             assessment, existing=existing, rejected=rejected,
-            next_md_excerpt=_head(self.project / 'docs/progress/NEXT.md'), overrides=overrides)
+            next_md_excerpt=priorities, overrides=overrides)
         log_path = self.paths.logs / f'planner-{time.strftime("%Y%m%d-%H%M%S")}.log'
         self._presence('PLANNING')
         _log(f'planner session started ({plan_timeout_s()}s bound, log {log_path.name})')
-        outcome = self._run_with_failover(prompt, cwd=self.project, log_path=log_path,
-                                          timeout_s=plan_timeout_s())
+        try:
+            outcome = self._run_with_failover(prompt, cwd=self.project, log_path=log_path,
+                                              timeout_s=plan_timeout_s())
+        except Exception as exc:
+            outcome = dsh_runtime.SessionOutcome(
+                status=dsh_runtime.EXECUTION_ERROR, exit_code=None, session_id=None,
+                turn_reason=None, error_code='PLANNER_SESSION_ERROR',
+                error_message=_redact(exc)[:400], steps=0, tool_calls=0, elapsed_s=0)
         _log(f'planner session finished: {outcome.status} in {int(outcome.elapsed_s)}s')
         self.ledger.append({'task': 'planner', 'status': outcome.status,
                             'error_code': outcome.error_code,
                             'input_tokens': outcome.input_tokens,
                             'output_tokens': outcome.output_tokens})
         if outcome.status != dsh_runtime.COMPLETED:
+            failures = int(previous.get('failures') or 0) + 1
+            retry_after = int(time.time()) + min(3600, 300 * 2 ** min(failures - 1, 4))
+            self.state.save(planner={'fingerprint': key, 'outcome': 'failure',
+                                    'failures': failures, 'retry_after': retry_after})
             decision = dsh_policy.decide(
                 outcome, self.ledger,
                 dsh_policy.Context(task='planner', budget=dsh_policy.Budget.from_env(),
-                                   consecutive_same_failure=1,
+                                   consecutive_same_failure=failures,
                                    control_dir=self.paths.state / 'control'))
             _log(f'planner session {outcome.status} -> {decision.state} ({decision.reason})')
             # Budget exhaustion is not a planning verdict: whatever the human was
@@ -1013,7 +1079,7 @@ class DshSupervisor:
             else:
                 state, reason, delay = decision.state, f'planner: {decision.reason}', decision.delay_s
             self.state.save(state=state, reason=reason,
-                            next_check_unix=int(time.time()) + delay,
+                            next_check_unix=max(int(time.time()) + delay, retry_after),
                             last_outcome=outcome.summary())
             if decision.request:
                 self._request(**{**decision.request, 'task': 'planner'})
@@ -1026,40 +1092,26 @@ class DshSupervisor:
         for title, reason in bad:
             _log(f'planner rejected a proposal ({reason}): {title}')
         self._presence('ONLINE')
-        operator_resume = bool(self.state.load().get('resume_requested'))
-        if not proposals:
-            working = _working(issues)
-            complete = assessment.queue.runnable == 0 and not working and not operator_resume
-            _log('planner produced no acceptable new task; '
-                 + ('nothing remains queued' if complete else
-                    f'{len(working)} task(s) still in flight elsewhere'))
-            if complete and not self._project_goal_met():
-                # An empty queue and an exhausted planner are NOT completion of
-                # a whole-game source reconstruction. The project is
-                # EVIDENCE_NEEDED until the acceptance criteria in
-                # _project_goal_met() pass in this checkout.
-                _log('nothing queued and nothing plannable, but project acceptance is not met; '
-                     'entering EVIDENCE_NEEDED (human decision required)')
-                self.state.save(state=dsh_policy.WAITING_APPROVAL, complete_settles=0,
-                                reason='evidence needed: project acceptance criteria not met')
-                self._request('evidence',
-                              'the queue is empty, the planner found no honest new task, and the '
-                              'project acceptance criteria are not met',
-                              'Run the discovery timer for new function evidence, approve one of '
-                              'the open planner proposals, or narrow a blocked task. The '
-                              'supervisor is idle and safe; it resumes as soon as work appears.',
-                              'No work is guessed to fill the queue and no completion is claimed.',
-                              task='planner')
-                return
-            self.state.save(state=dsh_policy.COMPLETE if complete else dsh_policy.RUNNING,
-                            reason='planner: no honest task derived from evidence',
-                            complete_settles=0 if not complete else None)
-            if complete:
-                self._request('evidence', 'the planner found no honest, non-duplicate task',
-                              'Run the discovery timer for new evidence, or narrow a blocked '
-                              'task. The supervisor resumes as soon as evidence exists.',
-                              'Autonomous progress is paused until then.', task='planner')
+        if any(title == 'parse' for title, _ in bad):
+            failures = int(previous.get('failures') or 0) + 1
+            self.state.save(state=dsh_policy.RUNNING, reason='planner invalid response; cooldown',
+                            planner={'fingerprint': key, 'outcome': 'failure',
+                                     'failures': failures, 'retry_after': int(time.time())
+                                     + min(3600, 300 * 2 ** min(failures - 1, 4))})
             return
+        if not proposals:
+            # A valid empty/rejected/duplicate plan is evidence exhaustion, not
+            # provider failure and never proof of project completion.
+            working = _working(issues)
+            self.state.save(state=dsh_policy.RUNNING, complete_settles=0,
+                            reason=('planner: pending review/work' if working else
+                                    'planner: evidence needed; no acceptable proposal'),
+                            planner={'fingerprint': key, 'outcome': 'no_proposals',
+                                     'failures': 0, 'retry_after': 0})
+            _log('planner produced no acceptable proposal; unchanged inputs will be skipped')
+            return
+        self.state.save(planner={'fingerprint': key, 'outcome': 'proposals',
+                                 'failures': 0, 'retry_after': 0})
         numbers = []
         for proposal in proposals:
             try:
@@ -1068,10 +1120,13 @@ class DshSupervisor:
                 _log(f'filed planner proposal #{created.get("number")}: {proposal.title}')
             except Exception as exc:
                 _log(f'could not file proposal: {_redact(exc)[:200]}')
-                self.state.save(rejected_proposals=(rejected + [proposal.key])[-50:])
         if not numbers:
+            retry_after = int(time.time()) + 600
             self.state.save(state=dsh_policy.BACKOFF, reason='proposal filing failed',
-                            next_check_unix=int(time.time()) + 600)
+                            next_check_unix=retry_after,
+                            planner={'fingerprint': key, 'outcome': 'failure',
+                                     'failures': int(previous.get('failures') or 0) + 1,
+                                     'retry_after': retry_after})
             return
         self.state.save(proposed=numbers, state=dsh_policy.WAITING_APPROVAL,
                         reason='planner proposals await owner approval into the queue',
