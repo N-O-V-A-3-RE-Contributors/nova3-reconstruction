@@ -30,7 +30,10 @@ import hashlib
 import json
 import pathlib
 import re
+import subprocess
 import time
+
+from .common import lease_get, lease_put
 from dataclasses import dataclass, field
 
 QUEUE_LOW_WATERMARK = 2         # plan ahead below this many runnable tasks
@@ -431,6 +434,13 @@ Hard rules (from AGENTS.md and docs/NOVA_TEAM.md):
   can check, plus the evidence it is based on.
 - Do not repeat any task listed under EXISTING OR REJECTED WORK (semantically
   or by wording). If a previous approach failed, propose a *different* approach.
+- SOURCE FIRST: follow CURRENT PRIORITIES in NEXT.md and live OPERATOR GUIDANCE
+  within the hard rules. Advance concrete independently compilable C++ game
+  source recovery, not generic infrastructure/testing activity as a substitute.
+  Standalone generic infrastructure or test-only tasks are not acceptable;
+  allow a concrete necessary blocker only when tied to the next source milestone
+  with evidence and explicit unblock acceptance. Tests of recovered source belong
+  with the source task. Existing review/repair work takes priority over new work.
 - Prefer one file and one test over broad refactors; the machine is a 4-core
   Celeron with ~8 GiB RAM.
 """
@@ -451,6 +461,42 @@ def planner_prompt(assessment: Assessment, *, existing: list, rejected: list,
           '"allowed_paths": [str, ...], "verify": [str, ...], "priority": int}\n'
         + 'Return [] if no honest task can be derived from the evidence.\n'
     )
+
+
+def planning_fingerprint(*, project: pathlib.Path, issues, priorities: str,
+                         guidance: str, task_states=(), rejected=()) -> str:
+    """Hash planning inputs, never poll/spend/heartbeat bookkeeping.
+
+    Lease ownership matters, but renewed expiry/token values do not. Explicit
+    field selection keeps GitHub updated_at/comment counts out of the key.
+    """
+    try:
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=project,
+                              capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        head = ''
+    try:
+        ledger = hashlib.sha256((project / 'coordination/function_ledger.json').read_bytes()).hexdigest()
+    except OSError:
+        ledger = ''
+    stable_issues = []
+    for issue in issues:
+        lease = lease_get(issue.get('body')) or {}
+        stable_issues.append({
+            'number': issue.get('number'), 'state': issue.get('state') or 'open',
+            'title': issue.get('title'), 'body': lease_put(issue.get('body'), None),
+            'labels': sorted(_labels(issue)), 'lease_owner': lease.get('owner'),
+            'head': {k: (issue.get('head') or {}).get(k) for k in ('sha', 'ref')},
+            'base': {k: (issue.get('base') or {}).get(k) for k in ('sha', 'ref')},
+            'pull_request': bool(issue.get('pull_request')),
+            'draft': issue.get('draft'), 'merged': issue.get('merged'),
+        })
+    payload = {'version': 1, 'head': head, 'ledger': ledger,
+               'priorities': priorities, 'guidance': guidance,
+               'issues': sorted(stable_issues, key=lambda i: str(i['number'])),
+               'tasks': sorted(task_states, key=lambda t: str(t.get('checkpoint', t.get('issue')))),
+               'rejected': sorted(rejected)}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def issue_texts(issues) -> list:
