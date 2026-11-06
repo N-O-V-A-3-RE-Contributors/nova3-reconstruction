@@ -1106,18 +1106,20 @@ def work_claimed(gh,upstream,user,issue,provider,root,rounds,binary_root,token,
             if prs:
                 pr=prs[0]['url']
             else:
-                desc=f'Closes #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL (draft PR)"}. Independently verify in CI. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
+                desc=f'Related to #{n}\n\nAutomated contribution. AI provider: {provider}. Local checks: {"PASS" if verified else "FAIL"}. Acceptance status: PENDING INDEPENDENT REVIEW; this is a draft submission, not completed delivery. CI and substantive review of the exact head must pass before ready/merge. Byte matching is NOT claimed without reproducible evidence.\n\nLast local verification: {checklog[-800:]}'
                 args=['gh','pr','create','--repo',upstream,'--head',head,
                       '--base','main','--title',f'#{n}: {issue["title"]}','--body',desc]
-                if not verified:args.append('--draft')
+                # Passing tests never authorizes an implementer to mark its own
+                # PR ready. The independent acceptance/delivery lane owns that.
+                args.append('--draft')
                 pr=run(args,cwd=work,timeout=120).stdout.strip()
             recovery.update(root,n,phase='pr_created',pr=pr,retry_after=0,pr_failures=0,
                             failure_count=0,failure_key='',failure_code='')
         current=recovery.load(root,n)
         if current.get('phase')=='pr_created':
             gh.comment(n,f'/nova submitted {token} {current["pr"]}')
-            recovery.update(root,n,phase='review')
-            note(f'PR submitted: {current["pr"]}')
+            recovery.update(root,n,phase='review',acceptance_status='pending_independent_review',delivery_status='not_delivered')
+            note(f'PR submitted for independent acceptance review (not delivered): {current["pr"]}')
             return True
         return False
     except Exception as e:

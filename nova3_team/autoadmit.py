@@ -38,6 +38,7 @@ import uuid
 from dataclasses import dataclass
 
 from . import access_policy as policy
+from .common import lease_put
 
 MARKER = 'NOVA3_AUTOADMIT_WAIVER'
 WAIVER_RE = re.compile(r'<!--\s*NOVA3_AUTOADMIT_WAIVER:\s*(\{.*?\})\s*-->', re.S)
@@ -113,6 +114,9 @@ class Waiver:
 def task_spec_sha256(issue: dict) -> str:
     """The exact digest the gate binds: id, number, title, body, created_at."""
     task = {key: issue[key] for key in ('id', 'number', 'title', 'body', 'created_at')}
+    # The claim gate binds task text without the coordinator lease/trailing
+    # whitespace. Approval publication must hash that exact same canonical text.
+    task['body'] = lease_put(task['body'], None)
     return policy.operation_digest(task)
 
 
@@ -258,6 +262,9 @@ def approval_record(*, issue: dict, waiver: Waiver, repository: dict,
     # (128 bits) is refused by the gate as invalid evidence.
     nonce = hashlib.sha256(os.urandom(32)).hexdigest()
     task = {key: issue[key] for key in ('id', 'number', 'title', 'body', 'created_at')}
+    # The claim gate binds task text without the coordinator lease/trailing
+    # whitespace. Approval publication must hash that exact same canonical text.
+    task['body'] = lease_put(task['body'], None)
     binding = {
         'version': policy.POLICY_VERSION, 'origin': policy.API_ORIGIN,
         'repository_id': int(repository['id']), 'owner_id': int(repository['owner']['id']),
