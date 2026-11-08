@@ -15,9 +15,10 @@ These tests pin that boundary with synthetic ``by_section`` dicts only:
   that mapping symbols are grouped by ``st_shndx`` and sections stay
   independent.
 
-To import the module without capstone or pyelftools, stub modules are installed
-in ``sys.modules`` (only when the real package is absent, so a present install
-is exercised as-is) and removed again afterwards.
+To import the module without capstone or pyelftools, stub modules temporarily
+replace the dependency entries in ``sys.modules`` within a scoped patch. The
+exact prior entries (including absent entries) are restored even on failure.
+Installed dependencies are deliberately not exercised by this offline test.
 
 Scope declaration: this is a metadata/control-flow contract test.  It says
 nothing about instruction windows, decoded code, or behavioural equivalence,
@@ -34,6 +35,7 @@ import os
 import subprocess
 import sys
 import types
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -50,8 +52,8 @@ SECTION_TABLE = ([0x1000, 0x1008, 0x1020], ["$a", "$t", "$a"])
 
 
 # --------------------------------------------------------------------------
-# Offline import: stub capstone / capstone.arm / elftools.elf.elffile when the
-# real packages are not installed.  Only the names the module touches at import
+# Offline import: temporarily stub capstone / capstone.arm / elftools.elf.elffile.
+# Only the names the module touches at import
 # time need to exist: capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM,
 # capstone.CS_MODE_THUMB, capstone.arm.ARM_OP_IMM, and
 # elftools.elf.elffile.ELFFile.
@@ -86,35 +88,71 @@ def _stub_modules() -> dict[str, types.ModuleType]:
     }
 
 
-_SAVED = {}
-
-
-def _install_offline_imports():
-    """Install stubs for whatever is missing; leave real packages untouched."""
-    for name, stub in _stub_modules().items():
-        if name in sys.modules:
-            continue
-        _SAVED[name] = True
-        sys.modules[name] = stub
-
-
-def _remove_stubs():
+@contextmanager
+def _offline_imports():
+    """Restore exact dependency identities in finally, without importing them."""
     stubs = _stub_modules()
-    for name in stubs:
-        if _SAVED.get(name) and sys.modules.get(name) is stubs[name]:
-            del sys.modules[name]
-    _SAVED.clear()
+    with pytest.MonkeyPatch.context() as patch:
+        for name, stub in stubs.items():
+            patch.setitem(sys.modules, name, stub)
+        yield stubs
 
 
-_install_offline_imports()
-try:
+_MISSING = object()
+_DEPENDENCY_NAMES = tuple(_stub_modules())
+_COLLECTION_BEFORE = {
+    name: sys.modules.get(name, _MISSING) for name in _DEPENDENCY_NAMES
+}
+with _offline_imports():
     SPEC = importlib.util.spec_from_file_location(
         "source_extract_elf_mode_contract", MODULE_PATH)
     assert SPEC is not None and SPEC.loader is not None
     module = importlib.util.module_from_spec(SPEC)
     SPEC.loader.exec_module(module)
-finally:
-    _remove_stubs()
+_COLLECTION_AFTER = {
+    name: sys.modules.get(name, _MISSING) for name in _DEPENDENCY_NAMES
+}
+
+
+def test_collection_restores_dependency_module_identities():
+    # Capture immediately around actual collection, not after other test imports.
+    for name in _DEPENDENCY_NAMES:
+        assert _COLLECTION_AFTER[name] is _COLLECTION_BEFORE[name], name
+
+
+@pytest.mark.parametrize("preexisting", [False, True])
+@pytest.mark.parametrize("fail_import", [False, True])
+def test_offline_import_scope_restores_modules(monkeypatch, preexisting, fail_import):
+    prior = {}
+    for name in _DEPENDENCY_NAMES:
+        if preexisting:
+            prior[name] = types.ModuleType(name)
+            monkeypatch.setitem(sys.modules, name, prior[name])
+        else:
+            monkeypatch.delitem(sys.modules, name, raising=False)
+
+    class ImportFailure(Exception):
+        pass
+
+    def exercise_scope():
+        with _offline_imports() as stubs:
+            for name, stub in stubs.items():
+                assert sys.modules[name] is stub
+                if preexisting:
+                    assert stub is not prior[name]
+            if fail_import:
+                raise ImportFailure
+
+    if fail_import:
+        with pytest.raises(ImportFailure):
+            exercise_scope()
+    else:
+        exercise_scope()
+    for name in _DEPENDENCY_NAMES:
+        if preexisting:
+            assert sys.modules[name] is prior[name], name
+        else:
+            assert name not in sys.modules, name
 
 
 @pytest.fixture(autouse=True)
