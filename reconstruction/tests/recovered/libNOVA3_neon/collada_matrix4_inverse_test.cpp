@@ -223,6 +223,70 @@ void testGeneralAgainstOracle() {
     }
 }
 
+void testFinalCofactorsAgainstOracle() {
+    // Dense, nonsymmetric inputs: no affine last-row shortcut can hide a
+    // missing cofactor. The last case has almost proportional first two rows,
+    // so its three-product cofactors subtract much larger intermediate terms.
+    const double cases[][16] = {
+        {3.25, -1.5, 2.75, 0.625,
+         1.125, 4.5, -0.875, 2.25,
+         -2.5, 0.75, 5.125, -1.25,
+         0.875, -3.25, 1.5, 2.875},
+        {-1.75, 2.125, 0.625, 3.5,
+         4.25, -0.875, 1.5, -2.25,
+         0.375, 3.75, -2.625, 1.125,
+         2.5, -1.25, 4.125, 0.875},
+        {1.125, 2.25, 3.5, 4.75,
+         2.28125, 4.5, 7.0, 9.5,
+         3.125, 1.375, 5.25, 2.125,
+         4.25, 3.125, 2.375, 6.5}
+    };
+    // Absolute + relative elementwise tolerances; both residuals are absolute
+    // distances from identity, accumulated in double rather than float.
+    const double absoluteTolerance = 2e-5;
+    const double relativeTolerance = 2e-5;
+    const double residualTolerance = 2e-4;
+    for (const auto& values : cases) {
+        CMatrix4<float> source(CMatrix4<float>::kObservedConstructorValue2);
+        CMatrix4<float> result(CMatrix4<float>::kObservedConstructorValue2);
+        setRowMajor(source, values);
+        double roundedInput[16];
+        for (int i = 0; i < 16; ++i) {
+            roundedInput[i] = double(source.m_observedValues[i]);
+            result.m_observedValues[i] = std::numeric_limits<float>::quiet_NaN();
+        }
+        double oracle[16];
+        const bool oracleOk = invertOracle(roundedInput, oracle);
+        check(oracleOk, "final cofactors: independent oracle succeeds");
+        if (!oracleOk) continue;
+        const bool inverseOk = source.getInverse(result);
+        check(inverseOk, "final cofactors: inverse succeeds");
+        if (!inverseOk) continue;
+        for (int i = 0; i < 16; ++i) {
+            check(std::isfinite(result.m_observedValues[i]) &&
+                      std::fabs(double(result.m_observedValues[i]) - oracle[i]) <=
+                          absoluteTolerance + relativeTolerance * std::fabs(oracle[i]),
+                  "final cofactors: Gauss-Jordan agreement");
+            if (i >= 12) {
+                check(std::fabs(oracle[i]) > 1e-6,
+                      "final cofactors: all four final entries are exercised");
+            }
+            check(source.m_observedValues[i] == roundedInput[i],
+                  "final cofactors: source unchanged");
+        }
+        double left[16], right[16];
+        multiply(source.m_observedValues, result.m_observedValues, left);
+        multiply(result.m_observedValues, source.m_observedValues, right);
+        for (int i = 0; i < 16; ++i) {
+            const double expected = (i % 5 == 0) ? 1.0 : 0.0;
+            check(std::fabs(left[i] - expected) <= residualTolerance,
+                  "final cofactors: source * inverse residual");
+            check(std::fabs(right[i] - expected) <= residualTolerance,
+                  "final cofactors: inverse * source residual");
+        }
+    }
+}
+
 void testSingularWritesNothing() {
     const double values[16] = {1, 2, 3, 4,
                                2, 4, 6, 8,   // twice row 0: singular
@@ -288,6 +352,7 @@ int main() {
     testDiagonal();
     testRigidTransform();
     testGeneralAgainstOracle();
+    testFinalCofactorsAgainstOracle();
     testSingularWritesNothing();
     testToleranceConstant();
     testLargeButFinite();
