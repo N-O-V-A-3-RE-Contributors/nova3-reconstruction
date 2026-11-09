@@ -45,6 +45,13 @@ public:
     static BufferRef m_sWorkBuffer;    // .bss 0x00db9dc4, 8 B
     static BufferRef m_sMixingBuffer;  // .bss 0x00db9dcc, 8 B
 
+    // ELF VA 0x009d4828, 104 B, A32.  The signed int argument is in r0,
+    // not r1: this is static, with no receiver.  Returns the address of the
+    // work BufferRef, NOT its data pointer; never selects the mixing buffer.
+    // BufferRef* is our ABI-compatible spelling; original pointer/reference
+    // return spelling and original record type name are NOT recovered.
+    static BufferRef* GetWorkBuffer(int bytes);
+
     // ELF VA 0x009d53f4, 48 B, A32, STT_FUNC.  The parameter type comes from
     // the mangled name (_ZN3vox23DriverCallbackInterface4InitEPv); its meaning
     // is NOT recovered.
