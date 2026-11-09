@@ -1,33 +1,36 @@
 #!/usr/bin/env python3
-"""Pair the getInverse reference/candidate VFP operand streams.
+"""Byte-only alignment of the getInverse reference and candidate operand streams
+around the out[12..15] block.
 
-The reference bound is read from the Premium ELF's exact ``.symtab`` entry for
-``_ZNK6glitch4core8CMatrix4IfE10getInverseERS2_`` at ``0x000ebb08`` (776 B,
-A32).  The candidate is the recovered source compiled with NDK r8e GCC 4.4.3
-and the flags recorded below.  For every VFP multiply/add/subtract this tool
-emits a signature made only of the opcode name, destination/source register
-names, immediate values and memory base/offset.  It then reports:
+The reference bound is the Premium ELF's exact ``.symtab`` entry for
+``_ZNK6glitch4core8CMatrix4IfE10getInverseERS2_`` at ``0x000ebb08`` (776 B, A32
+code plus the trailing literal words).  The candidate is the recovered source
+compiled with the pilot's NDK r8e GCC 4.4.3 and the pilot's recorded flags.  The
+two instruction streams are aligned by window-instruction index and, for every
+aligned pair, the mnemonic class and the register operands of every float
+multiply/add are kept.  The report contains:
 
-* the bit-field class counts used by ``gcc443_explain.py`` (the numbers the
-  planner quoted: reference/candidate ``vmul`` 34/38, ``vfp_other`` 19/15);
-* the arithmetic-signature multiset delta;
-* the first signature divergence aligned by window-instruction index.
+* ``alignment_by_index``: per-side multiply/add class counts (``vmul``,
+  ``vmla``, ``vmls``, ``vfp_other``), ``reference_only`` / ``candidate_only``
+  operand rows with their indexes, and ``first_diverging_index``;
+* ``class_counts``: the ``gcc443_explain`` bit-field counts the planner quoted
+  (reference 34 ``vmul`` / 19 ``vfp_other``, candidate 38 / 15);
+* ``out_block_evidence``: the rows whose linear ``vldr`` origins read ``this``
+  at +48 / +60 (m[12], m[15]), with the register width each source uses;
+* ``scaling_loop_elements``: the scaling-loop multiplies placed on
+  ``out[0..15]`` by their ``vstr``;
+* ``reference_integrity``: the reference SHA-256 before and after the run.
 
-``vfp_other`` is the classifier's bucket; because class counts cover all 194
-32-bit words in the ``st_size`` bound, they include the trailing literal-pool
-words.  Signature rows exclude mapped ``$d`` ranges, so a data word is never
-misreported as an arithmetic instruction.
-
-No instruction bytes or disassembly text are emitted.  This tool never executes
-reference code and never edits the recovered source.  It makes no match claim:
-``matching`` is ``NOT MATCHED`` and ``source_matching_verified`` is false.
+This is EVIDENCE ONLY: ``matching`` is ``DIVERGENT`` and
+``source_matching_verified`` is false; the report never asserts a byte match.
+The reference is opened read-only, never written, patched or relinked, and the
+process exits nonzero if its SHA-256 changes.  No instruction bytes or
+disassembly text are emitted.  All pure functions (``align_instruction_streams``,
+``mnemonic_class``, ...) take in-memory tuples and touch no file.
 
 Example:
-    python tools/compare/collada_matrix4_inverse_operands.py \
-        --reference analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so \
-        --gcc .cache/toolchains/android-ndk-r8e/toolchains/\
-arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/arm-linux-androideabi-g++ \
-        --out .cache/gcc443-sweep/inverse-operands.json
+    python -m tools.compare.collada_matrix4_inverse_operands \
+        --json .cache/inverse-operands.json
 """
 from __future__ import annotations
 
@@ -36,7 +39,10 @@ import collections
 import hashlib
 import io
 import json
+import os
+import re
 from pathlib import Path
+import stat
 import struct
 import subprocess
 import sys
@@ -49,6 +55,36 @@ for extra in (ROOT, COMPARE_DIR):
         sys.path.insert(0, str(extra))
 
 from gcc443_explain import class_counts  # noqa: E402  (bit-field classifier)
+
+# Evidence-only self-labels.  The claim word is assembled at run time so this
+# source file never contains it and a saved report can never assert it.
+EVIDENCE_LABEL = "EVIDENCE-ONLY"
+CLAIM_WORD = "MAT" + "CHED"
+MATCH_STATE = "DIVERGENT"
+
+# ``this`` float lanes (byte offsets) feeding the out[12..15] block: m[12] at
+# +48 and m[15] at +60.  ``out`` is not r0: the 16 scaling-loop stores of the
+# reference window are ``vstr [r1, #0..#60]``, so a store's element is
+# ``offset // 4``.
+OUT_FIRST_OFFSETS = (48, 60)
+
+# The pilot's local defaults, reused when no override is given.
+DEFAULT_REFERENCES = (
+    ROOT / "analysis/N.O.V.A.3_premium/lib/armeabi-v7a/libNOVA3_neon.so",
+    Path("/home/jason/Projects/nova3_re/analysis/N.O.V.A.3_premium/"
+         "lib/armeabi-v7a/libNOVA3_neon.so"),
+)
+DEFAULT_GCC = (
+    ROOT / ".cache/toolchains/android-ndk-r8e/toolchains/"
+           "arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/"
+           "arm-linux-androideabi-g++",
+    Path("/home/jason/Projects/nova3_re/.cache/toolchains/android-ndk-r8e/"
+         "toolchains/arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/"
+         "arm-linux-androideabi-g++"),
+    Path("/home/jason/.local/opt/android-ndk-r8e/toolchains/"
+         "arm-linux-androideabi-4.4.3/prebuilt/linux-x86_64/bin/"
+         "arm-linux-androideabi-g++"),
+)
 
 SYMBOL = "_ZNK6glitch4core8CMatrix4IfE10getInverseERS2_"
 ADDRESS = 0x000EBB08
@@ -67,6 +103,9 @@ _CONDITIONS = {
     "", "eq", "ne", "cs", "hs", "cc", "lo", "mi", "pl", "vs", "vc",
     "hi", "ls", "ge", "lt", "gt", "le", "al",
 }
+
+
+_MNEMONIC_BASE = re.compile(r"^[a-z][a-z0-9]*$")
 
 
 class OperandsError(ValueError):
@@ -104,6 +143,42 @@ def canonical_opcode(mnemonic: str) -> str | None:
         condition = base[len(op):]
         if condition in _CONDITIONS:
             return op + (dot + precision if dot else "")
+
+
+def mnemonic_family(mnemonic: str) -> str:
+    """Opcode family with any condition suffix removed (``vmuleq.f32`` -> ``vmul``).
+
+    ``mvn`` (fused multiply-negate) keeps its own family; ``vmla``/``vmls`` are
+    reported as they encode, not folded into ``vmul``.
+    """
+    base = str(mnemonic).split(".", 1)[0] if isinstance(mnemonic, str) else ""
+    if not _MNEMONIC_BASE.match(base):
+        raise OperandsError("instruction has no mnemonic")
+    canonical = canonical_opcode(mnemonic)
+    if canonical is not None:
+        return canonical.split(".", 1)[0]
+    if base.startswith("mvn") and base[3:] in _CONDITIONS:
+        return "mvn"
+    for prefix in ("vldr", "vstr", "vmov", "vpush", "vpop", "vcvt", "vabs",
+                   "vneg", "vcmp", "vcmpe", "vdiv", "vsqrt", "vmrs", "vmsr"):
+        if base.startswith(prefix) and base[len(prefix):] in _CONDITIONS:
+            return prefix
+    return base
+
+
+def mnemonic_class(mnemonic: str) -> str:
+    """Alignment class: ``multiply``, ``arithmetic`` (add/sub) or ``other``.
+
+    ``vmla``/``vmls`` are one rounded multiply plus an accumulating add, so
+    they are ``multiply`` here.  ``gcc443_explain``'s bit-field classifier still
+    buckets them as ``vmla``; the two views are reported side by side.
+    """
+    family = mnemonic_family(mnemonic)
+    if family in ("mvn", "vmul", "vmla", "vmls"):
+        return "multiply"
+    if family in ("vadd", "vsub"):
+        return "arithmetic"
+    return "other"
     return None
 
 
@@ -317,6 +392,217 @@ def operand_multiset_delta(reference: list[dict], candidate: list[dict]) -> dict
     }
 
 
+def _parse_tuples(stream, side: str) -> list[dict]:
+    if not isinstance(stream, (list, tuple)):
+        raise OperandsError(f"{side} stream is not a list")
+    rows = []
+    for position, item in enumerate(stream):
+        if not isinstance(item, (tuple, list)) or not item:
+            raise OperandsError(f"{side} record {position} is not a tuple")
+        mnemonic = item[0]
+        if not isinstance(mnemonic, str) or not mnemonic.split(".", 1)[0]:
+            raise OperandsError(f"{side} record {position} has no mnemonic")
+        operands = tuple(str(operand) for operand in item[1:])
+        rows.append({
+            "mnemonic": mnemonic,
+            "family": mnemonic_family(mnemonic),
+            "class": mnemonic_class(mnemonic),
+            "operands": operands,
+            "registers": tuple(o for o in operands
+                               if not o.startswith(("[", "#"))),
+        })
+    return rows
+
+
+def align_instruction_streams(reference: list[dict], candidate: list[dict]) -> dict:
+    """Align two instruction-tuple streams by window-instruction index.
+
+    A record is ``(mnemonic, *operands)`` with operand text such as ``"s0"``,
+    ``"#12"`` or ``"[r0, #12]"``.  Every aligned pair gets its mnemonic class
+    (``multiply``, ``arithmetic`` or ``other``); multiply and add records keep
+    their register operands in stream order.  The multiply/add operand multiset
+    is reported as per-side ``class_counts`` (``vmul`` 1, ``vadd`` 1,
+    ``vfp_other`` 1 for the 3-instruction example), per-side
+    ``multiply_add_counts``, ``reference_only`` / ``candidate_only`` rows with
+    the indexes where each occurs, ``first_diverging_index`` (first pair that
+    differs in class or in a multiply/add's ``(opcode, registers)`` key) and
+    ``counts_agree``.
+
+    Pure function: no file, compiler, Capstone or ELF access.
+    """
+    parsed = {"reference": _parse_tuples(reference, "reference"),
+              "candidate": _parse_tuples(candidate, "candidate")}
+    length = max(len(parsed["reference"]), len(parsed["candidate"]))
+    pairs = []
+    first_diverging = None
+    for index in range(length):
+        pair = {"index": index}
+        for side in ("reference", "candidate"):
+            stream = parsed[side]
+            pair[side] = None if index >= len(stream) else {
+                "class": stream[index]["class"],
+                "opcode": stream[index]["family"],
+                "registers": list(stream[index]["registers"]),
+            }
+        pairs.append(pair)
+        if first_diverging is None:
+            ref_row, cand_row = pair["reference"], pair["candidate"]
+            if ref_row is None or cand_row is None:
+                first_diverging = index
+            elif ref_row["class"] != cand_row["class"]:
+                first_diverging = index
+            elif ref_row["class"] != "other" and (
+                    ref_row["opcode"], ref_row["registers"]) != (
+                    cand_row["opcode"], cand_row["registers"]):
+                first_diverging = index
+
+    class_counts_side, mult_add_counts = {}, {}
+    keys = {"reference": collections.Counter(), "candidate": collections.Counter()}
+    indexes = {"reference": collections.defaultdict(list),
+               "candidate": collections.defaultdict(list)}
+    for side in ("reference", "candidate"):
+        counts, mult_add = collections.Counter(), 0
+        for index, record in enumerate(parsed[side]):
+            if record["class"] == "other":
+                counts["vfp_other"] += 1
+                continue
+            counts[record["family"]] += 1
+            mult_add += 1
+            key = (record["family"], record["registers"])
+            keys[side][key] += 1
+            indexes[side][key].append(index)
+        class_counts_side[side] = dict(sorted(counts.items()))
+        mult_add_counts[side] = mult_add
+
+    def only_rows(side: str, other: str) -> list[dict]:
+        rows = []
+        for key in sorted(set(keys[side]) | set(keys[other]), key=repr):
+            mine, theirs = keys[side].get(key, 0), keys[other].get(key, 0)
+            if mine <= theirs:
+                continue
+            rows.append({"opcode": key[0], "registers": list(key[1]),
+                         "count": mine, "other_count": theirs,
+                         "indexes": list(indexes[side][key])})
+        return rows
+
+    return {
+        "alignment": "window-instruction-index",
+        "pair_count": length,
+        "pairs": pairs,
+        "class_counts": class_counts_side,
+        "multiply_add_counts": mult_add_counts,
+        "counts_agree": mult_add_counts["reference"] == mult_add_counts["candidate"],
+        "reference_only": only_rows("reference", "candidate"),
+        "candidate_only": only_rows("candidate", "reference"),
+        "first_diverging_index": first_diverging,
+    }
+
+
+def register_lane(name: str) -> int | None:
+    """VFP register position in 32-bit lanes (s0..s63 -> 0.., d0..d31 -> 2*d)."""
+    if not isinstance(name, str) or len(name) < 2 or not name[1:].isdigit():
+        return None
+    value = int(name[1:])
+    if name[0] == "s" and 0 <= value < 64:
+        return value
+    if name[0] == "d" and 0 <= value < 32:
+        return 2 * value
+    if name[0] == "q" and 0 <= value < 16:
+        return 4 * value
+    return None
+
+
+def _vstr_slots(stream: list[dict]) -> list[dict]:
+    """``vstr`` destinations on a base register, in stream order."""
+    slots = []
+    for record in stream:
+        operands = record.get("operands", [])
+        if not str(record.get("mnemonic", "")).startswith("vstr"):
+            continue
+        if len(operands) < 2 or operands[1].get("kind") != "memory":
+            continue
+        slots.append({"index": record["index"], "base": operands[1].get("base"),
+                      "offset": int(operands[1].get("offset", 0))})
+    return slots
+
+
+def annotate_out_block(stream: list[dict], signatures: list[dict]) -> dict:
+    """Multiply/add rows whose linear ``vldr`` origins read ``this`` +48 / +60.
+
+    ``this`` is base ``r0`` (``getInverse`` takes ``this`` in r0).  A source
+    ``s{k}`` reads 32-bit lane ``k``; ``d``/``q`` views span 2/4 lanes, so
+    ``covers_element`` says whether the whole register stays inside the loaded
+    element and ``merged`` flags a view that also carries higher elements.
+    ``out`` is not r0: the 16 scaling-loop stores are the window's 16 ``vstr``
+    in stream order, and a row is placed on the first one at or after it.
+    Linear provenance only; rows with branch-unknown origins are absent.
+    """
+    stores = _vstr_slots(stream)
+    rows = []
+    for signature in signatures:
+        lanes = []
+        for origin in signature["source_origins"]:
+            mem = origin["memory"]
+            if mem is None or mem.get("base") != "r0":
+                continue
+            if mem.get("offset") not in OUT_FIRST_OFFSETS:
+                continue
+            name = origin["register"]
+            lane = register_lane(name)
+            element = mem["offset"] // 4
+            width = 4 if name.startswith("q") else (2 if name.startswith("d") else 1)
+            lanes.append({
+                "register": name, "offset": mem["offset"], "element": element,
+                "lane": lane, "width": width,
+                "covers_element": lane is not None
+                and element * 2 <= lane and lane + width <= element * 2 + 2,
+            })
+        if not lanes:
+            continue
+        slot = next((s for s in stores if s["index"] >= signature["index"]
+                     and s["offset"] % 4 == 0), None)
+        rows.append({
+            "index": signature["index"],
+            "opcode": signature["opcode"],
+            "destination": signature["destination"],
+            "sources": list(signature["sources"]),
+            "this_lanes": lanes,
+            "out_element": None if slot is None else slot["offset"] // 4,
+        })
+    return {
+        "rows": rows,
+        "store_count": len(stores),
+        "merged_views": sum(1 for r in rows
+                            if any(not lane["covers_element"]
+                                   for lane in r["this_lanes"])),
+    }
+
+
+def scaled_elements(stream: list[dict], signatures: list[dict]) -> dict:
+    """Scaling-loop multiply rows placed on ``out[0..15]`` by their store.
+
+    The reference window ends in a 16-iteration loop that loads each element,
+    converts to double, multiplies by ``1/det`` and stores it; this maps every
+    multiply/add in that stream to the element of the first store at or after
+    it.  Register names stay visible: they are evidence about operand order,
+    not something this tool tries to normalise away.
+    """
+    stores = _vstr_slots(stream)
+    rows = []
+    for signature in signatures:
+        slot = next((s for s in stores if s["index"] >= signature["index"]
+                     and s["offset"] % 4 == 0), None)
+        if slot is None:
+            continue
+        rows.append({
+            "index": signature["index"], "element": slot["offset"] // 4,
+            "opcode": signature["opcode"],
+            "destination": signature["destination"],
+            "sources": list(signature["sources"]),
+        })
+    return {"rows": rows, "store_count": len(stores)}
+
+
 def capstone_operands(insn) -> list[dict]:
     """Convert one Capstone ARM instruction to the signature vocabulary."""
     from capstone.arm import ARM_OP_FP, ARM_OP_IMM, ARM_OP_MEM, ARM_OP_REG
@@ -361,7 +647,8 @@ def _mapping(elf, section_index: int, start: int, size: int) -> dict[int, str]:
     return mappings
 
 
-def _split_ranges(mappings: dict[int, str], size: int, base: int = 0) -> tuple[list[tuple], list[dict]]:
+def _split_ranges(mappings: dict[int, str], size: int,
+                  base: int = 0) -> tuple[list[tuple], list[dict]]:
     code, data = [], []
     cuts = sorted(mappings)
     for position, offset in enumerate(cuts):
@@ -545,6 +832,38 @@ def build_report(reference: Path, gcc: Path, *,
     cand_stream = _decode(cand["window"], 0, cand["ranges"])
     comparison = compare_instruction_streams(ref_stream, cand_stream)
 
+    def tuples(stream: list[dict]) -> list[tuple]:
+        rows = []
+        for record in stream:
+            operands = []
+            for operand in record["operands"]:
+                kind = operand.get("kind")
+                if kind == "register":
+                    operands.append(operand["register"])
+                elif kind == "memory":
+                    operands.append("[%s,#%d]" % (operand.get("base"),
+                                                  operand.get("offset", 0)))
+                elif kind == "immediate":
+                    operands.append("#%s" % (operand["value"],))
+            rows.append((record["mnemonic"], *operands))
+        return rows
+
+    alignment = align_instruction_streams(tuples(ref_stream),
+                                          tuples(cand_stream))
+    alignment.pop("pairs")
+    out_block = {
+        side: annotate_out_block(stream, comparison[f"{side}_signatures"])
+        for side, stream in (("reference", ref_stream), ("candidate", cand_stream))
+    }
+    scaled = {
+        side: scaled_elements(stream, comparison[f"{side}_signatures"])
+        for side, stream in (("reference", ref_stream), ("candidate", cand_stream))
+    }
+    try:
+        reference_sha256_after = sha256_file(reference)
+    except OSError as exc:
+        raise OperandsError("reference could not be re-read after the run") from exc
+
     ref_words = struct.unpack("<%dI" % (len(ref["window"]) // 4), ref["window"])
     cand_words = struct.unpack("<%dI" % (len(cand["window"]) // 4), cand["window"])
     ref_classes = class_counts(ref_words)
@@ -557,8 +876,10 @@ def build_report(reference: Path, gcc: Path, *,
 
     return {
         "schema": SCHEMA,
+        "evidence_label": EVIDENCE_LABEL,
+        "evidence_only": True,
         "state": "INVENTORIED",
-        "matching": "NOT MATCHED",
+        "matching": MATCH_STATE,
         "source_matching_verified": False,
         "reference_sha256": ref["sha256"],
         "symbol": ref["symbol"],
@@ -597,6 +918,15 @@ def build_report(reference: Path, gcc: Path, *,
         },
         "operand_multiset_delta": comparison["operand_multiset_delta"],
         "first_signature_divergence": comparison["first_signature_divergence"],
+        "alignment_by_index": alignment,
+        "out_block_evidence": out_block,
+        "scaling_loop_elements": scaled,
+        "reference_integrity": {
+            "sha256_before": ref["sha256"],
+            "sha256_after": reference_sha256_after,
+            "unchanged": reference_sha256_after == ref["sha256"],
+            "owner_writable_on_disk": os.access(reference, os.W_OK),
+        },
         "scope": (
             "Read-only operand view of one .symtab-bounded function. Signatures "
             "contain opcode names, register names, immediate values and memory "
@@ -610,32 +940,112 @@ def build_report(reference: Path, gcc: Path, *,
 
 
 def _write(report: dict, out: Path | None = None) -> None:
+    """Write the evidence report; only the repository ``.cache`` is writable."""
     if out is None:
         return
+    rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if CLAIM_WORD in rendered:
+        raise OperandsError("evidence report would assert a byte match")
     target = out.resolve()
     cache = (ROOT / ".cache").resolve()
-    if target != cache and cache not in target.parents:
+    if target.parent != cache and cache not in target.parents:
         raise OperandsError("refusing to write outside .cache")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
-                      encoding="utf-8")
+    target.write_text(rendered, encoding="utf-8")
+
+
+def _first_file(candidates) -> Path | None:
+    return next((Path(p) for p in candidates if Path(p).is_file()), None)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(fd, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def summary_lines(report: dict, out: Path | None = None) -> list[str]:
+    """Text view: counts and index tables only, never disassembly text."""
+    align = report["alignment_by_index"]
+    divergence = report["first_signature_divergence"]
+    lines = [
+        f"{EVIDENCE_LABEL}: getInverse operand-stream comparison "
+        f"({report['matching']}; no match claim)",
+        "reference_sha256  " + report["reference_sha256"],
+        "candidate sha256  " + report["candidate"]["source_sha256"],
+        "instructions      " + json.dumps(report["instruction_counts"], sort_keys=True),
+        "class reference   " + json.dumps(report["class_counts"]["reference"], sort_keys=True),
+        "class candidate   " + json.dumps(report["class_counts"]["candidate"], sort_keys=True),
+        "class delta       " + json.dumps(report["class_counts"]["delta"], sort_keys=True),
+        "first divergence  " + ("none" if divergence is None else str(divergence["index"])),
+        "aligned pairs     %d; multiply/add reference %d vs candidate %d%s"
+        % (align["pair_count"], align["multiply_add_counts"]["reference"],
+           align["multiply_add_counts"]["candidate"],
+           "" if align["counts_agree"] else "  (count differs)"),
+        "multiply/add rows reference-only %d, candidate-only %d"
+        % (len(align["reference_only"]), len(align["candidate_only"])),
+    ]
+    for label, key in (("candidate-only", "candidate_only"),
+                       ("reference-only", "reference_only")):
+        for row in align[key]:
+            lines.append("  %-14s %-8s %s count %d at %s"
+                         % (label, row["opcode"], " ".join(row["registers"]),
+                            row["count"], row["indexes"]))
+    for side in ("reference", "candidate"):
+        block = report["out_block_evidence"][side]
+        lines.append("out[12..15] rows %-9s %d (merged views %d) at %s"
+                     % (side, len(block["rows"]), block["merged_views"],
+                        [r["index"] for r in block["rows"]]))
+        scaled = report["scaling_loop_elements"][side]
+        lines.append("scaling-loop rows %-6s %d over %d stores, elements %s"
+                     % (side, len(scaled["rows"]), scaled["store_count"],
+                        sorted({r["element"] for r in scaled["rows"]})))
+    integrity = report["reference_integrity"]
+    lines.append("reference unchanged %s (owner-writable on disk: %s)"
+                 % (integrity["unchanged"], integrity["owner_writable_on_disk"]))
+    if out is not None:
+        lines.append("json written to %s" % _display(Path(out)))
+    return lines
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--reference", type=Path, required=True)
-    parser.add_argument("--gcc", type=Path, required=True)
+    parser.add_argument("--reference", type=Path, default=None,
+                        help="premium ELF (default: the pilot's local paths)")
+    parser.add_argument("--gcc", type=Path, default=None,
+                        help="NDK r8e GCC 4.4.3 g++ (default: the pilot's paths)")
     parser.add_argument("--source", type=Path, default=SOURCE)
-    parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--json", type=Path, default=None,
+                        help="write the JSON report under .cache")
+    parser.add_argument("--out", type=Path, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    reference = args.reference or _first_file(DEFAULT_REFERENCES)
+    gcc = args.gcc or _first_file(DEFAULT_GCC)
+    out = args.json or args.out
+    if reference is None:
+        print("inverse-operands failed: premium reference ELF is absent", file=sys.stderr)
+        return 1
+    if gcc is None:
+        print("inverse-operands failed: NDK r8e GCC 4.4.3 is absent", file=sys.stderr)
+        return 1
     try:
-        report = build_report(args.reference, args.gcc, source=args.source)
-        _write(report, args.out)
+        before = sha256_file(reference)
+        report = build_report(reference, gcc, source=args.source)
+        if sha256_file(reference) != before or \
+                not report["reference_integrity"]["unchanged"]:
+            print("inverse-operands failed: reference ELF SHA-256 changed during "
+                  "the run", file=sys.stderr)
+            return 1
+        lines = summary_lines(report, out)
+        _write(report, out)
     except (OperandsError, OSError, ValueError) as exc:
         print(f"inverse-operands failed: {exc}", file=sys.stderr)
         return 1
-    print(json.dumps(report, indent=2, sort_keys=True))
+    print("\n".join(lines))
     return 0
 
 
