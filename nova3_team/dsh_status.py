@@ -126,6 +126,8 @@ def _requests(path: pathlib.Path, limit: int = 6) -> list:
             record = json.loads(line)
         except ValueError:
             continue
+        if not isinstance(record, dict):
+            continue
         key = (record.get('kind'), record.get('detail'))
         if key in seen:
             continue
