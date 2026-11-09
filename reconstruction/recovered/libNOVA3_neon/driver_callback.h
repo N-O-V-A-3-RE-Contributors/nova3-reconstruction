@@ -9,7 +9,16 @@
 #ifndef NOVA3_RECOVERED_DRIVER_CALLBACK_H
 #define NOVA3_RECOVERED_DRIVER_CALLBACK_H
 
+#include <cstdint>
+
 namespace vox {
+
+// Only the shared period storage is recovered; no instance layout is implied.
+class MinibusDataGeneratorInterface {
+public:
+    // Premium .data 0x00d8c468, 4 B; signed conversion at 0x009d3af8.
+    static std::int32_t s_driverCallbackPeriod;
+};
 
 class DriverCallbackSourceInterface {
 public:
@@ -19,6 +28,12 @@ public:
     // call would have to supply one.  The Itanium mangling is identical for
     // both spellings, so this is caller-side evidence, not a name-table fact.
     static bool DetectNeon();
+
+    // Premium 0x009d3af8, 40 B, A32. The sole float arrives in r0,
+    // not r1: this is a static member under the observed softfp ABI.
+    // Multiplies by 2^14 in binary32, then truncates to signed 32 bits.
+    // Portable domain: finite input with an in-range scaled result.
+    static void SetDriverCallbackPeriod(float period);
 
     // Static objects whose existence, address and size come from the Premium
     // .symtab.  Their C++ types are INFERRED from those sizes and from the uses
