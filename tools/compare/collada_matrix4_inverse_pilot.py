@@ -33,6 +33,7 @@ SOURCE = ROOT / 'reconstruction/recovered/libNOVA3_neon/collada_matrix4_inverse.
 INCLUDE = ROOT / 'reconstruction/recovered/libNOVA3_neon'
 SYMBOL = '_ZNK6glitch4core8CMatrix4IfE10getInverseERS2_'
 ADDRESS = 0x000EBB08
+ADDRESS_TEXT = f'0x{ADDRESS:08x}'
 FLAGS = ['-std=gnu++98', '-marm', '-mfpu=vfpv3-d16', '-O3', '-mfloat-abi=softfp',
          '-fPIC', '-fno-rtti', '-fno-exceptions']
 
@@ -48,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument('--out', type=pathlib.Path, default=None)
     args = parser.parse_args(argv)
 
+    measurement_failed = False
     with tempfile.TemporaryDirectory() as tmp:
         obj = pathlib.Path(tmp) / 'inverse.o'
         compile_result = run([str(args.gcc), *FLAGS, f'-I{INCLUDE}',
@@ -56,46 +58,47 @@ def main(argv: list[str] | None = None) -> int:
             'schema': 'nova3.collada-matrix4-inverse-pilot/1',
             'source': str(SOURCE.relative_to(ROOT)),
             'symbol': SYMBOL,
-            'address': f'0x{ADDRESS:08x}',
+            'address': ADDRESS_TEXT,
             'compiler': 'NDK r8e GCC 4.4.3',
             'flags': ' '.join(FLAGS),
             'compiled': compile_result.returncode == 0,
             'source_matching_verified': False,
         }
         if compile_result.returncode != 0:
+            measurement_failed = True
             report['compile_error'] = compile_result.stderr[-2000:]
-            print(json.dumps(report, indent=2))
-            return 1
-
-        window = run([sys.executable, str(ROOT / 'tools/compare/gcc443_window_check.py'),
-                      '--reference', str(args.reference), '--object', str(obj),
-                      '--address', hex(ADDRESS), '--symbol', SYMBOL])
-        explanation = run([sys.executable, str(ROOT / 'tools/compare/gcc443_explain.py'),
-                           '--gcc', str(args.gcc), '--reference', str(args.reference),
-                           '--source', str(SOURCE), '--address', hex(ADDRESS),
-                           '--symbol', SYMBOL, '--flags', ' '.join(FLAGS)])
-        if window.returncode == 0:
-            payload = json.loads(window.stdout)
-            report['window'] = {key: payload.get(key) for key in
-                                ('original_bytes', 'candidate_bytes', 'status',
-                                 'call_sites', 'original_window_sha256',
-                                 'candidate_window_sha256')}
-            report['source_matching_verified'] = payload.get('status') in (
-                'MATCHED_RAW', 'MATCHED_NORMALIZED_CALLS')
         else:
-            report['window_error'] = window.stderr[-2000:]
-        if explanation.returncode == 0:
-            payload = json.loads(explanation.stdout)
-            report['instructions'] = {
-                'original': payload.get('original_instructions'),
-                'candidate': payload.get('candidate_instructions'),
-            }
-            report['class_count_deltas'] = payload.get('count_deltas')
-            report['classes_only_in_original'] = payload.get('classes_only_in_original')
-            report['classes_only_in_candidate'] = payload.get('classes_only_in_candidate')
-            report['first_divergence'] = payload.get('first_divergence')
-        else:
-            report['explain_error'] = explanation.stderr[-2000:]
+            window = run([sys.executable, str(ROOT / 'tools/compare/gcc443_window_check.py'),
+                          '--reference', str(args.reference), '--object', str(obj),
+                          '--address', ADDRESS_TEXT, '--symbol', SYMBOL])
+            explanation = run([sys.executable, str(ROOT / 'tools/compare/gcc443_explain.py'),
+                               '--gcc', str(args.gcc), '--reference', str(args.reference),
+                               '--source', str(SOURCE), '--address', ADDRESS_TEXT,
+                               '--symbol', SYMBOL, '--flags', ' '.join(FLAGS)])
+            if window.returncode == 0:
+                payload = json.loads(window.stdout)
+                report['window'] = {key: payload.get(key) for key in
+                                    ('original_bytes', 'candidate_bytes', 'status',
+                                     'call_sites', 'original_window_sha256',
+                                     'candidate_window_sha256')}
+                report['source_matching_verified'] = payload.get('status') in (
+                    'MATCHED_RAW', 'MATCHED_NORMALIZED_CALLS')
+            else:
+                measurement_failed = True
+                report['window_error'] = window.stderr[-2000:]
+            if explanation.returncode == 0:
+                payload = json.loads(explanation.stdout)
+                report['instructions'] = {
+                    'original': payload.get('original_instructions'),
+                    'candidate': payload.get('candidate_instructions'),
+                }
+                report['class_count_deltas'] = payload.get('count_deltas')
+                report['classes_only_in_original'] = payload.get('classes_only_in_original')
+                report['classes_only_in_candidate'] = payload.get('classes_only_in_candidate')
+                report['first_divergence'] = payload.get('first_divergence')
+            else:
+                measurement_failed = True
+                report['explain_error'] = explanation.stderr[-2000:]
 
     text = json.dumps(report, indent=2, sort_keys=True) + '\n'
     if args.out:
@@ -103,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         args.out.write_text(text, encoding='utf-8')
         print(f'wrote {args.out}')
     sys.stdout.write(text)
-    return 0
+    return 1 if measurement_failed else 0
 
 
 if __name__ == '__main__':
